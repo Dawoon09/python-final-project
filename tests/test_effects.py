@@ -927,3 +927,194 @@ def test_update_effects_and_draw_touch_no_game_state(game):
     game.clear_effects()
     assert (s.health, s.mental, s.knowledge, s.elapsed, s.decay_timer, game.cooldown,
             game.state, game.ending, game.best_record) == snap
+
+
+# ======================= 연출 다듬기 (B단위 낮음 3건 수정) =======================
+# 1) 파티클이 위쪽으로 가지 않아 수치 팝업 글자와 겹치지 않는다
+# 2) 호버 밝은 색(COLOR_BUTTON_BRIGHT)이 평소 색과 한눈에 구분되고 글자도 잘 읽힌다
+# 3) 마우스가 창 밖으로 나가면(WINDOWLEAVE) 호버 표시가 꺼진다
+
+from button import sprite_size  # noqa: E402
+
+
+def window_leave():
+    return pygame.event.Event(pygame.WINDOWLEAVE, window=None)
+
+
+def _popup_rect(g, popup):
+    """draw_popup 과 같은 계산으로, 팝업 글자(그림자 포함)의 실제 글자 픽셀 사각형."""
+    surf = g.popup_font.render(popup["text"], False, (0, 0, 0))
+    glyph = surf.get_bounding_rect()
+    rect = surf.get_rect()
+    rect.center = (CX, round(popup["y"] - config.POPUP_RISE_SPEED * popup["age"]))
+    g_rect = glyph.move(rect.topleft)
+    return g_rect.unionall([g_rect.move(dx, dy) for dx, dy in config.POPUP_OUTLINE_OFFSETS])
+
+
+def _particle_rect(g, p):
+    """draw_particle 과 같은 계산으로, 파티클 스프라이트 전체 사각형(투명 칸 포함, 보수적)."""
+    age = p["age"]
+    cell = P
+    if age >= p["life"] * config.PARTICLE_SHRINK_RATIO:
+        cell = P // 2
+    w, h = sprite_size(p["sprite"], cell)
+    left = g.snap_to_pixel(p["x"] + p["vx"] * age - w / 2)
+    top = g.snap_to_pixel(p["y"] + p["vy"] * age - h / 2)
+    return pygame.Rect(left, top, w, h)
+
+
+@pytest.mark.parametrize("k", [pygame.K_1, pygame.K_2, pygame.K_3])
+@pytest.mark.parametrize("elapsed", [0.0, 45.0, 59.0, 60.0, 105.0, 120.0, 165.0, 180.0, 225.0,
+                                     238.0])
+def test_particles_never_overlap_popups_every_frame(game, k, elapsed):
+    """1~4학년(시험 기간 포함) x 세 행동: 1/60초 프레임마다 팝업 글자(그림자 포함)와
+    파티클 사각형이 겹치지 않는다. 깜빡여 숨은 프레임도 자리로는 검사(더 엄격)."""
+    game.student.elapsed = elapsed
+    game.student.health, game.student.mental, game.student.knowledge = 60, 60, 10
+    game.handle_event(key(k))
+    assert game.popups and len(game.particles) == config.PARTICLE_COUNT
+    frames = 0
+    while game.popups and game.particles:
+        prects = [_popup_rect(game, p) for p in game.popups]
+        for part in game.particles:
+            r = _particle_rect(game, part)
+            for pop, pr in zip(game.popups, prects):
+                assert not r.colliderect(pr), (elapsed, k, frames, pop["text"], r, pr)
+        game.update(FRAME)
+        frames += 1
+        assert game.state == config.STATE_PLAYING
+    assert frames >= 30          # 최소 0.5초 이상 함께 살아 있는 구간을 검사함
+
+
+@pytest.mark.parametrize("k", [pygame.K_1, pygame.K_2, pygame.K_3])
+@pytest.mark.parametrize("elapsed", [0.0, 60.0, 120.0, 180.0, 225.0])
+def test_particles_and_popups_pixels_never_overlap(game, k, elapsed):
+    """화면 픽셀로도 확인: 파티클만 그린 화면과 팝업만 그린 화면에서 바뀐 픽셀이 겹치지 않는다."""
+    game.student.elapsed = elapsed
+    game.student.health, game.student.mental, game.student.knowledge = 60, 60, 10
+    game.handle_event(key(k))
+    for step in range(12):
+        parts, pops = game.particles, game.popups
+        game.particles, game.popups = [], []
+        game.draw()
+        base = game.screen.copy()
+        game.particles = parts
+        game.draw()
+        only_p = set(_diff_pixels(base, game.screen))
+        game.particles, game.popups = [], pops
+        game.draw()
+        only_q = set(_diff_pixels(base, game.screen))
+        game.particles, game.popups = parts, pops
+        assert only_p and only_q or step > 0
+        assert not (only_p & only_q), (elapsed, k, step, sorted(only_p & only_q)[:5])
+        for _ in range(4):
+            game.update(FRAME)
+        if not (game.particles and game.popups):
+            break
+
+
+def test_particle_directions_never_go_upward():
+    """머리 위(팝업 자리)로 가는 방향 없음: 위로 가더라도 옆으로 두 배 넘게 가는 방향만.
+    길이 대략 1, 왼쪽·오른쪽 같은 수."""
+    dirs = config.PARTICLE_DIRECTIONS
+    assert len(dirs) >= config.PARTICLE_COUNT
+    for dx, dy in dirs:
+        assert dy >= 0 or abs(dy) < abs(dx) * 0.5, (dx, dy)
+        assert 0.9 <= (dx * dx + dy * dy) ** 0.5 <= 1.1, (dx, dy)
+    used = dirs[:config.PARTICLE_COUNT]
+    assert sum(1 for dx, _ in used if dx < 0) == sum(1 for dx, _ in used if dx > 0)
+
+
+def _rgb_distance(a, b):
+    return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
+
+
+def _contrast(a, b):
+    """WCAG 명도 대비 비율."""
+    def lin(c):
+        c = c / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    def lum(rgb):
+        r, g, b = (lin(v) for v in rgb)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_hover_color_clearly_different_and_readable():
+    """기준: 평소 색과 RGB 거리 >= 60 (이전 값은 약 43), 밝기(Y) 차 >= 30.
+    호버 몸통 위 버튼 글자 대비 >= 7 (WCAG AAA), 호버가 쿨타임 회색과도 구분(거리 >= 40)."""
+    normal, bright = config.COLOR_BUTTON, config.COLOR_BUTTON_BRIGHT
+    assert bright == (200, 234, 255)
+    assert _rgb_distance(normal, bright) >= 60
+
+    def y(rgb):
+        return 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+    assert y(bright) - y(normal) >= 30
+    assert _contrast(config.COLOR_BUTTON_TEXT, bright) >= 7
+    assert _contrast(config.COLOR_BUTTON_TEXT, bright) >= _contrast(config.COLOR_BUTTON_TEXT, normal)
+    assert _rgb_distance(bright, config.COLOR_GRAY) >= 40
+    assert all(0 <= v <= 255 for v in bright)
+
+
+def test_hovered_button_text_drawn_on_bright_body(game):
+    """실제 화면: 호버 버튼 안에 글자색 픽셀과 밝은 몸통 픽셀이 함께 있고 평소 몸통색은 없다."""
+    name = config.ACTION_STUDY
+    game.handle_event(motion(game.buttons[name].rect.center))
+    game.draw()
+    r = game.buttons[name].rect
+    cols = [color(game.screen, x, y) for x in range(r.left, r.right) for y in range(r.top, r.bottom)]
+    assert cols.count(config.COLOR_BUTTON_BRIGHT) > cols.count(config.COLOR_BUTTON_TEXT) > 20
+    assert config.COLOR_BUTTON not in cols
+
+
+def test_window_leave_turns_hover_off_then_motion_turns_it_on(game):
+    name = config.ACTION_FEED
+    game.handle_event(motion(game.buttons[name].rect.center))
+    game.draw()
+    assert color(game.screen, *body_point(game, name)) == config.COLOR_BUTTON_BRIGHT
+    game.handle_event(window_leave())
+    assert game.mouse_pos is None
+    game.draw()
+    assert all(color(game.screen, *body_point(game, n)) == config.COLOR_BUTTON
+               for n in game.buttons)
+    # 다시 들어와 다른 버튼 위로 움직이면 그 버튼만 호버
+    game.handle_event(motion(game.buttons[config.ACTION_REST].rect.center))
+    assert game.mouse_pos == game.buttons[config.ACTION_REST].rect.center
+    game.draw()
+    for n in game.buttons:
+        want = config.COLOR_BUTTON_BRIGHT if n == config.ACTION_REST else config.COLOR_BUTTON
+        assert color(game.screen, *body_point(game, n)) == want
+
+
+def test_window_leave_has_no_other_effect(game, title_game):
+    """WINDOWLEAVE 는 게이지·쿨타임·상태·연출을 바꾸지 않고, 타이틀·엔딩에서도 오류 없음."""
+    game.handle_event(key(pygame.K_3))
+    snap = (effects_snapshot(game), game.cooldown, game.state, game.student.health,
+            game.student.mental, game.student.knowledge)
+    game.handle_event(window_leave())
+    assert (effects_snapshot(game), game.cooldown, game.state, game.student.health,
+            game.student.mental, game.student.knowledge) == snap
+    title_game.handle_event(window_leave())
+    assert title_game.state == config.STATE_TITLE and title_game.mouse_pos is None
+    title_game.draw()
+    game.end_game(config.ENDING_NORMAL)
+    game.handle_event(window_leave())
+    assert game.state == config.STATE_ENDING
+    game.draw()
+
+
+def test_window_leave_during_cooldown_then_back(game):
+    game.handle_event(motion(game.buttons[config.ACTION_STUDY].rect.center))
+    game.handle_event(key(pygame.K_3))
+    game.handle_event(window_leave())
+    game.update(0.5)
+    game.draw()
+    assert all(color(game.screen, *body_point(game, n)) == config.COLOR_GRAY for n in game.buttons)
+    game.update(0.5)
+    game.draw()
+    assert all(color(game.screen, *body_point(game, n)) == config.COLOR_BUTTON for n in game.buttons)
+    game.handle_event(motion(game.buttons[config.ACTION_STUDY].rect.center))
+    game.draw()
+    assert color(game.screen, *body_point(game, config.ACTION_STUDY)) == config.COLOR_BUTTON_BRIGHT

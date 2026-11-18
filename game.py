@@ -190,6 +190,7 @@ class Game:
         - 엔딩 화면에서 R: 새 판 시작.
         - 게임 화면에서 마우스 왼쪽 클릭이 버튼 위면, 또는 1/2/3 키면 그 행동을 한다.
         - 마우스 이동(MOUSEMOTION): 버튼 호버 표시에 쓸 마우스 위치를 기억한다.
+        - 마우스가 창 밖으로 나감(WINDOWLEAVE): 마우스 위치를 잊어 호버 표시를 끈다.
         다른 화면의 Enter/R, 다른 키는 무시한다. 쿨타임 중이면 do_action이 입력을 무시한다.
         """
         if event.type == pygame.QUIT:
@@ -198,6 +199,8 @@ class Game:
             self.running = False
         elif event.type == pygame.MOUSEMOTION:
             self.mouse_pos = event.pos
+        elif event.type == pygame.WINDOWLEAVE:
+            self.mouse_pos = None
         elif self.state == config.STATE_TITLE:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 self.start_new_game()

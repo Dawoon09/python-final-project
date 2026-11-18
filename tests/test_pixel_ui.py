@@ -176,6 +176,11 @@ EFFECT_HOOKS = {
 }
 MOUSEMOTION_TEST = "event.type == pygame.MOUSEMOTION"
 MOUSEMOTION_BODY = ["self.mouse_pos = event.pos"]
+# (연출 다듬기) 창 밖으로 나가면 호버를 끄는 분기도 허용. 조건·본문이 정확히 이것이어야 한다.
+WINDOWLEAVE_TEST = "event.type == pygame.WINDOWLEAVE"
+WINDOWLEAVE_BODY = ["self.mouse_pos = None"]
+ALLOWED_ELIF_BRANCHES = [(MOUSEMOTION_TEST, MOUSEMOTION_BODY),
+                         (WINDOWLEAVE_TEST, WINDOWLEAVE_BODY)]
 
 
 def _remove_effect_hooks(fname, node):
@@ -193,16 +198,17 @@ def _remove_effect_hooks(fname, node):
         assert lines.count(stmt) == 1, f"{fname}: '{stmt}' 가 함수 본문에 정확히 한 번 있어야 함"
         node.body.pop(lines.index(stmt))
     if fname == "Game.handle_event":
-        found = []
-        for sub in ast.walk(node):
-            if isinstance(sub, ast.If) and len(sub.orelse) == 1 and isinstance(sub.orelse[0], ast.If):
-                branch = sub.orelse[0]
-                if ast.unparse(branch.test) == MOUSEMOTION_TEST:
-                    assert [ast.unparse(s) for s in branch.body] == MOUSEMOTION_BODY
-                    sub.orelse = branch.orelse
-                    found.append(branch)
-                    break
-        assert len(found) == 1, "handle_event: MOUSEMOTION elif 분기가 없음"
+        for test, body in ALLOWED_ELIF_BRANCHES:
+            found = []
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.If) and len(sub.orelse) == 1 and isinstance(sub.orelse[0], ast.If):
+                    branch = sub.orelse[0]
+                    if ast.unparse(branch.test) == test:
+                        found.append((sub, branch))
+            assert len(found) == 1, f"handle_event: '{test}' elif 분기가 정확히 1개여야 함"
+            sub, branch = found[0]
+            assert [ast.unparse(s) for s in branch.body] == body, f"'{test}' 분기 본문이 다름"
+            sub.orelse = branch.orelse
     return node
 
 
@@ -211,9 +217,9 @@ def test_logic_functions_unchanged_from_main(name):
     """그리기 외 함수(게이지·쿨타임·학년·엔딩·기록·입력)는 main 과 docstring 빼고 똑같다.
 
     (B 단위) 단, reset_round/end_game 의 clear_effects, do_action 의 before 저장과
-    start_action_effects, handle_event 의 MOUSEMOTION 분기, update 끝 update_effects 는 허용.
+    start_action_effects, handle_event 의 MOUSEMOTION·WINDOWLEAVE 분기, update 끝 update_effects 는 허용.
     """
-    old = _functions(git_show(name))
+    old =_functions(git_show(name))
     new = _functions((ROOT / name).read_text(encoding="utf-8"))
     changed = []
     for fname, node in old.items():
