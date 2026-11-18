@@ -77,16 +77,26 @@ class Student:
     # 행동 (3일차)
     # ------------------------------------------------------------
     def feed(self):
-        """학식 먹이기: 체력을 올린다. (3일차에 구현)"""
-        pass
+        """학식 먹이기: 체력 +20 (100을 넘지 않음)."""
+        self.change_health(config.FEED_HEALTH)
 
     def rest(self):
-        """쉬게 하기: 멘탈을 올리고 지식을 조금 내린다. (3일차에 구현)"""
-        pass
+        """쉬게 하기: 멘탈 +20 (100을 넘지 않음), 지식 -2 (0 아래로 내려가지 않음)."""
+        self.change_mental(config.REST_MENTAL)
+        self.change_knowledge(config.REST_KNOWLEDGE)
 
     def study(self):
-        """공부시키기: 지식을 올리고 체력·멘탈을 내린다. (3일차에 구현)"""
-        pass
+        """공부시키기: 지식 +(공부 지식량), 체력 -5, 멘탈 -8 (0 아래로 내려가지 않음)."""
+        self.change_knowledge(self.get_study_knowledge())
+        self.change_health(config.STUDY_HEALTH)
+        self.change_mental(config.STUDY_MENTAL)
+
+    def get_study_knowledge(self):
+        """공부시키기 한 번에 오르는 지식 양을 돌려준다.
+
+        지금은 항상 10이다. 시험 기간 +20은 5일차에 이 메서드에서 처리한다.
+        """
+        return config.STUDY_KNOWLEDGE
 
     # ------------------------------------------------------------
     # 그리기
@@ -111,6 +121,8 @@ class Student:
 
         배경(흰색)을 깔고 값 비율만큼 색을 채운 뒤 검은 테두리를 그린다.
         값이 30 미만이면 빨간색, 아니면 초록색으로 채운다.
+        테두리는 막대 바깥쪽에 그려서 채움을 덮지 않는다.
+        그래서 값이 1이어도 채움이 보이고, 채움 길이가 값에 정확히 비례한다.
         """
         label_text = font.render(label, True, config.COLOR_BLACK)
         screen.blit(label_text, (config.GAUGE_X, label_y))
@@ -118,6 +130,9 @@ class Student:
         # 1) 막대 배경
         bar_rect = pygame.Rect(config.GAUGE_X, bar_y,
                                config.BAR_WIDTH, config.BAR_HEIGHT)
+        # 테두리용 사각형: 막대보다 사방으로 테두리 두께만큼 크다
+        border_rect = bar_rect.inflate(config.BAR_BORDER_GROW,
+                                       config.BAR_BORDER_GROW)
         pygame.draw.rect(screen, config.COLOR_BAR_BG, bar_rect)
 
         # 2) 값 비율만큼 채우기
@@ -130,8 +145,8 @@ class Student:
                                 fill_width, config.BAR_HEIGHT)
         pygame.draw.rect(screen, fill_color, fill_rect)
 
-        # 3) 테두리
-        pygame.draw.rect(screen, config.COLOR_BLACK, bar_rect,
+        # 3) 테두리 (막대 바깥쪽)
+        pygame.draw.rect(screen, config.COLOR_BLACK, border_rect,
                          config.BAR_BORDER_WIDTH)
 
     def draw(self, screen):

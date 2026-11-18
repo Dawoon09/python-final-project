@@ -232,7 +232,7 @@ def _color(surface, x, y):
 
 
 @pytest.mark.parametrize("value, expected", [
-    # 값 1은 채움 폭 2px가 테두리 2px에 완전히 가려져 보이지 않는다(낮음 등급으로 보고).
+    # 값 1은 test_bar_value_one_visible_red 에서 따로 검사한다.
     (2, config.COLOR_RED), (10, config.COLOR_RED), (29, config.COLOR_RED),
     (30, config.COLOR_GREEN), (31, config.COLOR_GREEN), (80, config.COLOR_GREEN),
     (100, config.COLOR_GREEN),
@@ -283,8 +283,8 @@ def test_bar_fill_proportional(screen_font, value):
     s.mental = value
     s.draw_gauges(surface, font)
     fill_width = config.BAR_WIDTH * value // config.GAUGE_MAX
-    # 왼쪽 테두리(BAR_BORDER_WIDTH)가 채움 앞부분을 덮는다
-    expected = fill_width - config.BAR_BORDER_WIDTH
+    # 테두리는 막대 바깥쪽이므로 채움 폭 = 값 x BAR_WIDTH / 100 이 그대로 보인다
+    expected = fill_width
     assert _fill_count(surface, config.HEALTH_BAR_Y) == expected
     assert _fill_count(surface, config.MENTAL_BAR_Y) == expected
     # 채움 끝 바로 다음 칸은 빈 배경
@@ -307,11 +307,41 @@ def test_bar_full_and_empty(screen_font):
 
 
 def test_bar_has_border(screen_font):
+    """테두리는 막대 바깥쪽(GAUGE_X 왼쪽, 막대 오른쪽 끝 다음 칸)에 있고 막대 안은 덮지 않는다."""
     surface, font = screen_font
-    Student().draw_gauges(surface, font)
-    assert _color(surface, config.GAUGE_X, _mid_y(config.HEALTH_BAR_Y)) == config.COLOR_BLACK
-    assert _color(surface, config.GAUGE_X + config.BAR_WIDTH - 1,
-                  _mid_y(config.HEALTH_BAR_Y)) == config.COLOR_BLACK
+    s = Student()
+    s.health = 100
+    s.draw_gauges(surface, font)
+    y = _mid_y(config.HEALTH_BAR_Y)
+    assert _color(surface, config.GAUGE_X - 1, y) == config.COLOR_BLACK
+    assert _color(surface, config.GAUGE_X - config.BAR_BORDER_WIDTH, y) == config.COLOR_BLACK
+    assert _color(surface, config.GAUGE_X + config.BAR_WIDTH, y) == config.COLOR_BLACK
+    assert _color(surface, config.GAUGE_X + config.BAR_WIDTH + config.BAR_BORDER_WIDTH - 1,
+                  y) == config.COLOR_BLACK
+    # 막대 양 끝 칸은 테두리가 아니라 채움
+    assert _color(surface, config.GAUGE_X, y) == config.COLOR_GREEN
+    assert _color(surface, config.GAUGE_X + config.BAR_WIDTH - 1, y) == config.COLOR_GREEN
+    # 위·아래 테두리도 막대 바깥쪽
+    assert _color(surface, config.GAUGE_X + 10, config.HEALTH_BAR_Y - 1) == config.COLOR_BLACK
+    assert _color(surface, config.GAUGE_X + 10,
+                  config.HEALTH_BAR_Y + config.BAR_HEIGHT) == config.COLOR_BLACK
+    assert _color(surface, config.GAUGE_X + 10, config.HEALTH_BAR_Y) == config.COLOR_GREEN
+
+
+def test_bar_value_one_visible_red(screen_font):
+    """값 1이면 빨간 채움이 2px(=1 x BAR_WIDTH / 100) 보인다."""
+    surface, font = screen_font
+    s = Student()
+    s.health = 1
+    s.mental = 1
+    s.draw_gauges(surface, font)
+    width = config.BAR_WIDTH * 1 // config.GAUGE_MAX
+    for bar_y in (config.HEALTH_BAR_Y, config.MENTAL_BAR_Y):
+        y = _mid_y(bar_y)
+        assert _fill_count(surface, bar_y) == width
+        assert _color(surface, config.GAUGE_X, y) == config.COLOR_RED
+        assert _color(surface, config.GAUGE_X + width - 1, y) == config.COLOR_RED
+        assert _color(surface, config.GAUGE_X + width, y) == config.COLOR_BAR_BG
 
 
 def test_knowledge_drawn_as_number(screen_font):

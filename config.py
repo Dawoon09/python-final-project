@@ -128,8 +128,37 @@ MENTAL_LABEL_Y = 240        # "멘탈" 라벨 위쪽 y
 MENTAL_BAR_Y = 270          # 멘탈 막대 위쪽 y
 BAR_WIDTH = 200             # 막대 전체 가로 길이(값 100일 때)
 BAR_HEIGHT = 24             # 막대 세로 길이
-BAR_BORDER_WIDTH = 2        # 막대 테두리 두께
+BAR_BORDER_WIDTH = 2        # 막대 테두리 두께 (테두리는 막대 바깥쪽에 그려서 채움을 가리지 않는다)
+BAR_BORDER_GROW = BAR_BORDER_WIDTH * 2  # 테두리 사각형이 막대보다 가로·세로로 커지는 양(양쪽 합)
 
 HEALTH_LABEL = "체력"
 MENTAL_LABEL = "멘탈"
 KNOWLEDGE_LABEL = "지식"
+
+# ---------------------------------------------------------------
+# 12. 행동 버튼 (화면 아래쪽에 가로로 3개)
+# ---------------------------------------------------------------
+# 행동 이름 (Game.do_action 에 넘기는 값)
+ACTION_FEED = "feed"        # 학식 먹이기
+ACTION_REST = "rest"        # 쉬게 하기
+ACTION_STUDY = "study"      # 공부시키기
+
+# 버튼 글자 (jeja-spec 3절, 기획서 화면 예시)
+FEED_BUTTON_TEXT = "학식 먹이기 [1]"
+REST_BUTTON_TEXT = "쉬게 하기 [2]"
+STUDY_BUTTON_TEXT = "공부시키기 [3]"
+
+BUTTON_WIDTH = 220          # 버튼 하나의 가로 길이
+BUTTON_HEIGHT = 50          # 버튼 하나의 세로 길이
+BUTTON_GAP = 30             # 버튼 사이 간격
+BUTTON_Y = 480              # 버튼 위쪽 y
+BUTTON_BORDER_WIDTH = 2     # 버튼 테두리 두께
+# 버튼 3개를 가운데 정렬했을 때 첫 버튼의 왼쪽 x: (800 - (220*3 + 30*2)) / 2 = 40
+BUTTON_START_X = (SCREEN_WIDTH - (BUTTON_WIDTH * 3 + BUTTON_GAP * 2)) // 2
+
+COLOR_BUTTON_TEXT = COLOR_WHITE  # 버튼 글자 색
+
+# 버튼 아래 쿨타임 안내 문구
+COOLDOWN_HINT_TEXT = "누른 뒤 1초 동안 회색 (쿨타임)"
+COOLDOWN_HINT_Y = 545       # 안내 문구 위쪽 y
+COOLDOWN_HINT_X = SCREEN_WIDTH // 2  # 안내 문구 가운데 x (화면 가운데)
