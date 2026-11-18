@@ -87,12 +87,16 @@ def test_frames_60fps_ten_seconds_exact():
 
 
 def test_frames_60fps_long_run_no_drift():
-    """60초 분량 프레임을 누적해도 정확히 60 감소(오차 누적 없음)."""
+    """60초 분량 프레임을 누적해도 감소 횟수가 정확하다(오차 누적 없음).
+
+    (5일차 수정) 시험 기간 멘탈 2배 반영: 체력 100-60=40,
+    멘탈 100 - 45x1 - 15x2 = 25 (45~59초 감소 15번이 -2, 60초 감소는 2학년이라 -1).
+    """
     s = Student()
     s.health = s.mental = 100
     for _ in range(60 * 60):
         s.update(1 / 60)
-    assert (s.health, s.mental) == (40, 40)
+    assert (s.health, s.mental) == (40, 25)
 
 
 def test_irregular_frames():
@@ -209,11 +213,28 @@ def test_is_dropped_out():
 
 
 def test_dropped_out_by_natural_decay_after_80s():
+    """자연 감소만으로 휴학 조건이 된다.
+
+    (5일차 수정) 시험 기간 멘탈 2배 때문에 멘탈이 먼저 0이 된다:
+    44초 후 36, 59초 후 36-30=6, 60초 후 5, 65초 후 0. 그 시각 체력은 15.
+    """
     s = Student()
-    s.update(79.0)
+    s.update(64.0)
+    assert (s.health, s.mental) == (16, 1)
     assert s.is_dropped_out() is False
     s.update(1.0)
+    assert (s.health, s.mental) == (15, 0)
     assert s.is_dropped_out() is True
+
+
+def test_dropped_out_by_health_decay_only_after_80s():
+    """체력만 보면 80초 자연 감소 후 0이 된다(멘탈은 충분히 채워 둔다)."""
+    s = Student()
+    s.update(79.0)
+    s.mental = 100
+    assert s.health == 1 and s.is_dropped_out() is False
+    s.update(1.0)
+    assert s.health == 0 and s.is_dropped_out() is True
 
 
 # ======================= 기능 6: 게이지 막대 =======================
@@ -344,67 +365,59 @@ def test_bar_value_one_visible_red(screen_font):
         assert _color(surface, config.GAUGE_X + width, y) == config.COLOR_BAR_BG
 
 
-def test_knowledge_drawn_as_number():
-    """(4일차부터) 지식 숫자는 Game.draw(정보바)가 그리고, 막대 라벨은 draw_gauges가 그린다."""
-    g = Game()
-    try:
-        rec = RecordingFont(g.font)
-        g.font = rec
-        g.student.change_knowledge(123)
-        g.draw()
-        assert "지식 123" in rec.texts
-        assert config.HEALTH_LABEL in rec.texts
-        assert config.MENTAL_LABEL in rec.texts
-    finally:
-        pygame.quit()
+def test_knowledge_drawn_as_number(playing_game):
+    """(4일차부터) 지식 숫자는 Game.draw(정보바)가 그리고, 막대 라벨은 draw_gauges가 그린다.
+
+    (5일차 수정) 타이틀에서 시작하므로 Enter로 게임을 시작한 뒤 검사한다.
+    """
+    g = playing_game
+    rec = RecordingFont(g.font)
+    g.font = rec
+    g.student.change_knowledge(123)
+    g.draw()
+    assert "지식 123" in rec.texts
+    assert config.HEALTH_LABEL in rec.texts
+    assert config.MENTAL_LABEL in rec.texts
 
 
-def test_knowledge_text_in_top_right():
+def test_knowledge_text_in_top_right(playing_game):
     """지식 숫자가 정보바 오른쪽(상단)에 그려진다: 정보바 오른쪽 끝 구역에 글자색(검정) 픽셀이 있다."""
-    g = Game()
-    try:
-        g.student.change_knowledge(123)
-        g.draw()
-        region = pygame.Rect(config.SCREEN_WIDTH * 3 // 4, 0,
-                             config.SCREEN_WIDTH // 4, config.INFO_BAR_HEIGHT)
-        dark = any(
-            sum(_color(g.screen, x, y)) < 200
-            for x in range(region.left, region.right)
-            for y in range(region.top, region.bottom)
-        )
-        assert dark
-    finally:
-        pygame.quit()
+    g = playing_game
+    g.student.change_knowledge(123)
+    g.draw()
+    region = pygame.Rect(config.SCREEN_WIDTH * 3 // 4, 0,
+                         config.SCREEN_WIDTH // 4, config.INFO_BAR_HEIGHT)
+    dark = any(
+        sum(_color(g.screen, x, y)) < 200
+        for x in range(region.left, region.right)
+        for y in range(region.top, region.bottom)
+    )
+    assert dark
 
 
 # ======================= 완료 기준: 시간이 지나면 막대가 줄어듦 =======================
 
-def test_game_bar_shrinks_over_time():
-    g = Game()
-    try:
-        g.draw()
-        before = _fill_count(g.screen, config.HEALTH_BAR_Y)
-        for _ in range(60 * 5):
-            g.update(1 / 60)
-        g.draw()
-        after = _fill_count(g.screen, config.HEALTH_BAR_Y)
-        assert g.student.health == 75 and g.student.mental == 75
-        assert before - after == config.BAR_WIDTH * 5 // config.GAUGE_MAX
-        assert _fill_count(g.screen, config.MENTAL_BAR_Y) == after
-    finally:
-        pygame.quit()
+def test_game_bar_shrinks_over_time(playing_game):
+    g = playing_game
+    g.draw()
+    before = _fill_count(g.screen, config.HEALTH_BAR_Y)
+    for _ in range(60 * 5):
+        g.update(1 / 60)
+    g.draw()
+    after = _fill_count(g.screen, config.HEALTH_BAR_Y)
+    assert g.student.health == 75 and g.student.mental == 75
+    assert before - after == config.BAR_WIDTH * 5 // config.GAUGE_MAX
+    assert _fill_count(g.screen, config.MENTAL_BAR_Y) == after
 
 
-def test_game_bar_turns_red_when_below_30():
-    g = Game()
-    try:
-        g.update(51.0)  # 80 -> 29
-        g.draw()
-        x, y = _inner_x(), _mid_y(config.HEALTH_BAR_Y)
-        assert g.student.health == 29
-        assert _color(g.screen, x, y) == config.COLOR_RED
-    finally:
-        pygame.quit()
+def test_game_bar_turns_red_when_below_30(playing_game):
+    g = playing_game
+    g.update(51.0)  # 체력 80 -> 29 (멘탈은 80 - 44 - 7x2 = 22, 아직 게임 중)
+    g.draw()
+    x, y = _inner_x(), _mid_y(config.HEALTH_BAR_Y)
+    assert g.state == config.STATE_PLAYING
+    assert g.student.health == 29
+    assert _color(g.screen, x, y) == config.COLOR_RED
 
 
 def test_game_update_only_in_playing_state():
@@ -423,11 +436,16 @@ def test_game_update_only_in_playing_state():
         pygame.quit()
 
 
-def test_game_draw_after_long_time_no_crash():
-    g = Game()
-    try:
+def test_game_draw_after_long_time_no_crash(playing_game):
+    """(5일차 수정) 오래 지나도 크래시 없고, 0이 되었으므로 휴학 엔딩 화면이다."""
+    g = playing_game
+    g.update(1000.0)
+    g.draw()
+    assert (g.student.health, g.student.mental) == (0, 0)
+    assert g.state == config.STATE_ENDING
+    assert g.ending == config.ENDING_LEAVE
+    for _ in range(10):
         g.update(1000.0)
         g.draw()
-        assert (g.student.health, g.student.mental) == (0, 0)
-    finally:
-        pygame.quit()
+    assert (g.student.health, g.student.mental) == (0, 0)
+    assert g.state == config.STATE_ENDING

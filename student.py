@@ -10,6 +10,19 @@ def clamp(value, low, high):
     return max(low, min(value, high))
 
 
+def judge_ending(knowledge):
+    """240초를 버틴 제자의 누적 지식으로 졸업 엔딩 이름을 돌려준다.
+
+    지식 500 이상 "수석 졸업", 300~499 "무사 졸업", 300 미만 "아슬아슬 졸업".
+    (휴학은 체력·멘탈로 정하므로 여기서 다루지 않는다.)
+    """
+    if knowledge >= config.TOP_GRADUATE_KNOWLEDGE:
+        return config.ENDING_TOP
+    if knowledge >= config.NORMAL_GRADUATE_KNOWLEDGE:
+        return config.ENDING_NORMAL
+    return config.ENDING_BARELY
+
+
 def draw_thick_arc(screen, color, rect, start, stop, thickness):
     """두께 thickness인 호를 그린다.
 
@@ -61,12 +74,23 @@ class Student:
         그래서 프레임 속도와 상관없이 1초에 정확히 한 번 줄어들고,
         dt가 커서 여러 초가 한꺼번에 지나도 지난 초 수만큼 줄어든다.
         소수 덧셈 오차 때문에 1초를 놓치지 않도록 아주 작은 허용치(TIME_EPSILON)를 둔다.
+        경과 시간은 전체 시간(240초)에서 멈춘다. dt가 커서 240초를 넘겨도
+        240초까지만 흐르고, 그 뒤로는 자연 감소도 일어나지 않는다.
+        감소가 일어날 때마다 경과 시간을 "그 감소가 일어난 시각"으로 맞춰 두어서,
+        dt가 커도 감소마다 시험 기간인지(멘탈 -2) 정확히 판단한다.
         """
-        self.elapsed += dt
+        time_left = max(config.ZERO_TIME, config.TOTAL_SECONDS - self.elapsed)
+        dt = min(dt, time_left)
+        end_time = self.elapsed + dt
         self.decay_timer += dt
         while self.decay_timer + config.TIME_EPSILON >= config.DECAY_INTERVAL:
             self.decay_timer -= config.DECAY_INTERVAL
+            # 이번 1초 감소가 일어나는 시각 = 끝 시각 - 아직 남겨 둔 시간
+            self.elapsed = end_time - self.decay_timer
             self.decay_once()
+        self.elapsed = end_time
+        if self.is_time_over():
+            self.elapsed = config.TOTAL_SECONDS  # 소수 오차를 없애고 240에서 멈춘다
 
     def decay_once(self):
         """1초분 자연 감소를 한 번 적용한다: 체력 -1, 멘탈 -(멘탈 감소량)."""
@@ -74,15 +98,55 @@ class Student:
         self.change_mental(-self.get_mental_decay())
 
     def get_mental_decay(self):
-        """1초마다 줄어드는 멘탈 양을 돌려준다.
-
-        지금은 항상 1이다. 시험 기간 2배(-2)는 5일차에 이 메서드에서 처리한다.
-        """
+        """1초마다 줄어드는 멘탈 양을 돌려준다: 평소 1, 시험 기간 2."""
+        if self.is_exam_period():
+            return config.MENTAL_DECAY_PER_SEC_EXAM
         return config.MENTAL_DECAY_PER_SEC
 
     def is_dropped_out(self):
         """체력이나 멘탈이 0이면 True(휴학 조건)를 돌려준다."""
         return self.health <= config.GAUGE_MIN or self.mental <= config.GAUGE_MIN
+
+    # ------------------------------------------------------------
+    # 시험 기간과 엔딩 (5일차)
+    # ------------------------------------------------------------
+    def is_time_over(self):
+        """경과 시간이 전체 시간(240초)에 도달했으면 True(졸업 시점)를 돌려준다.
+
+        1/60초를 14400번 더하면 239.9999…가 될 수 있어서 TIME_EPSILON 만큼 봐준다.
+        """
+        return self.elapsed + config.TIME_EPSILON >= config.TOTAL_SECONDS
+
+    def is_exam_period(self):
+        """지금이 시험 기간(각 학년 마지막 15초)이면 True를 돌려준다.
+
+        학년 안에서 흐른 시간이 45초 이상이면 시험 기간이다(45~60초, 105~120초 …).
+        60초가 되면 다음 학년이 시작되므로 시험 기간이 아니다.
+        240초(졸업 시점)부터는 시험 기간이 아니다.
+        get_grade와 똑같이 TIME_EPSILON 만큼 봐준다.
+        """
+        if self.is_time_over():
+            return False
+        grade_start = (self.get_grade() - config.FIRST_GRADE) * config.SECONDS_PER_GRADE
+        time_in_grade = self.elapsed - grade_start
+        exam_start = config.SECONDS_PER_GRADE - config.EXAM_SECONDS
+        return time_in_grade + config.TIME_EPSILON >= exam_start
+
+    def get_graduation_ending(self):
+        """지금 지식으로 졸업 엔딩 이름을 돌려준다(judge_ending 사용)."""
+        return judge_ending(self.knowledge)
+
+    def get_ending(self):
+        """지금 엔딩이 났는지 보고 엔딩 이름을 돌려준다. 아직 아니면 None.
+
+        체력이나 멘탈이 0이면 휴학을 먼저 돌려준다(240초 시점과 겹쳐도 휴학 우선).
+        그렇지 않고 240초가 되었으면 지식에 따른 졸업 엔딩을 돌려준다.
+        """
+        if self.is_dropped_out():
+            return config.ENDING_LEAVE
+        if self.is_time_over():
+            return self.get_graduation_ending()
+        return None
 
     # ------------------------------------------------------------
     # 행동 (3일차)
@@ -103,10 +167,9 @@ class Student:
         self.change_mental(config.STUDY_MENTAL)
 
     def get_study_knowledge(self):
-        """공부시키기 한 번에 오르는 지식 양을 돌려준다.
-
-        지금은 항상 10이다. 시험 기간 +20은 5일차에 이 메서드에서 처리한다.
-        """
+        """공부시키기 한 번에 오르는 지식 양을 돌려준다: 평소 10, 시험 기간 20."""
+        if self.is_exam_period():
+            return config.STUDY_KNOWLEDGE_EXAM
         return config.STUDY_KNOWLEDGE
 
     # ------------------------------------------------------------
@@ -116,7 +179,7 @@ class Student:
         """경과 시간으로 지금 학년(1~4)을 계산해 돌려준다.
 
         0~60초 미만 1학년, 60~120초 미만 2학년, 120~180초 미만 3학년, 180초부터 4학년.
-        240초가 넘어도 4학년으로 둔다(졸업 처리는 5일차).
+        240초(졸업 시점)에도 4학년으로 둔다.
         1/60초를 3600번 더하면 59.9999…가 될 수 있어서 TIME_EPSILON 만큼 봐준다.
         """
         passed_grades = int((self.elapsed + config.TIME_EPSILON)

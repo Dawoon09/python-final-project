@@ -21,10 +21,8 @@ STATE_TITLE = "title"       # 타이틀 화면
 STATE_PLAYING = "playing"   # 게임 화면
 STATE_ENDING = "ending"     # 엔딩 화면
 
-# 게임을 켰을 때 처음 보여 줄 화면.
-# 임시(2일차): 타이틀 화면이 아직 없어서 바로 게임 화면으로 시작한다.
-# 5일차에 타이틀 화면을 만들면 STATE_TITLE 로 바꾼다.
-START_STATE = STATE_PLAYING
+# 게임을 켰을 때 처음 보여 줄 화면: 타이틀 화면
+START_STATE = STATE_TITLE
 
 # ---------------------------------------------------------------
 # 3. 시간
@@ -206,3 +204,54 @@ COLOR_BUTTON_TEXT = COLOR_WHITE  # 버튼 글자 색
 COOLDOWN_HINT_TEXT = "누른 뒤 1초 동안 회색 (쿨타임)"
 COOLDOWN_HINT_Y = 545       # 안내 문구 위쪽 y
 COOLDOWN_HINT_X = SCREEN_WIDTH // 2  # 안내 문구 가운데 x (화면 가운데)
+
+# ---------------------------------------------------------------
+# 13. 시험 기간 배너 (상단 정보바 바로 아래, 게이지 구역 위)
+# ---------------------------------------------------------------
+EXAM_BANNER_TEXT = "시험 기간! 공부 효과 2배, 멘탈 감소 2배"
+EXAM_BANNER_X = 20          # 배너 왼쪽 x
+EXAM_BANNER_Y = 60          # 배너 위쪽 y (정보바 높이 50 아래)
+EXAM_BANNER_WIDTH = SCREEN_WIDTH - EXAM_BANNER_X * 2  # 배너 가로 길이(좌우 여백 같게)
+EXAM_BANNER_HEIGHT = 40     # 배너 세로 길이 -> 아래 끝 100, 게이지 라벨(150)과 겹치지 않음
+EXAM_BANNER_BORDER_WIDTH = 2  # 배너 테두리 두께
+
+# ---------------------------------------------------------------
+# 14. 타이틀 화면
+# ---------------------------------------------------------------
+TITLE_FONT_SIZE = 64        # 큰 제목 글자 크기
+TITLE_TEXT = "제자 키우기"   # 게임 제목
+TITLE_TEXT_Y = 170          # 제목 가운데 y
+TITLE_LINE_Y = 225          # 제목 아래 장식 선 y
+TITLE_LINE_HALF = 180       # 장식 선의 절반 길이(화면 가운데에서 좌우로)
+TITLE_LINE_WIDTH = 3        # 장식 선 두께
+BEST_RECORD_TEXT = "최고 기록: 지식 {}"  # 최고 기록 글자 틀
+BEST_RECORD_Y = 300         # 최고 기록 가운데 y
+BEST_RECORD_START = 0       # 최고 기록 시작값 (record.json 저장·불러오기는 6일차)
+START_HINT_TEXT = "Enter를 눌러 시작"
+START_HINT_Y = 420          # 시작 안내 가운데 y
+SCREEN_CENTER_X = SCREEN_WIDTH // 2  # 화면 가운데 x
+
+# ---------------------------------------------------------------
+# 15. 엔딩 화면
+# ---------------------------------------------------------------
+ENDING_NAME_Y = 110         # 엔딩 이름 가운데 y
+ENDING_KNOWLEDGE_TEXT = "누적 지식 {}"  # 누적 지식 글자 틀
+ENDING_KNOWLEDGE_Y = 400    # 누적 지식 가운데 y
+RESTART_HINT_TEXT = "R을 눌러 다시 하기"
+RESTART_HINT_Y = 480        # 다시 하기 안내 가운데 y
+
+# 학사모 (졸업 엔딩일 때만): 위 판(납작한 사각형) + 몸체(사각형) + 술(선 + 끝 원)
+CAP_CENTER_X = SCREEN_WIDTH // 2  # 학사모 가운데 x
+CAP_BOARD_Y = 220           # 위 판 위쪽 y
+CAP_BOARD_WIDTH = 200       # 위 판 가로 길이
+CAP_BOARD_HEIGHT = 20       # 위 판 세로 길이(두께)
+CAP_BODY_Y = 240            # 몸체 위쪽 y (위 판 바로 아래)
+CAP_BODY_WIDTH = 120        # 몸체 가로 길이
+CAP_BODY_HEIGHT = 60        # 몸체 세로 길이
+CAP_BUTTON_RADIUS = 6       # 판 가운데 단추(원) 반지름
+CAP_TASSEL_END_X = 90       # 술이 판 가운데에서 오른쪽으로 뻗는 거리
+CAP_TASSEL_DROP = 70        # 술이 판 끝에서 아래로 늘어지는 길이
+CAP_TASSEL_WIDTH = 3        # 술 선 두께
+CAP_TASSEL_END_RADIUS = 7   # 술 끝 매듭(원) 반지름
+COLOR_CAP = (40, 40, 60)        # 학사모 색(짙은 남색)
+COLOR_TASSEL = (230, 180, 40)   # 술 색(금색)

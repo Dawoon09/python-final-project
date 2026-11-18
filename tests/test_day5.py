@@ -1,0 +1,823 @@
+"""5일차 검수: 타이틀/엔딩 화면(기능 10), 휴학 엔딩(기능 9), 시험 기간(기능 11), 졸업 엔딩(기능 12).
+
+완료 기준: 처음부터 끝까지 한 판을 플레이할 수 있음.
+"""
+
+import os
+
+os.environ["SDL_VIDEODRIVER"] = "dummy"
+os.environ["SDL_AUDIODRIVER"] = "dummy"
+
+import random  # noqa: E402
+
+import pygame  # noqa: E402
+import pytest  # noqa: E402
+
+import config  # noqa: E402
+import student as student_module  # noqa: E402
+from conftest import press  # noqa: E402
+from game import Game  # noqa: E402
+from student import Student, judge_ending  # noqa: E402
+
+FRAME = 1 / 60
+GRADE_STARTS = [0, 60, 120, 180]
+GRADUATIONS = (config.ENDING_TOP, config.ENDING_NORMAL, config.ENDING_BARELY)
+
+
+@pytest.fixture
+def title_game():
+    """막 켠(타이틀 화면) Game."""
+    g = Game()
+    yield g
+    pygame.quit()
+
+
+class RecordingFont:
+    """render에 넘긴 글자를 기록하는 폰트 래퍼."""
+
+    def __init__(self, font):
+        self.font = font
+        self.texts = []
+
+    def render(self, text, *args, **kwargs):
+        self.texts.append(text)
+        return self.font.render(text, *args, **kwargs)
+
+
+def color(surf, x, y):
+    return tuple(surf.get_at((x, y)))[:3]
+
+
+def snapshot(g):
+    s = g.student
+    return (s.health, s.mental, s.knowledge, s.elapsed, s.decay_timer, g.cooldown,
+            g.state, g.ending)
+
+
+def click(g, pos):
+    g.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=pos))
+
+
+def button_center(g, name):
+    return g.buttons[name].rect.center
+
+
+def force_ending_by_study(g):
+    """게임 중 Game을 공부 행동으로 휴학 엔딩에 보낸다(체력 5 -> 0)."""
+    g.student.health = 5
+    assert g.do_action(config.ACTION_STUDY)
+    assert g.state == config.STATE_ENDING
+
+
+def count_color(surf, rgb, rect):
+    n = 0
+    for x in range(rect.left, rect.right):
+        for y in range(rect.top, rect.bottom):
+            if color(surf, x, y) == rgb:
+                n += 1
+    return n
+
+
+# ======================= config 값 =======================
+
+def test_config_values():
+    assert config.START_STATE == config.STATE_TITLE
+    assert config.TOTAL_SECONDS == 240 and config.SECONDS_PER_GRADE == 60
+    assert config.EXAM_SECONDS == 15
+    assert config.MENTAL_DECAY_PER_SEC_EXAM == 2 and config.MENTAL_DECAY_PER_SEC == 1
+    assert config.STUDY_KNOWLEDGE_EXAM == 20 and config.STUDY_KNOWLEDGE == 10
+    assert config.TOP_GRADUATE_KNOWLEDGE == 500 and config.NORMAL_GRADUATE_KNOWLEDGE == 300
+    assert (config.ENDING_LEAVE, config.ENDING_TOP, config.ENDING_NORMAL,
+            config.ENDING_BARELY) == ("휴학", "수석 졸업", "무사 졸업", "아슬아슬 졸업")
+    assert config.EXAM_BANNER_TEXT == "시험 기간! 공부 효과 2배, 멘탈 감소 2배"
+    assert config.START_HINT_TEXT == "Enter를 눌러 시작"
+    assert config.RESTART_HINT_TEXT == "R을 눌러 다시 하기"
+
+
+# ======================= 기능 10: 화면 전환 =======================
+
+def test_starts_on_title(title_game):
+    assert title_game.state == config.STATE_TITLE
+    assert title_game.ending is None
+
+
+def test_enter_starts_new_game(title_game):
+    g = title_game
+    press(g, pygame.K_RETURN)
+    s = g.student
+    assert g.state == config.STATE_PLAYING
+    assert (s.health, s.mental, s.knowledge) == (80, 80, 0)
+    assert s.get_grade() == 1 and s.elapsed == 0 and s.decay_timer == 0
+    assert g.cooldown == 0 and g.ending is None
+
+
+def test_numpad_enter_ignored_on_title(title_game):
+    before = snapshot(title_game)
+    press(title_game, pygame.K_KP_ENTER)
+    assert snapshot(title_game) == before
+
+
+@pytest.mark.parametrize("key", [pygame.K_r, pygame.K_1, pygame.K_2, pygame.K_3,
+                                 pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a])
+def test_title_ignores_other_keys(title_game, key):
+    before = snapshot(title_game)
+    press(title_game, key)
+    assert snapshot(title_game) == before
+
+
+def test_title_ignores_button_clicks(title_game):
+    g = title_game
+    before = snapshot(g)
+    for name in (config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY):
+        click(g, button_center(g, name))
+        assert g.do_action(name) is False
+    assert snapshot(g) == before
+
+
+def test_title_time_does_not_flow(title_game):
+    g = title_game
+    before = snapshot(g)
+    for _ in range(600):
+        g.update(FRAME)
+    g.update(1000.0)
+    assert snapshot(g) == before
+
+
+@pytest.mark.parametrize("key", [pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_r])
+def test_playing_ignores_enter_and_r(playing_game, key):
+    g = playing_game
+    g.update(10.5)
+    g.do_action(config.ACTION_STUDY)
+    before = snapshot(g)
+    press(g, key)
+    assert snapshot(g) == before
+
+
+def test_ending_r_fully_resets(playing_game):
+    g = playing_game
+    g.update(30.4)  # elapsed 30.4, decay_timer 0.4
+    g.student.knowledge = 200
+    force_ending_by_study(g)
+    assert g.cooldown == config.ACTION_COOLDOWN
+    assert g.ending == config.ENDING_LEAVE
+    press(g, pygame.K_r)
+    s = g.student
+    assert g.state == config.STATE_PLAYING
+    assert (s.health, s.mental, s.knowledge) == (80, 80, 0)
+    assert s.elapsed == 0 and s.decay_timer == 0 and s.get_grade() == 1
+    assert g.cooldown == 0 and g.ending is None
+    # 쿨타임이 풀렸으므로 바로 행동 가능
+    assert g.do_action(config.ACTION_FEED) is True
+
+
+def test_ending_r_after_graduation_resets(playing_game):
+    g = playing_game
+    s = g.student
+    s.elapsed, s.health, s.mental, s.knowledge = 239.5, 100, 100, 600
+    g.update(0.5)
+    assert g.ending == config.ENDING_TOP
+    press(g, pygame.K_r)
+    s = g.student
+    assert g.state == config.STATE_PLAYING
+    assert (s.health, s.mental, s.knowledge, s.elapsed) == (80, 80, 0, 0)
+    assert not s.is_exam_period() and g.ending is None
+
+
+@pytest.mark.parametrize("key", [pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_1,
+                                 pygame.K_2, pygame.K_3, pygame.K_SPACE])
+def test_ending_ignores_other_keys(playing_game, key):
+    g = playing_game
+    force_ending_by_study(g)
+    before = snapshot(g)
+    press(g, key)
+    assert snapshot(g) == before
+
+
+def test_ending_ignores_clicks_and_actions(playing_game):
+    g = playing_game
+    force_ending_by_study(g)
+    g.cooldown = 0
+    before = snapshot(g)
+    for name in (config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY):
+        click(g, button_center(g, name))
+        assert g.do_action(name) is False
+    assert snapshot(g) == before
+
+
+def test_ending_time_does_not_flow(playing_game):
+    g = playing_game
+    g.update(3.3)
+    force_ending_by_study(g)
+    before = snapshot(g)
+    for _ in range(600):
+        g.update(FRAME)
+    g.update(1000.0)
+    assert snapshot(g) == before
+
+
+def _go_to(state):
+    g = Game()
+    if state != config.STATE_TITLE:
+        press(g, pygame.K_RETURN)
+    if state == config.STATE_ENDING:
+        force_ending_by_study(g)
+    assert g.state == state
+    return g
+
+
+@pytest.mark.parametrize("state", [config.STATE_TITLE, config.STATE_PLAYING,
+                                   config.STATE_ENDING])
+def test_esc_quits_every_screen(state):
+    g = _go_to(state)
+    try:
+        press(g, pygame.K_ESCAPE)
+        assert g.running is False
+    finally:
+        pygame.quit()
+
+
+@pytest.mark.parametrize("state", [config.STATE_TITLE, config.STATE_PLAYING,
+                                   config.STATE_ENDING])
+def test_quit_event_every_screen(state):
+    g = _go_to(state)
+    try:
+        g.handle_event(pygame.event.Event(pygame.QUIT))
+        assert g.running is False
+    finally:
+        pygame.quit()
+
+
+def test_title_to_ending_to_playing_cycle_many_times(title_game):
+    g = title_game
+    press(g, pygame.K_RETURN)
+    for _ in range(5):
+        force_ending_by_study(g)
+        press(g, pygame.K_r)
+        assert g.state == config.STATE_PLAYING
+        assert (g.student.health, g.student.mental, g.student.knowledge) == (80, 80, 0)
+
+
+# ======================= 기능 9: 휴학 엔딩 =======================
+
+def test_natural_decay_mental_zero_ends_immediately(playing_game):
+    """멘탈은 시험 기간 2배로 65초에 0이 된다 -> 그 프레임에 바로 휴학."""
+    g = playing_game
+    g.update(64.0)
+    assert g.state == config.STATE_PLAYING
+    assert (g.student.health, g.student.mental) == (16, 1)
+    for frame in range(1, 61):
+        g.update(FRAME)
+        if frame < 60:
+            assert g.state == config.STATE_PLAYING, frame
+    assert g.state == config.STATE_ENDING
+    assert g.ending == config.ENDING_LEAVE
+    assert (g.student.health, g.student.mental) == (15, 0)
+
+
+def test_natural_decay_health_zero_ends_immediately(playing_game):
+    g = playing_game
+    g.student.health = 3
+    g.student.mental = 100
+    g.update(2.0)
+    assert g.state == config.STATE_PLAYING
+    g.update(1.0)
+    assert g.state == config.STATE_ENDING
+    assert g.ending == config.ENDING_LEAVE
+    assert g.student.health == 0
+
+
+def test_study_health_to_zero_ends_immediately(playing_game):
+    g = playing_game
+    g.student.health = 5
+    g.do_action(config.ACTION_STUDY)
+    assert g.student.health == 0
+    assert g.state == config.STATE_ENDING and g.ending == config.ENDING_LEAVE
+
+
+def test_study_mental_to_zero_ends_immediately(playing_game):
+    g = playing_game
+    g.student.mental = 8
+    press(g, pygame.K_3)
+    assert g.student.mental == 0
+    assert g.state == config.STATE_ENDING and g.ending == config.ENDING_LEAVE
+
+
+def test_study_below_zero_by_click_ends(playing_game):
+    g = playing_game
+    g.student.mental = 3
+    click(g, button_center(g, config.ACTION_STUDY))
+    assert g.student.mental == 0
+    assert g.state == config.STATE_ENDING and g.ending == config.ENDING_LEAVE
+
+
+def test_study_to_one_keeps_playing(playing_game):
+    g = playing_game
+    g.student.health, g.student.mental = 6, 9
+    g.do_action(config.ACTION_STUDY)
+    assert (g.student.health, g.student.mental) == (1, 1)
+    assert g.state == config.STATE_PLAYING and g.ending is None
+
+
+def test_after_leave_ending_update_changes_nothing(playing_game):
+    g = playing_game
+    g.update(64.0)
+    g.update(1.0)
+    assert g.state == config.STATE_ENDING
+    before = snapshot(g)
+    g.update(5.0)
+    g.update(FRAME)
+    assert snapshot(g) == before
+
+
+def test_student_get_ending():
+    s = Student()
+    assert s.get_ending() is None
+    s.health = 0
+    assert s.get_ending() == config.ENDING_LEAVE
+    s = Student()
+    s.mental = 0
+    assert s.get_ending() == config.ENDING_LEAVE
+    s = Student()
+    s.elapsed = 239.99
+    assert s.get_ending() is None
+    s.elapsed = 240.0
+    s.knowledge = 500
+    assert s.get_ending() == config.ENDING_TOP
+    s.health = 0
+    assert s.get_ending() == config.ENDING_LEAVE
+
+
+# ======================= 기능 12: 졸업 엔딩 =======================
+
+@pytest.mark.parametrize("knowledge, ending", [
+    (0, config.ENDING_BARELY), (1, config.ENDING_BARELY), (299, config.ENDING_BARELY),
+    (300, config.ENDING_NORMAL), (301, config.ENDING_NORMAL), (499, config.ENDING_NORMAL),
+    (500, config.ENDING_TOP), (501, config.ENDING_TOP), (100000, config.ENDING_TOP),
+])
+def test_judge_ending_boundaries(knowledge, ending):
+    assert judge_ending(knowledge) == ending
+    s = Student()
+    s.knowledge = knowledge
+    assert s.get_graduation_ending() == ending
+
+
+@pytest.mark.parametrize("knowledge, ending", [
+    (299, config.ENDING_BARELY), (300, config.ENDING_NORMAL),
+    (499, config.ENDING_NORMAL), (500, config.ENDING_TOP),
+])
+def test_graduation_in_game_flow(playing_game, knowledge, ending):
+    g = playing_game
+    s = g.student
+    s.elapsed, s.health, s.mental, s.knowledge = 239.0, 100, 100, knowledge
+    g.update(0.5)
+    assert g.state == config.STATE_PLAYING
+    g.update(0.5)
+    assert g.state == config.STATE_ENDING
+    assert g.ending == ending
+    assert g.student.elapsed == 240
+
+
+@pytest.mark.parametrize("knowledge, ending", [
+    (290, config.ENDING_BARELY), (490, config.ENDING_NORMAL),
+])
+def test_graduation_after_last_study_crosses_boundary(playing_game, knowledge, ending):
+    """마지막 학년 시험 기간에 공부(+20)해서 기준을 넘긴 뒤 졸업하면 넘긴 값으로 판정된다."""
+    g = playing_game
+    s = g.student
+    s.elapsed, s.health, s.mental, s.knowledge = 238.0, 100, 100, knowledge
+    g.do_action(config.ACTION_STUDY)
+    assert s.knowledge == knowledge + 20
+    g.update(2.0)
+    expected = {config.ENDING_BARELY: config.ENDING_NORMAL,
+                config.ENDING_NORMAL: config.ENDING_TOP}[ending]
+    assert g.ending == expected
+
+
+def test_graduation_at_exactly_14400_frames(playing_game):
+    g = playing_game
+    for frame in range(1, 14401):
+        g.student.health = g.student.mental = 100  # 휴학하지 않게 유지
+        g.update(FRAME)
+        if frame == 14399:
+            assert g.state == config.STATE_PLAYING
+            assert g.student.elapsed < 240
+    assert g.state == config.STATE_ENDING
+    assert g.ending in GRADUATIONS
+    assert g.student.elapsed == 240
+
+
+def test_student_14400_frames_time_over():
+    s = Student()
+    for _ in range(14399):
+        s.update(FRAME)
+    assert not s.is_time_over()
+    s.update(FRAME)
+    assert s.is_time_over()
+    assert s.elapsed == 240
+
+
+@pytest.mark.parametrize("start, dt", [(230.0, 50.0), (0.0, 1000.0), (239.9, 0.2),
+                                       (239.999, 5.0)])
+def test_big_dt_stops_at_240(start, dt):
+    s = Student()
+    s.elapsed = start
+    s.update(dt)
+    assert s.elapsed == 240
+    s.update(dt)
+    assert s.elapsed == 240
+
+
+def test_big_dt_decays_only_up_to_240():
+    """230초에서 dt=50: 감소는 231~240초 10번뿐(4학년 225~239 시험 기간이라 멘탈 -2)."""
+    s = Student()
+    s.elapsed, s.health, s.mental = 230.0, 100, 100
+    s.update(50.0)
+    # 231..239: 9번 -2, 240: 시험 기간 아님 -1
+    assert (s.health, s.mental) == (90, 100 - 9 * 2 - 1)
+
+
+def test_big_dt_in_game_graduates(playing_game):
+    g = playing_game
+    s = g.student
+    s.elapsed, s.health, s.mental, s.knowledge = 230.0, 100, 100, 350
+    g.update(50.0)
+    assert g.state == config.STATE_ENDING and g.ending == config.ENDING_NORMAL
+    assert g.student.elapsed == 240
+
+
+@pytest.mark.parametrize("health, mental", [(1, 1), (1, 100), (100, 1)])
+def test_zero_at_240_leave_wins(playing_game, health, mental):
+    g = playing_game
+    s = g.student
+    s.elapsed, s.health, s.mental, s.knowledge = 239.0, health, mental, 600
+    g.update(1.0)
+    assert s.elapsed == 240
+    assert g.state == config.STATE_ENDING
+    assert g.ending == config.ENDING_LEAVE
+
+
+def _ending_screen(g, ending, knowledge):
+    g.student.knowledge = knowledge
+    g.end_game(ending)
+    g.draw()
+
+
+CAP_REGION = pygame.Rect(config.CAP_CENTER_X - config.CAP_BOARD_WIDTH // 2,
+                         config.CAP_BOARD_Y,
+                         config.CAP_BOARD_WIDTH,
+                         config.CAP_BODY_Y + config.CAP_BODY_HEIGHT - config.CAP_BOARD_Y)
+
+
+@pytest.mark.parametrize("ending", GRADUATIONS)
+def test_graduation_cap_pixels(playing_game, ending):
+    g = playing_game
+    _ending_screen(g, ending, 321)
+    body_center = (config.CAP_CENTER_X, config.CAP_BODY_Y + config.CAP_BODY_HEIGHT // 2)
+    assert color(g.screen, *body_center) == config.COLOR_CAP
+    assert count_color(g.screen, config.COLOR_CAP, CAP_REGION) > 1000
+    assert count_color(g.screen, config.COLOR_TASSEL, g.screen.get_rect()) > 0
+
+
+def test_leave_ending_has_no_cap(playing_game):
+    g = playing_game
+    _ending_screen(g, config.ENDING_LEAVE, 321)
+    assert count_color(g.screen, config.COLOR_CAP, g.screen.get_rect()) == 0
+    assert count_color(g.screen, config.COLOR_TASSEL, g.screen.get_rect()) == 0
+
+
+def test_cap_does_not_overlap_texts():
+    """학사모 영역이 엔딩 이름·누적 지식·다시 하기 글자 줄과 겹치지 않는다."""
+    assert CAP_REGION.top > config.ENDING_NAME_Y + config.TITLE_FONT_SIZE // 2
+    tassel_bottom = (config.CAP_BOARD_Y + config.CAP_BOARD_HEIGHT // 2
+                     + config.CAP_TASSEL_DROP + config.CAP_TASSEL_END_RADIUS)
+    assert max(CAP_REGION.bottom, tassel_bottom) < config.ENDING_KNOWLEDGE_Y - config.FONT_SIZE
+    assert config.CAP_CENTER_X + config.CAP_TASSEL_END_X + config.CAP_TASSEL_END_RADIUS \
+        < config.SCREEN_WIDTH
+
+
+@pytest.mark.parametrize("ending", [config.ENDING_LEAVE, *GRADUATIONS])
+def test_ending_texts(playing_game, ending):
+    g = playing_game
+    rec_small = RecordingFont(g.font)
+    rec_big = RecordingFont(g.title_font)
+    g.font, g.title_font = rec_small, rec_big
+    _ending_screen(g, ending, 456)
+    all_texts = rec_small.texts + rec_big.texts
+    assert ending in all_texts
+    assert "누적 지식 456" in all_texts
+    assert "R을 눌러 다시 하기" in all_texts
+    # 게임 화면 요소(버튼·배너)는 엔딩 화면에 없다
+    assert config.FEED_BUTTON_TEXT not in all_texts
+    assert config.EXAM_BANNER_TEXT not in all_texts
+
+
+def test_title_texts(title_game):
+    g = title_game
+    rec_small = RecordingFont(g.font)
+    rec_big = RecordingFont(g.title_font)
+    g.font, g.title_font = rec_small, rec_big
+    g.draw()
+    all_texts = rec_small.texts + rec_big.texts
+    assert "제자 키우기" in all_texts
+    assert "최고 기록: 지식 0" in all_texts
+    assert "Enter를 눌러 시작" in all_texts
+    assert config.FEED_BUTTON_TEXT not in all_texts
+
+
+def test_title_screen_has_no_game_elements(title_game):
+    g = title_game
+    g.draw()
+    full = g.screen.get_rect()
+    for rgb in (config.COLOR_BUTTON, config.COLOR_YELLOW, config.COLOR_SKIN,
+                config.COLOR_GREEN, config.COLOR_CAP):
+        assert count_color(g.screen, rgb, full) == 0, rgb
+
+
+# ======================= 기능 11: 시험 기간 =======================
+
+@pytest.mark.parametrize("base", GRADE_STARTS)
+@pytest.mark.parametrize("offset, exam", [
+    (0.0, False), (30.0, False), (44.9, False), (44.999, False), (45.0, True),
+    (50.0, True), (59.9, True), (59.999, True),
+])
+def test_exam_period_boundaries(base, offset, exam):
+    s = Student()
+    s.elapsed = base + offset
+    assert s.is_exam_period() is exam
+
+
+@pytest.mark.parametrize("elapsed", [60.0, 120.0, 180.0, 240.0])
+def test_exam_period_ends_at_grade_boundary(elapsed):
+    s = Student()
+    s.elapsed = elapsed
+    assert s.is_exam_period() is False
+
+
+@pytest.mark.parametrize("frames, exam", [(2699, False), (2700, True), (3599, True),
+                                          (3600, False), (6299, False), (6300, True)])
+def test_exam_period_by_frames(frames, exam):
+    s = Student()
+    for _ in range(frames):
+        s.update(FRAME)
+    assert s.is_exam_period() is exam
+
+
+@pytest.mark.parametrize("base", GRADE_STARTS)
+@pytest.mark.parametrize("offset, gain", [(44.9, 10), (45.0, 20), (59.9, 20), (60.0, 10)])
+def test_study_knowledge_in_exam(base, offset, gain):
+    if base == 180 and offset == 60.0:
+        pytest.skip("240초는 졸업 시점(게임이 끝나 공부 불가)")
+    s = Student()
+    s.elapsed = base + offset
+    s.knowledge = 100
+    s.study()
+    assert s.knowledge == 100 + gain
+    assert (s.health, s.mental) == (75, 72)  # 체력 -5, 멘탈 -8 은 시험 기간에도 그대로
+
+
+def test_study_in_exam_via_game(playing_game):
+    g = playing_game
+    g.update(45.0)
+    assert g.student.is_exam_period()
+    k, h, m = g.student.knowledge, g.student.health, g.student.mental
+    press(g, pygame.K_3)
+    assert (g.student.knowledge, g.student.health, g.student.mental) == (k + 20, h - 5, m - 8)
+
+
+def test_rest_and_feed_unchanged_in_exam():
+    s = Student()
+    s.elapsed = 50.0
+    s.health, s.mental, s.knowledge = 50, 50, 10
+    s.feed()
+    s.rest()
+    assert (s.health, s.mental, s.knowledge) == (70, 70, 8)
+
+
+@pytest.mark.parametrize("start, mental_drop", [(43.0, 1), (44.0, 2), (58.0, 2), (59.0, 1),
+                                                (103.0, 1), (104.0, 2), (119.0, 1),
+                                                (224.0, 2), (238.0, 2), (239.0, 1)])
+def test_decay_amount_at_boundaries(start, mental_drop):
+    """start초에서 1초 흘림 -> start+1초 시점의 감소가 시험 기간이면 멘탈 -2. 체력은 항상 -1."""
+    s = Student()
+    s.elapsed, s.health, s.mental = start, 50, 50
+    s.update(1.0)
+    assert s.health == 49
+    assert s.mental == 50 - mental_drop
+
+
+def _drops_per_second(step):
+    """0~240초를 step 단위로 흘리며 초마다의 멘탈 감소량 목록을 만든다(게이지는 매번 100으로 채움)."""
+    s = Student()
+    drops = []
+    while not s.is_time_over():
+        s.health = s.mental = 100
+        s.update(step)
+        if s.mental != 100:
+            drops.append((round(s.elapsed), 100 - s.mental))
+    return drops
+
+
+@pytest.mark.parametrize("step", [1.0, FRAME, 0.1])
+def test_double_decay_15_times_per_grade(step):
+    drops = _drops_per_second(step)
+    assert len(drops) == 240
+    for base in GRADE_STARTS:
+        doubled = [t for t, d in drops if d == 2 and base < t <= base + 60]
+        assert doubled == list(range(base + 45, base + 60)), base
+    assert sum(1 for _, d in drops if d == 2) == 60
+    assert all(d in (1, 2) for _, d in drops)
+
+
+def test_health_decay_never_doubled():
+    s = Student()
+    s.elapsed, s.health, s.mental = 45.0, 100, 100
+    s.update(14.0)
+    assert s.health == 86
+
+
+def test_full_240_seconds_total_decay():
+    """240초 동안 체력은 240, 멘탈은 240 + 60(시험 기간 추가분) 만큼 줄어야 한다."""
+    s = Student()
+    total_h = total_m = 0
+    for _ in range(240 * 60):
+        s.health = s.mental = 100
+        s.update(FRAME)
+        total_h += 100 - s.health
+        total_m += 100 - s.mental
+    assert (total_h, total_m) == (240, 300)
+
+
+def _banner_pixel(g):
+    return color(g.screen, config.EXAM_BANNER_X + 5, config.EXAM_BANNER_Y + 5)
+
+
+@pytest.mark.parametrize("elapsed, shown", [
+    (0.0, False), (44.9, False), (45.0, True), (59.9, True), (60.0, False),
+    (105.0, True), (165.0, True), (225.0, True), (239.9, True),
+])
+def test_banner_only_in_exam(playing_game, elapsed, shown):
+    g = playing_game
+    g.student.elapsed = elapsed
+    rec = RecordingFont(g.font)
+    g.font = rec
+    g.draw()
+    assert (_banner_pixel(g) == config.COLOR_YELLOW) is shown
+    assert (config.EXAM_BANNER_TEXT in rec.texts) is shown
+
+
+def test_banner_not_on_title_or_ending(title_game):
+    g = title_game
+    g.student.elapsed = 50.0
+    g.draw()
+    assert count_color(g.screen, config.COLOR_YELLOW, g.screen.get_rect()) == 0
+    press(g, pygame.K_RETURN)
+    g.update(50.0)
+    g.end_game(config.ENDING_LEAVE)
+    g.draw()
+    assert count_color(g.screen, config.COLOR_YELLOW, g.screen.get_rect()) == 0
+
+
+def test_banner_does_not_overlap_gauges_or_info_bar():
+    banner = pygame.Rect(config.EXAM_BANNER_X, config.EXAM_BANNER_Y,
+                         config.EXAM_BANNER_WIDTH, config.EXAM_BANNER_HEIGHT)
+    info = pygame.Rect(0, 0, config.SCREEN_WIDTH, config.INFO_BAR_HEIGHT)
+    health_area = pygame.Rect(config.GAUGE_X - config.BAR_BORDER_WIDTH, config.HEALTH_LABEL_Y,
+                              config.BAR_WIDTH + config.BAR_BORDER_GROW,
+                              config.MENTAL_BAR_Y + config.BAR_HEIGHT - config.HEALTH_LABEL_Y)
+    assert not banner.colliderect(info)
+    assert not banner.colliderect(health_area)
+    assert banner.right <= config.SCREEN_WIDTH
+    # 4학년(반지름 70) 얼굴과도 겹치지 않음
+    face_top = config.STUDENT_CENTER_Y - (config.BASE_RADIUS + 3 * config.RADIUS_PER_GRADE)
+    assert banner.bottom < face_top
+
+
+def test_banner_pixels_do_not_cover_gauges(playing_game):
+    """시험 기간 화면에서도 게이지 막대 색이 그대로 보인다."""
+    g = playing_game
+    g.student.elapsed = 50.0
+    g.student.health, g.student.mental = 80, 20
+    g.draw()
+    y_h = config.HEALTH_BAR_Y + config.BAR_HEIGHT // 2
+    y_m = config.MENTAL_BAR_Y + config.BAR_HEIGHT // 2
+    assert color(g.screen, config.GAUGE_X + 5, y_h) == config.COLOR_GREEN
+    assert color(g.screen, config.GAUGE_X + 5, y_m) == config.COLOR_RED
+    # 정보바 배경도 남아 있다
+    assert color(g.screen, 2, 2) == config.COLOR_INFO_BAR
+
+
+# ======================= 회귀: 쿨타임, 게이지 범위 =======================
+
+def test_cooldown_still_shared(playing_game):
+    g = playing_game
+    assert g.do_action(config.ACTION_FEED) is True
+    assert g.do_action(config.ACTION_REST) is False
+    assert g.do_action(config.ACTION_STUDY) is False
+    g.update(0.99)
+    assert g.do_action(config.ACTION_STUDY) is False
+    g.update(0.01)
+    assert g.do_action(config.ACTION_STUDY) is True
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_random_full_play_gauges_in_range(seed):
+    """무작위 행동으로 끝까지 플레이: 게이지 0~100, 지식 0 이상, 반드시 엔딩에 도달."""
+    rng = random.Random(seed)
+    g = Game()
+    try:
+        press(g, pygame.K_RETURN)
+        keys = [pygame.K_1, pygame.K_2, pygame.K_3]
+        frames = 0
+        while g.state == config.STATE_PLAYING:
+            if rng.random() < 0.05:
+                press(g, rng.choice(keys))
+            g.update(FRAME)
+            frames += 1
+            s = g.student
+            assert 0 <= s.health <= 100 and 0 <= s.mental <= 100
+            assert s.knowledge >= 0
+            assert s.elapsed <= 240
+        assert frames <= 14400
+        assert g.ending in (config.ENDING_LEAVE, *GRADUATIONS)
+        g.draw()
+    finally:
+        pygame.quit()
+
+
+# ======================= 완료 기준: 처음부터 끝까지 한 판 =======================
+
+def _smart_bot_key(s):
+    if s.health <= 40:
+        return pygame.K_1
+    if s.mental <= 40:
+        return pygame.K_2
+    return pygame.K_3
+
+
+def test_full_play_title_to_graduation_and_restart(title_game):
+    """타이틀 -> Enter -> 60fps로 240초 동안 키보드로만 플레이 -> 졸업 엔딩 -> R -> 새 판."""
+    g = title_game
+    g.draw()
+    press(g, pygame.K_RETURN)
+    frames = 0
+    banner_frames = 0
+    while g.state == config.STATE_PLAYING:
+        if not g.is_cooling_down():
+            press(g, _smart_bot_key(g.student))
+        g.update(FRAME)
+        frames += 1
+        if g.state == config.STATE_PLAYING and frames % 30 == 0:
+            g.draw()
+            if _banner_pixel(g) == config.COLOR_YELLOW:
+                banner_frames += 1
+    assert frames == 14400
+    assert g.ending in GRADUATIONS
+    assert g.ending == judge_ending(g.student.knowledge)
+    assert banner_frames > 0
+    g.draw()
+    assert count_color(g.screen, config.COLOR_CAP, CAP_REGION) > 0
+    press(g, pygame.K_r)
+    assert g.state == config.STATE_PLAYING
+    assert (g.student.health, g.student.mental, g.student.knowledge) == (80, 80, 0)
+
+
+def test_full_play_idle_leads_to_leave(title_game):
+    """타이틀 -> Enter -> 아무것도 안 하면 휴학(65초) -> R -> 새 판."""
+    g = title_game
+    press(g, pygame.K_RETURN)
+    frames = 0
+    while g.state == config.STATE_PLAYING:
+        g.update(FRAME)
+        frames += 1
+        g.draw() if frames % 600 == 0 else None
+    assert frames == 65 * 60
+    assert g.ending == config.ENDING_LEAVE
+    g.draw()
+    press(g, pygame.K_r)
+    assert g.state == config.STATE_PLAYING
+
+
+def test_real_run_loop_enter_then_esc():
+    """실제 run() 루프: 이벤트 큐에 Enter, ESC를 넣으면 게임 화면으로 갔다가 종료(SystemExit)."""
+    g = Game()
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+    with pytest.raises(SystemExit):
+        g.run()
+    assert g.state == config.STATE_PLAYING
+    assert g.running is False
+
+
+# ======================= 정적 검사 =======================
+
+def test_judge_ending_takes_only_knowledge():
+    import inspect
+    assert list(inspect.signature(judge_ending).parameters) == ["knowledge"]
+    assert callable(getattr(student_module, "judge_ending"))
+
+
+def test_no_record_file_io_yet():
+    """최고 기록 저장은 6일차: 5일차 game.py는 파일을 열지 않는다(표시만)."""
+    from pathlib import Path
+    src = (Path(config.__file__).parent / "game.py").read_text(encoding="utf-8")
+    assert "open(" not in src
