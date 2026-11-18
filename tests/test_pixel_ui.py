@@ -39,13 +39,18 @@ def color(surf, x, y):
     return tuple(surf.get_at((x, y)))[:3]
 
 
+# 비교 기준: 화면 연출을 넣기 전의 main (PR #1 merge 커밋).
+# "main" 이름으로 비교하면 연출이 main 에 합쳐진 뒤 기준 자체가 바뀌어 버린다.
+BASELINE_REF = "9175b41"
+
+
 def git_show(path):
-    """main 브랜치의 파일 내용을 돌려준다. git을 쓸 수 없으면 테스트를 건너뛴다."""
+    """연출 전 기준 커밋의 파일 내용을 돌려준다. git을 쓸 수 없으면 테스트를 건너뛴다."""
     try:
-        out = subprocess.run(["git", "show", f"main:{path}"], cwd=ROOT,
+        out = subprocess.run(["git", "show", f"{BASELINE_REF}:{path}"], cwd=ROOT,
                              capture_output=True, check=True)
     except (OSError, subprocess.CalledProcessError):
-        pytest.skip("main 브랜치를 읽을 수 없음")
+        pytest.skip("기준 커밋을 읽을 수 없음")
     return out.stdout.decode("utf-8")
 
 
