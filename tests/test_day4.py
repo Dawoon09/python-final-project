@@ -225,8 +225,10 @@ def test_face_drawn_with_grade_size(surface, elapsed, radius):
     draw_on(surface, s)
     assert abs(face_extent(surface) - radius) <= 1
     assert abs(face_height(surface) - radius) <= 1
-    # 얼굴 안쪽(중심 근처, 눈·입을 피한 곳)은 살구색
-    assert color(surface, CX + radius // 2, CY) == config.COLOR_SKIN
+    # 얼굴 안쪽(눈·안경·입을 피한 곳: 중심에서 3칸 아래)은 살구색 피부
+    # (도트 재디자인: 3학년부터 CX + r/2 자리는 안경알이라 피부 점을 옮겼다)
+    cell = radius // 10
+    assert color(surface, CX, CY + 3 * cell + 1) == config.COLOR_SKIN
     # 얼굴 밖은 배경
     assert color(surface, CX + radius + 2, CY) == config.COLOR_BG
 
@@ -259,12 +261,14 @@ def test_done_criteria_game_face_grows_every_60s(game):
 
 
 def eye_y(radius):
-    return CY - int(radius * config.EYE_OFFSET_Y_RATIO)
+    """(도트 재디자인) 눈 높이: 얼굴 격자 20칸 중 9번째 행(0부터)의 세로 가운데. 칸 = 반지름 // 10."""
+    cell = radius // 10
+    return CY - radius + 9 * cell + cell // 2
 
 
 @pytest.mark.parametrize("elapsed, glasses", [(0, False), (60, False), (120, True), (180, True)])
 def test_glasses_pixels(surface, elapsed, glasses):
-    """안경 가운데 다리(두 눈 사이, 눈 높이)는 안경이 있을 때만 검은색."""
+    """안경 가운데 다리(두 눈 사이, 눈 높이)는 안경이 있을 때만 남색(얼굴 선 색), 없으면 피부."""
     s = student_at(elapsed)
     draw_on(surface, s)
     bridge = color(surface, CX, eye_y(s.get_radius()))
@@ -292,33 +296,50 @@ def test_dark_circle_pixels(surface, elapsed, health, dark):
     assert (n > 0) is dark
 
 
-def mouth_black_rows(surf, radius):
-    """얼굴 가운데 세로줄의 아래쪽 절반(테두리 제외)에서 검은 픽셀의 y 목록."""
+def mouth_line_rows(surf, radius, col):
+    """(도트 재디자인) 얼굴 격자 열 col(0~19)의 세로 가운데 x에서, 입이 있는 아래쪽
+    (12행 ~ 18행: 안경·눈 아래, 턱 외곽선 위) 남색(얼굴 선) 픽셀의 y 목록."""
+    cell = radius // 10
+    x = CX - radius + col * cell + cell // 2
     rows = []
-    for y in range(CY + 1, CY + radius - 4):
-        if color(surf, CX, y) == config.COLOR_FACE_LINE:
+    for y in range(CY + 2 * cell, CY + radius - cell):
+        if color(surf, x, y) == config.COLOR_FACE_LINE:
             rows.append(y)
     return rows
+
+
+# 얼굴 격자의 입 열: 입꼬리(왼 7, 오른 12)와 가운데(10)
+MOUTH_LEFT_COL, MOUTH_CENTER_COL, MOUTH_RIGHT_COL = 7, 10, 12
 
 
 @pytest.mark.parametrize("elapsed", [0, 60, 120, 180])
 @pytest.mark.parametrize("mental, mouth", [(60, "smile"), (59, "flat"), (30, "flat"), (29, "cry")])
 def test_mouth_pixels(surface, elapsed, mental, mouth):
-    """입 가운데 점의 높이: 웃는 입은 입꼬리 줄보다 아래, 우는 입은 위, 일자 입은 그 줄."""
+    """입 모양을 픽셀로 구분한다(도트 재디자인).
+
+    웃는 입: 양 입꼬리가 가운데보다 위(입꼬리 행 < 가운데 행).
+    우는 입: 양 입꼬리가 가운데보다 아래(입꼬리 행 > 가운데 행).
+    일자 입: 8~11열이 같은 한 행이고 입꼬리 열(7·12)에는 선이 없다.
+    """
     s = student_at(elapsed, mental=mental)
     radius = s.get_radius()
     draw_on(surface, s)
-    rows = mouth_black_rows(surface, radius)
-    assert rows, "입이 그려지지 않음"
-    mouth_y = CY + int(radius * config.MOUTH_OFFSET_Y_RATIO)
-    height = int(radius * config.MOUTH_HEIGHT_RATIO)
-    mean = sum(rows) / len(rows)
+    center = mouth_line_rows(surface, radius, MOUTH_CENTER_COL)
+    left = mouth_line_rows(surface, radius, MOUTH_LEFT_COL)
+    right = mouth_line_rows(surface, radius, MOUTH_RIGHT_COL)
+    assert center, "입이 그려지지 않음"
     if mouth == "smile":
-        assert mean > mouth_y + height / 4
+        assert left and right
+        assert max(left) < min(center) and max(right) < min(center)
     elif mouth == "cry":
-        assert mean < mouth_y - height / 4
+        assert left and right
+        assert min(left) > max(center) and min(right) > max(center)
     else:
-        assert abs(mean - mouth_y) <= max(2, height / 4)
+        assert left == [] and right == []
+        rows = [mouth_line_rows(surface, radius, col) for col in (8, 9, 10, 11)]
+        assert all(r == rows[0] for r in rows)
+        cell = radius // 10
+        assert len(rows[0]) == cell   # 도트 1칸 두께의 한 행
 
 
 def test_mouth_pixels_differ_between_three(surface):
@@ -342,7 +363,10 @@ def test_face_inside_student_area(game):
     face = pygame.Rect(CX - r, CY - r, 2 * r, 2 * r)
     assert face.top > config.INFO_BAR_HEIGHT
     assert face.bottom < config.BUTTON_Y
-    assert face.left > config.GAUGE_X + config.BAR_WIDTH + config.BAR_BORDER_WIDTH
+    assert face.left > config.GAUGE_X + config.BAR_WIDTH + config.PIXEL_SIZE
+    # (도트 재디자인) 제자 무대 패널 안쪽(외곽선 1칸 안)에 들어간다
+    stage = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH, config.PANEL_HEIGHT)
+    assert stage.inflate(-2 * config.PIXEL_SIZE, -2 * config.PIXEL_SIZE).contains(face)
     assert face.right < config.SCREEN_WIDTH
 
 
@@ -384,18 +408,27 @@ def test_info_bar_updates_with_frames(game):
 
 
 def test_info_bar_positions(game):
-    """정보바 배경이 맨 위에 있고, 왼쪽·가운데·오른쪽 구역에 글자(검정)가 있다."""
-    game.draw()
-    assert color(game.screen, config.SCREEN_WIDTH // 2, 2) == config.COLOR_INFO_BAR
+    """정보바 상자(민트)가 맨 위에 있고, 왼쪽·가운데·오른쪽 구역에 글자(남색)가 있다.
 
-    def has_dark(x0, x1):
-        return any(sum(color(game.screen, x, y)) < 200
-                   for x in range(x0, x1) for y in range(0, config.INFO_BAR_HEIGHT))
+    (도트 재디자인) 정보바 외곽선도 남색이라, 외곽선·위아래 줄을 뺀 상자 안쪽에서만 글자색을 찾는다.
+    """
+    game.draw()
+    p = config.PIXEL_SIZE
+    assert color(game.screen, config.INFO_BOX_X + 2 * p, config.INFO_TEXT_CENTER_Y)         == config.COLOR_INFO_BAR
+    assert config.INFO_BOX_Y + config.INFO_BOX_HEIGHT + p <= config.INFO_BAR_HEIGHT
+    y0 = config.INFO_BOX_Y + 2 * p
+    y1 = config.INFO_BOX_Y + config.INFO_BOX_HEIGHT - 2 * p
+    x_min = config.INFO_BOX_X + 2 * p
+    x_max = config.INFO_BOX_X + config.INFO_BOX_WIDTH - 2 * p
+
+    def has_text(x0, x1):
+        return any(color(game.screen, x, y) == config.COLOR_TEXT
+                   for x in range(max(x0, x_min), min(x1, x_max)) for y in range(y0, y1))
 
     w = config.SCREEN_WIDTH
-    assert has_dark(0, w // 4)
-    assert has_dark(w // 2 - 40, w // 2 + 40)
-    assert has_dark(w * 3 // 4, w)
+    assert has_text(0, w // 4)
+    assert has_text(w // 2 - 40, w // 2 + 40)
+    assert has_text(w * 3 // 4, w)
 
 
 def test_knowledge_not_drawn_by_gauges_anymore(surface):

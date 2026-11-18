@@ -403,8 +403,9 @@ def assert_graduation(g, frames, ending):
     g.draw()  # 엔딩 화면(학사모 포함)이 그려진다
     texts += rec_font.texts
     assert ending in texts
-    assert tuple(g.screen.get_at((config.CAP_CENTER_X, config.CAP_BODY_Y + 10)))[:3] \
-        == config.COLOR_CAP
+    # (도트 재디자인) 학사모 몸통 점: 화면 가운데 열, 학사모 스프라이트 14번째 행
+    cap_body = (config.SCREEN_CENTER_X, config.CAP_TOP_Y + 14 * config.CAP_PIXEL + 2)
+    assert tuple(g.screen.get_at(cap_body))[:3] == config.COLOR_CAP
 
 
 def test_reach_top_graduate_greedy(rec):

@@ -57,9 +57,12 @@ def color_at(surface, pos):
 
 
 def button_body_point(g, name):
-    """테두리와 글자를 피한 버튼 안쪽 점(왼쪽 위 근처)."""
+    """(도트 재디자인) 외곽선·위 하이라이트·아래 그림자 줄과 글자를 피한 버튼 몸통 점.
+
+    외곽선 1칸 바로 안쪽(왼쪽 끝에서 2칸) 열의 세로 가운데. 글자는 가운데 정렬이라 닿지 않는다.
+    """
     r = g.buttons[name].rect
-    return (r.left + config.BUTTON_BORDER_WIDTH + 3, r.top + config.BUTTON_BORDER_WIDTH + 3)
+    return (r.left + 2 * config.PIXEL_SIZE, r.centery)
 
 
 # ======================= 기능 1~3: Student 행동 수치 =======================
@@ -406,11 +409,12 @@ def test_buttons_gray_during_cooldown_then_back(game):
 def test_button_draw_direct(game):
     surface = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
     b = Button(10, 10, 100, 40, "x")
+    body = (b.rect.left + 2 * config.PIXEL_SIZE, b.rect.centery)
     b.draw(surface, game.font, True)
-    assert color_at(surface, (15, 15)) == config.COLOR_GRAY
-    assert color_at(surface, (10, 30)) == config.COLOR_BLACK   # 테두리
+    assert color_at(surface, body) == config.COLOR_GRAY
+    assert color_at(surface, (10, 30)) == config.COLOR_OUTLINE   # 왼쪽 외곽선(도트 1칸)
     b.draw(surface, game.font, False)
-    assert color_at(surface, (15, 15)) == config.COLOR_BUTTON
+    assert color_at(surface, body) == config.COLOR_BUTTON
 
 
 def test_gray_differs_from_normal():
@@ -455,13 +459,25 @@ def test_done_criteria_play_sequence(game):
 
 
 def test_done_criteria_bar_redrawn_after_action(game):
-    """행동 후 다시 그리면 체력 막대 채움 폭이 바뀐다."""
+    """행동 후 다시 그리면 체력 막대 채움 폭이 바뀐다.
+
+    (화면 연출 E4 이후) 행동 직후 그림은 아직 이전 길이이고, GAUGE_ANIM_TIME 이 지나면
+    새 길이가 된다. 막대 색은 처음부터 실제 값 기준(70 -> 초록).
+    """
     game.student.health = 50
     game.draw()
     y = config.HEALTH_BAR_Y + config.BAR_HEIGHT // 2
     x_after_50 = config.GAUGE_X + config.BAR_WIDTH * 60 // config.GAUGE_MAX
+    x_inside_50 = config.GAUGE_X + config.BAR_WIDTH * 40 // config.GAUGE_MAX
     assert color_at(game.screen, (x_after_50, y)) == config.COLOR_BAR_BG
     game.handle_event(key(pygame.K_1))
-    game.draw()
     assert game.student.health == 70
+    assert game.get_shown_gauge(config.GAUGE_HEALTH) == 50
+    game.draw()
+    # 행동 직후: 길이는 이전(50), 색은 실제 값(70) 기준 초록
+    assert color_at(game.screen, (x_after_50, y)) == config.COLOR_BAR_BG
+    assert color_at(game.screen, (x_inside_50, y)) == config.COLOR_GREEN
+    game.update(config.GAUGE_ANIM_TIME)
+    assert game.get_shown_gauge(config.GAUGE_HEALTH) == 70
+    game.draw()
     assert color_at(game.screen, (x_after_50, y)) == config.COLOR_GREEN

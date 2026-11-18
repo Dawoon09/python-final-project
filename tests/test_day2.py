@@ -244,8 +244,8 @@ def _mid_y(bar_y):
 
 
 def _inner_x():
-    """테두리 바로 안쪽 x."""
-    return config.GAUGE_X + config.BAR_BORDER_WIDTH + 1
+    """(도트 재디자인) 막대 안쪽 x. 테두리는 막대 바깥 1칸이라 GAUGE_X부터 채움이다."""
+    return config.GAUGE_X + 1
 
 
 def _color(surface, x, y):
@@ -321,32 +321,45 @@ def test_bar_full_and_empty(screen_font):
     s.draw_gauges(surface, font)
     y_h = _mid_y(config.HEALTH_BAR_Y)
     y_m = _mid_y(config.MENTAL_BAR_Y)
-    right_inner = config.GAUGE_X + config.BAR_WIDTH - config.BAR_BORDER_WIDTH - 1
+    right_inner = config.GAUGE_X + config.BAR_WIDTH - 2
     assert _color(surface, right_inner, y_h) == config.COLOR_GREEN
     assert _fill_count(surface, config.MENTAL_BAR_Y) == 0
     assert _color(surface, _inner_x(), y_m) == config.COLOR_BAR_BG
 
 
 def test_bar_has_border(screen_font):
-    """테두리는 막대 바깥쪽(GAUGE_X 왼쪽, 막대 오른쪽 끝 다음 칸)에 있고 막대 안은 덮지 않는다."""
+    """(도트 재디자인) 테두리는 막대 바깥쪽 남색 도트 1칸(PIXEL_SIZE)이고, 모서리 1칸은 깎여 있으며,
+    막대 안은 덮지 않는다."""
     surface, font = screen_font
     s = Student()
     s.health = 100
     s.draw_gauges(surface, font)
     y = _mid_y(config.HEALTH_BAR_Y)
-    assert _color(surface, config.GAUGE_X - 1, y) == config.COLOR_BLACK
-    assert _color(surface, config.GAUGE_X - config.BAR_BORDER_WIDTH, y) == config.COLOR_BLACK
-    assert _color(surface, config.GAUGE_X + config.BAR_WIDTH, y) == config.COLOR_BLACK
-    assert _color(surface, config.GAUGE_X + config.BAR_WIDTH + config.BAR_BORDER_WIDTH - 1,
-                  y) == config.COLOR_BLACK
+    left = config.GAUGE_X
+    right = config.GAUGE_X + config.BAR_WIDTH
+    top = config.HEALTH_BAR_Y
+    bottom = config.HEALTH_BAR_Y + config.BAR_HEIGHT
+    p = config.PIXEL_SIZE
+    # 좌우 테두리: 막대 바깥 PIXEL_SIZE 폭 전체가 남색, 그 바깥은 남색 아님
+    for dx in range(1, p + 1):
+        assert _color(surface, left - dx, y) == config.COLOR_OUTLINE
+        assert _color(surface, right + dx - 1, y) == config.COLOR_OUTLINE
+    assert _color(surface, left - p - 1, y) != config.COLOR_OUTLINE
+    assert _color(surface, right + p, y) != config.COLOR_OUTLINE
     # 막대 양 끝 칸은 테두리가 아니라 채움
-    assert _color(surface, config.GAUGE_X, y) == config.COLOR_GREEN
-    assert _color(surface, config.GAUGE_X + config.BAR_WIDTH - 1, y) == config.COLOR_GREEN
-    # 위·아래 테두리도 막대 바깥쪽
-    assert _color(surface, config.GAUGE_X + 10, config.HEALTH_BAR_Y - 1) == config.COLOR_BLACK
-    assert _color(surface, config.GAUGE_X + 10,
-                  config.HEALTH_BAR_Y + config.BAR_HEIGHT) == config.COLOR_BLACK
-    assert _color(surface, config.GAUGE_X + 10, config.HEALTH_BAR_Y) == config.COLOR_GREEN
+    assert _color(surface, left, y) == config.COLOR_GREEN
+    assert _color(surface, right - 1, y) == config.COLOR_GREEN
+    # 위·아래 테두리도 막대 바깥쪽 1칸
+    for dy in range(1, p + 1):
+        assert _color(surface, left + 10, top - dy) == config.COLOR_OUTLINE
+        assert _color(surface, left + 10, bottom + dy - 1) == config.COLOR_OUTLINE
+    # 막대 맨 위·아래 줄은 채움(밝은 줄 / 어두운 줄) - 테두리가 덮지 않는다
+    assert _color(surface, left + 10, top) == config.COLOR_GREEN_LIGHT
+    assert _color(surface, left + 10, bottom - 1) == config.COLOR_GREEN_DARK
+    # 계단형 모서리: 바깥 상자의 네 귀퉁이 1칸은 비어 있다(남색 아님)
+    for cx, cy in ((left - p, top - p), (right + p - 1, top - p),
+                   (left - p, bottom + p - 1), (right + p - 1, bottom + p - 1)):
+        assert _color(surface, cx, cy) != config.COLOR_OUTLINE
 
 
 def test_bar_value_one_visible_red(screen_font):
@@ -381,18 +394,24 @@ def test_knowledge_drawn_as_number(playing_game):
 
 
 def test_knowledge_text_in_top_right(playing_game):
-    """지식 숫자가 정보바 오른쪽(상단)에 그려진다: 정보바 오른쪽 끝 구역에 글자색(검정) 픽셀이 있다."""
+    """지식 숫자가 정보바 오른쪽(상단)에 그려진다.
+
+    (도트 재디자인) 정보바 상자 외곽선이 남색이라 "어두운 픽셀" 검사만으로는 글자가 없어도 통과한다.
+    그래서 정보바 상자 안쪽(외곽선·위아래 줄 제외) 오른쪽 1/4 구역에 글자색(남색) 픽셀이 있는지 본다.
+    """
     g = playing_game
     g.student.change_knowledge(123)
     g.draw()
-    region = pygame.Rect(config.SCREEN_WIDTH * 3 // 4, 0,
-                         config.SCREEN_WIDTH // 4, config.INFO_BAR_HEIGHT)
-    dark = any(
-        sum(_color(g.screen, x, y)) < 200
-        for x in range(region.left, region.right)
+    p = config.PIXEL_SIZE
+    region = pygame.Rect(config.SCREEN_WIDTH * 3 // 4, config.INFO_BOX_Y + 2 * p,
+                         config.INFO_BOX_X + config.INFO_BOX_WIDTH - 2 * p - config.SCREEN_WIDTH * 3 // 4,
+                         config.INFO_BOX_HEIGHT - 4 * p)
+    text_pixels = sum(
+        1 for x in range(region.left, region.right)
         for y in range(region.top, region.bottom)
+        if _color(g.screen, x, y) == config.COLOR_TEXT
     )
-    assert dark
+    assert text_pixels > 0
 
 
 # ======================= 완료 기준: 시간이 지나면 막대가 줄어듦 =======================

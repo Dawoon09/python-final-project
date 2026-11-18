@@ -2,6 +2,7 @@
 
 다른 파일에서는 숫자를 직접 쓰지 않고 여기 있는 상수를 가져다 쓴다.
 값은 docs/기획서.md 와 jeja-spec 기준표를 따른다.
+도트 스프라이트(문자열 격자)와 색 팔레트 같은 그림 데이터도 여기에 둔다.
 """
 
 import os
@@ -84,38 +85,9 @@ RADIUS_PER_GRADE = 10       # 학년이 오를 때마다 늘어나는 반지름
 GLASSES_GRADE = 3           # 이 학년부터 안경을 쓴다
 
 # 표정 이름 (Student.get_mouth 가 돌려주는 값)
-MOUTH_SMILE = "smile"       # 웃는 입 (아래로 볼록한 호)
-MOUTH_FLAT = "flat"         # 일자 입 (선)
-MOUTH_CRY = "cry"           # 우는 입 (위로 볼록한 호)
-
-# 제자 얼굴 위치: 오른쪽 제자 구역(게이지 구역 오른쪽 ~ 창 오른쪽, 배너 아래 ~ 버튼 위)의 가운데쯤
-STUDENT_CENTER_X = 530      # 얼굴 중심 x
-STUDENT_CENTER_Y = 290      # 얼굴 중심 y
-
-# 얼굴 요소 크기·위치 비율 (모두 "반지름 x 비율"로 계산해서 학년이 오르면 함께 커진다)
-FACE_BORDER_RATIO = 0.05        # 얼굴 테두리·입·안경 선 두께
-MIN_LINE_WIDTH = 2              # 선 두께 최솟값(픽셀)
-EYE_OFFSET_X_RATIO = 0.35       # 눈: 얼굴 중심에서 좌우로 떨어진 거리
-EYE_OFFSET_Y_RATIO = 0.2        # 눈: 얼굴 중심보다 위로 올라간 거리
-EYE_RADIUS_RATIO = 0.08         # 눈 반지름
-MOUTH_OFFSET_Y_RATIO = 0.35     # 입: 얼굴 중심보다 아래로 내려간 거리
-MOUTH_WIDTH_RATIO = 0.5         # 입 가로 길이
-MOUTH_HEIGHT_RATIO = 0.3        # 웃는/우는 입 호를 담는 타원의 세로 길이
-DARK_CIRCLE_OFFSET_Y_RATIO = 0.2    # 다크서클 호를 담는 타원의 중심이 눈 중심보다 아래로 내려간 거리(안경알 아래)
-DARK_CIRCLE_WIDTH_RATIO = 0.3       # 다크서클 호를 담는 타원의 가로 길이
-DARK_CIRCLE_HEIGHT_RATIO = 0.16     # 다크서클 호를 담는 타원의 세로 길이
-DARK_CIRCLE_LINE_RATIO = 0.07       # 다크서클 선 두께
-MIN_DARK_CIRCLE_LINE = 3            # 다크서클 선 두께 최솟값(픽셀)
-ARC_SHIFT_X = 0                     # 두꺼운 호를 겹쳐 그릴 때 가로로는 옮기지 않는다
-ARC_LINE_STEP = 1                   # 두꺼운 호를 1픽셀 호 여러 개로 겹쳐 그릴 때 한 번에 옮기는 픽셀
-GLASSES_RADIUS_RATIO = 0.18         # 안경알(원) 반지름
-
-# 호(arc) 각도. pygame 각도는 오른쪽이 0, 반시계 방향으로 커진다(위쪽이 원주율/2).
-PI = 3.141592653589793      # 원주율 (math 모듈 없이 쓰려고 상수로 둔다)
-ARC_UPPER_START = 0         # 위쪽 반원 호: 0 ~ 원주율
-ARC_UPPER_STOP = PI
-ARC_LOWER_START = PI        # 아래쪽 반원 호: 원주율 ~ 2 x 원주율
-ARC_LOWER_STOP = PI * 2
+MOUTH_SMILE = "smile"       # 웃는 입 (입꼬리가 올라간 U자)
+MOUTH_FLAT = "flat"         # 일자 입 (가로 한 줄)
+MOUTH_CRY = "cry"           # 우는 입 (입꼬리가 내려간 ∩자)
 
 # ---------------------------------------------------------------
 # 8. 엔딩 기준
@@ -151,54 +123,306 @@ def get_base_dir():
 RECORD_PATH = os.path.join(get_base_dir(), RECORD_FILENAME)  # 최고 기록 파일 전체 경로
 
 # ---------------------------------------------------------------
-# 10. 색 (R, G, B)
+# 10. 도트(픽셀) 스타일과 색 팔레트 (R, G, B) - 파스텔 레트로
 # ---------------------------------------------------------------
-COLOR_BG = (245, 240, 230)          # 배경색
-COLOR_BLACK = (0, 0, 0)
+PIXEL_SIZE = 4                  # 도트 1칸 = 4 x 4 픽셀
+BOX_INSET = PIXEL_SIZE * 2      # 상자 안쪽이 바깥보다 가로·세로로 작아지는 양(양쪽 1칸씩)
+NO_OFFSET = 0                   # 옮기거나 늘이지 않는 방향의 값 (rect.move / inflate 에 쓴다)
+FIRST_ROW = 0                   # 스프라이트 격자의 첫 줄 번호
+
 COLOR_WHITE = (255, 255, 255)
-COLOR_GRAY = (160, 160, 160)        # 쿨타임 중 버튼 색
-COLOR_GREEN = (80, 180, 80)         # 정상 게이지 막대 색
-COLOR_RED = (220, 60, 60)           # 30 미만 게이지 막대 색
-COLOR_YELLOW = (250, 220, 60)       # 시험 기간 배너 색
-COLOR_BUTTON = (100, 140, 220)      # 평소 버튼 색
-COLOR_SKIN = (255, 220, 180)        # 제자 얼굴 색
-COLOR_DARK_CIRCLE = (110, 80, 140)   # 다크서클 색
-COLOR_BAR_BG = (255, 255, 255)      # 게이지 막대의 빈 부분(배경) 색
-COLOR_INFO_BAR = (220, 210, 190)    # 상단 정보바 배경색
-COLOR_FACE_LINE = (0, 0, 0)         # 얼굴 테두리·눈·입·안경 색
+COLOR_BLACK = (0, 0, 0)
+COLOR_OUTLINE = (46, 42, 82)            # 진한 남색 외곽선 (모든 도트 상자·스프라이트 테두리)
+COLOR_TEXT = COLOR_OUTLINE              # 기본 글자 색 (남색)
+COLOR_TEXT_SOFT = (108, 100, 140)       # 안내 문구처럼 덜 중요한 글자 색
+
+COLOR_BACKDROP = (240, 228, 208)        # 창 전체 배경 (조금 진한 크림)
+COLOR_BACKDROP_DOT = (232, 218, 196)    # 배경에 은은하게 찍는 도트 무늬 색
+COLOR_BG = (253, 248, 236)              # 크림 배경 (패널·제자 무대 안쪽)
+COLOR_PANEL_LIGHT = (255, 253, 246)     # 패널 위 하이라이트 줄
+COLOR_PANEL_SHADOW = (238, 226, 206)    # 패널 아래 그림자 줄
+COLOR_DROP = (218, 202, 178)            # 상자 아래로 깔리는 그림자(1칸)
+COLOR_STAGE_SHADOW = (234, 222, 200)    # 제자 발밑 그림자
+
+# 포인트 색 (민트·하늘·살구·연분홍·노랑)
+COLOR_MINT = (168, 226, 204)
+COLOR_MINT_LIGHT = (206, 242, 228)
+COLOR_MINT_DARK = (124, 196, 172)
+COLOR_SKY = (150, 202, 240)
+COLOR_SKY_LIGHT = (204, 230, 250)
+COLOR_SKY_DARK = (92, 150, 210)         # 휴식 파티클(Zzz·구름 그림자)처럼 크림 바탕에서 또렷해야 하는 하늘색
+COLOR_APRICOT = (250, 190, 146)
+COLOR_PINK = (246, 166, 188)
+COLOR_PINK_LIGHT = (253, 214, 224)
+COLOR_PINK_DARK = (222, 120, 150)
+COLOR_YELLOW = (255, 220, 104)          # 시험 기간 배너 색 (노랑)
+COLOR_YELLOW_LIGHT = (255, 238, 170)
+COLOR_YELLOW_DARK = (232, 184, 64)
+
+# 게이지 막대: 30 미만 빨강 / 30 이상 초록 (확실히 구분되는 색)
+COLOR_GREEN = (88, 196, 120)            # 정상 게이지 채움
+COLOR_GREEN_LIGHT = (150, 228, 166)     # 채움 위 하이라이트 줄
+COLOR_GREEN_DARK = (56, 152, 92)        # 채움 아래 그림자 줄
+COLOR_RED = (232, 82, 90)               # 30 미만 게이지 채움
+COLOR_RED_LIGHT = (250, 150, 150)
+COLOR_RED_DARK = (178, 50, 70)
+COLOR_BAR_BG = (232, 222, 208)          # 게이지 막대의 빈 부분 색
+COLOR_BAR_BG_SHADE = (216, 204, 188)    # 빈 부분 맨 위 줄(안쪽 그림자)
+
+# 버튼: 평소 하늘색, 밝은색(마우스 올림용), 쿨타임 회색
+COLOR_BUTTON = (130, 188, 238)          # 평소 버튼 몸통
+COLOR_BUTTON_LIGHT = (196, 226, 252)    # 버튼 위 하이라이트 줄
+COLOR_BUTTON_DARK = (92, 146, 206)      # 버튼 아래 그림자 줄
+COLOR_BUTTON_BRIGHT = (200, 234, 255)   # 밝은 버튼 몸통 (마우스를 올렸을 때 쓸 색, 평소색과 한눈에 구분)
+COLOR_BUTTON_TEXT = COLOR_OUTLINE       # 버튼 글자 색
+COLOR_GRAY = (184, 182, 194)            # 쿨타임 중 버튼 몸통
+COLOR_GRAY_LIGHT = (214, 212, 222)
+COLOR_GRAY_DARK = (148, 146, 162)
+COLOR_BUTTON_TEXT_COOL = (78, 74, 104)  # 쿨타임 중 버튼 글자 색 (회색 몸통 위에서도 읽히게 진하게)
+
+COLOR_INFO_BAR = COLOR_MINT             # 상단 정보바 몸통
+
+# 제자 스프라이트 색
+COLOR_SKIN = (255, 216, 180)            # 얼굴(피부)
+COLOR_SKIN_SHADOW = (240, 180, 150)     # 얼굴 아래쪽 그림자
+COLOR_HAIR = (104, 74, 92)              # 머리카락
+COLOR_HAIR_LIGHT = (150, 112, 128)      # 머리카락 윤기
+COLOR_FACE_LINE = COLOR_OUTLINE         # 눈·입·안경 색
+COLOR_DARK_CIRCLE = (150, 112, 180)     # 다크서클(보라)
+COLOR_BLUSH = (248, 160, 172)           # 볼 홍조
+COLOR_GLASS = (208, 230, 250)           # 안경알 유리(아주 연한 하늘색)
+
+# 학사모 색
+COLOR_CAP = (72, 66, 118)               # 학사모 몸통(짙은 남보라)
+COLOR_CAP_LIGHT = (108, 102, 156)       # 학사모 윗면 밝은 부분
+COLOR_CAP_DARK = (52, 46, 92)           # 학사모 띠 아래 그림자
+COLOR_TASSEL = (244, 194, 72)           # 술(금색)
+COLOR_TASSEL_DARK = (204, 146, 44)      # 술 끝 그림자
+
+# 휴학 엔딩 비구름 색
+COLOR_CLOUD = (228, 226, 238)           # 구름
+COLOR_CLOUD_SHADE = (196, 192, 214)     # 구름 아래 그림자
+
+# 배경 도트 무늬: STEP 간격마다 도트 1칸
+BACKDROP_DOT_START = 8      # 첫 도트의 x, y
+BACKDROP_DOT_STEP = 16      # 도트 사이 간격(픽셀)
 
 # ---------------------------------------------------------------
-# 11. 게임 화면 배치 - 글자 크기와 게이지 구역(왼쪽)
+# 11. 도트 스프라이트 (문자열 격자: 글자 1개 = 도트 1칸, "." = 투명)
 # ---------------------------------------------------------------
-FONT_SIZE = 24              # 기본 글자 크기
+# 제자 얼굴: 20 x 20 칸. 칸 크기 = 반지름 // FACE_CELL_DIVISOR -> 4/5/6/7 픽셀이라
+# 얼굴 지름 = 20칸 x 칸 크기 = 80/100/120/140 = 2 x 반지름(40/50/60/70).
+# O 외곽선, h 머리카락, k 머리 윤기, S 피부, D 피부 그림자
+FACE_SPRITE = [
+    "......OOOOOOOO......",
+    "....OOhhhhhhhhOO....",
+    "...OhhhkkhhhhhhhO...",
+    "..OhhhkkhhhhhhhhhO..",
+    ".OhhhkhhhhhhhhhhhhO.",
+    ".OhhhhhhhhhhhhhhhhO.",
+    "OhhhhhhhhhhhhhhhhhhO",
+    "OhhSShhhSSSShhhSShhO",
+    "OhSSSSSSSSSSSSSSSShO",
+    "OSSSSSSSSSSSSSSSSSSO",
+    "OSSSSSSSSSSSSSSSSSSO",
+    "OSSSSSSSSSSSSSSSSSSO",
+    "OSSSSSSSSSSSSSSSSSSO",
+    "OSSSSSSSSSSSSSSSSSDO",
+    ".OSSSSSSSSSSSSSSSDO.",
+    ".OSSSSSSSSSSSSSSSDO.",
+    "..ODSSSSSSSSSSSSDDO.",
+    "...ODDSSSSSSSSDDO...",
+    "....OODDDDDDDDOO....",
+    "......OOOOOOOO......",
+]
+FACE_GRID_SIZE = len(FACE_SPRITE)           # 얼굴 격자 칸 수(20)
+FACE_CELL_DIVISOR = FACE_GRID_SIZE // 2     # 칸 크기 = 반지름 // 이 값
+
+# 얼굴 위에 덧그리는 부품: (열, 행) 위치와 격자. 위치는 얼굴 격자 기준 칸 번호.
+# E 눈·입(남색), W 눈 반짝임(흰색), C 다크서클, P 볼 홍조, G 안경테, L 안경알 유리
+EYE_SPRITE = ["WE", "EE"]
+EYE_POSITIONS = [(5, 9), (13, 9)]           # 왼눈, 오른눈 (각 2 x 2칸)
+BLUSH_SPRITE = ["PP"]
+BLUSH_POSITIONS = [(2, 12), (16, 12)]       # 양쪽 볼
+DARK_CIRCLE_SPRITE = ["CC"]
+DARK_CIRCLE_POSITIONS = [(5, 12), (13, 12)]  # 눈 바로 아래 (안경알 아래)
+GLASSES_LENS_SPRITE = [     # 둥근 안경알 6 x 4칸: 테두리 + 양옆 유리, 가운데 2칸(눈 자리)은 투명
+    ".GGGG.",
+    "GL..LG",
+    "GL..LG",
+    ".GGGG.",
+]
+GLASSES_PARTS = [
+    ((3, 8), GLASSES_LENS_SPRITE),          # 왼쪽 안경알 (눈을 둘러쌈)
+    ((11, 8), GLASSES_LENS_SPRITE),         # 오른쪽 안경알
+    ((9, 9), ["GG"]),                       # 가운데 다리 (두 눈 사이)
+    ((1, 9), ["GG"]),                       # 왼쪽 다리 (얼굴 끝까지)
+    ((17, 9), ["GG"]),                      # 오른쪽 다리
+]
+# 입: 표정 이름 -> ((열, 행), 격자)
+MOUTH_SPRITES = {
+    MOUTH_SMILE: ((7, 14), ["E....E", ".EEEE."]),  # 입꼬리가 올라간 웃는 입
+    MOUTH_FLAT: ((8, 15), ["EEEE"]),               # 일자 입
+    MOUTH_CRY: ((7, 14), [".EEEE.", "E....E"]),    # 입꼬리가 내려간 우는 입
+}
+FACE_COLORS = {
+    "O": COLOR_OUTLINE, "h": COLOR_HAIR, "k": COLOR_HAIR_LIGHT,
+    "S": COLOR_SKIN, "D": COLOR_SKIN_SHADOW,
+    "E": COLOR_FACE_LINE, "W": COLOR_WHITE, "C": COLOR_DARK_CIRCLE,
+    "P": COLOR_BLUSH, "G": COLOR_FACE_LINE, "L": COLOR_GLASS,
+}
+
+# 학사모: 49 x 25칸, 칸 크기 CAP_PIXEL. 윗판(납작한 마름모) + 띠 + 금색 술
+# O 외곽선, l 윗판 밝은 면, c 몸통, d 띠 그림자, Y 술, t 술 끝 그림자
+CAP_SPRITE = [
+    "........................O........................",
+    "....................OOOOlOOOO....................",
+    "................OOOOlllllllllOOOO................",
+    "............OOOOlllllllllllllllllOOOO............",
+    "........OOOOlllllllllllllllllllllllllOOOO........",
+    "....OOOOllllllllllllllllYllllllllllllllllOOOO....",
+    "OOOOccccccccccccccccccccYYYYYYYYYYYYYYYYYYYYYOOOO",
+    "....OOOOcccccccccccccccccccccccccccccccccOOOY....",
+    "........OOOOcccccccccccccccccccccccccOOOO...Y....",
+    "............OOOOcccccccccccccccccOOOO.......Y....",
+    ".............OllOOOOcccccccccOOOOccO........Y....",
+    ".............OllccccOOOOcOOOOccccccO........Y....",
+    ".............OllccccccccOccccccccccO........Y....",
+    ".............OllcccccccccccccccccccO........Y....",
+    ".............OllcccccccccccccccccccO........Y....",
+    ".............OllcccccccccccccccccccO........Y....",
+    ".............OllcccccccccccccccccccO........Y....",
+    ".............OdddddddddddddddddddddO........Y....",
+    ".............OdddddddddddddddddddddO........Y....",
+    ".............OOOOOOOOOOOOOOOOOOOOOOO........Y....",
+    "...........................................YYY...",
+    "...........................................YYY...",
+    "...........................................YYY...",
+    "...........................................YYY...",
+    "...........................................ttt...",
+]
+CAP_COLORS = {
+    "O": COLOR_OUTLINE, "l": COLOR_CAP_LIGHT, "c": COLOR_CAP, "d": COLOR_CAP_DARK,
+    "Y": COLOR_TASSEL, "t": COLOR_TASSEL_DARK,
+}
+
+# 휴학 엔딩 장식: 비구름 (학사모 자리에 대신 찍는다). 25 x 20칸, 칸 크기 CLOUD_PIXEL
+# O 외곽선, w 구름, W 구름 반짝임, g 구름 아래 그림자, r 빗방울
+CLOUD_SPRITE = [
+    "...........OOO...........",
+    ".........OOwwwOO.........",
+    "........OwWWwwwwO........",
+    ".......OwWwwwwwwwO.......",
+    "....OOOwwwwwwwwwwwOOO....",
+    "..OOwwwwwwwwwwwwwwwwwOO..",
+    ".OwwwwwwwwwwwwwwwwwwwwwO.",
+    ".OwwwwwwwwwwwwwwwwwwwwwO.",
+    "OwwwwwwwwwwwwwwwwwwwwwwwO",
+    "OwwwwwwwwwwwwwwwwwwwwwwwO",
+    "OgggggggggggggggggggggggO",
+    ".OgggggggggggggggggggggO.",
+    "..OOOOOOOOOOOOOOOOOOOOO..",
+    ".........................",
+    ".....r.........r.........",
+    ".....r.........r.........",
+    "..........r.........r....",
+    "..........r.........r....",
+    ".......r.........r.......",
+    ".......r.........r.......",
+]
+CLOUD_COLORS = {
+    "O": COLOR_OUTLINE, "w": COLOR_CLOUD, "W": COLOR_WHITE,
+    "g": COLOR_CLOUD_SHADE, "r": COLOR_SKY,
+}
+
+# 작은 아이콘·장식 (칸 크기 PIXEL_SIZE)
+HEART_SPRITE = [            # 체력 아이콘: 하트
+    ".OO.OO.",
+    "OWpOppO",
+    "OpppppO",
+    ".OpppO.",
+    "..OpO..",
+    "...O...",
+]
+HEART_COLORS = {"O": COLOR_OUTLINE, "p": COLOR_PINK, "W": COLOR_WHITE}
+STAR_SPRITE = [             # 멘탈 아이콘·화면 장식: 반짝이는 별
+    "...x...",
+    "...x...",
+    "..xxx..",
+    "xxxxxxx",
+    "..xxx..",
+    "...x...",
+    "...x...",
+]
+SPRITE_INK = "x"            # 한 가지 색으로 칠하는 스프라이트의 글자
+ARROW_SPRITE = [            # 시작·다시 하기 안내 앞의 화살표
+    "x...",
+    "xx..",
+    "xxx.",
+    "xx..",
+    "x...",
+]
+EXCLAIM_SPRITE = [          # 시험 기간 배너 양옆 느낌표
+    "xx",
+    "xx",
+    "xx",
+    "xx",
+    "..",
+    "xx",
+]
+
+# ---------------------------------------------------------------
+# 12. 게임 화면 배치 - 글자 크기, 상단 정보바, 패널
+# ---------------------------------------------------------------
+FONT_SIZE = 22              # 기본 글자 크기
+ORIGIN = (0, 0)             # 창 왼쪽 위 꼭짓점. 사각형을 만든 뒤 center 등으로 옮길 때 임시 위치로도 쓴다
+SCREEN_CENTER_X = SCREEN_WIDTH // 2  # 화면 가운데 x
+HALF = 2                    # 절반을 구할 때 나누는 값
 
 # 상단 정보바: 왼쪽 "N학년", 가운데 "남은 시간 N초", 오른쪽 "지식 N" (Game이 그린다)
-ORIGIN = (0, 0)             # 창 왼쪽 위 꼭짓점. 사각형을 만든 뒤 center 등으로 옮길 때 임시 위치로도 쓴다
-INFO_BAR_HEIGHT = 50        # 정보바 배경 사각형 높이 (창 맨 위부터)
+INFO_BOX_X = 12             # 정보바 상자 왼쪽 x
+INFO_BOX_Y = 8              # 정보바 상자 위쪽 y
+INFO_BOX_WIDTH = SCREEN_WIDTH - INFO_BOX_X * 2  # 정보바 상자 가로 길이(좌우 여백 같게)
+INFO_BOX_HEIGHT = 44        # 정보바 상자 세로 길이
+INFO_BAR_HEIGHT = INFO_BOX_Y + INFO_BOX_HEIGHT + PIXEL_SIZE  # 정보바 구역 전체 높이(그림자 포함, 56)
+INFO_TEXT_CENTER_Y = INFO_BOX_Y + INFO_BOX_HEIGHT // 2  # 정보바 글자의 세로 가운데
 INFO_TIME_X = SCREEN_WIDTH // 2  # "남은 시간" 글자의 가운데 x (화면 가운데)
-INFO_BAR_Y = 15             # 정보바 글자의 위쪽 y
-INFO_BAR_MARGIN = 20        # 정보바 글자와 창 가장자리 사이 여백
+INFO_BAR_MARGIN = 32        # 정보바 글자와 창 가장자리 사이 여백
 GRADE_TEXT = "{}학년"            # 학년 글자 틀
 TIME_LEFT_TEXT = "남은 시간 {}초"  # 현재 학년 남은 시간 글자 틀
 KNOWLEDGE_TEXT = "{} {}"         # 지식 글자 틀: "지식 120"
 
-# 왼쪽 게이지 구역: 라벨("체력"/"멘탈")과 막대
-GAUGE_X = 30                # 라벨과 막대의 왼쪽 x
-HEALTH_LABEL_Y = 150        # "체력" 라벨 위쪽 y
-HEALTH_BAR_Y = 180          # 체력 막대 위쪽 y
-MENTAL_LABEL_Y = 240        # "멘탈" 라벨 위쪽 y
-MENTAL_BAR_Y = 270          # 멘탈 막대 위쪽 y
+# 가운데 구역: 왼쪽 상태 패널(게이지) + 오른쪽 제자 무대
+PANEL_Y = 116               # 두 패널의 위쪽 y (시험 기간 배너 아래)
+PANEL_HEIGHT = 344          # 두 패널의 세로 길이 -> 아래 끝 460 (버튼 위)
+STATUS_PANEL_X = 12         # 상태 패널 왼쪽 x
+STATUS_PANEL_WIDTH = 256    # 상태 패널 가로 길이 -> 오른쪽 끝 268
+STAGE_X = 284               # 제자 무대 왼쪽 x
+STAGE_WIDTH = 504           # 제자 무대 가로 길이 -> 오른쪽 끝 788, 가운데 536
+
+# 제자 얼굴 중심: 제자 무대의 가운데
+STUDENT_CENTER_X = STAGE_X + STAGE_WIDTH // 2    # 536
+STUDENT_CENTER_Y = PANEL_Y + PANEL_HEIGHT // 2   # 288
+SHADOW_GAP = 8              # 얼굴 아래 끝과 발밑 그림자 사이 간격
+SHADOW_HEIGHT = 8           # 발밑 그림자 세로 길이(도트 2칸)
+SHADOW_WIDTH_RATIO = 1.2    # 발밑 그림자 가로 길이 = 반지름 x 이 비율
+
+# 왼쪽 게이지 구역: 아이콘 + 라벨("체력"/"멘탈")과 막대. 막대 테두리는 막대 바깥 1칸
+GAUGE_X = 40                # 아이콘과 막대의 왼쪽 x (막대 채움이 여기서 시작)
 BAR_WIDTH = 200             # 막대 전체 가로 길이(값 100일 때)
-BAR_HEIGHT = 24             # 막대 세로 길이
-BAR_BORDER_WIDTH = 2        # 막대 테두리 두께 (테두리는 막대 바깥쪽에 그려서 채움을 가리지 않는다)
-BAR_BORDER_GROW = BAR_BORDER_WIDTH * 2  # 테두리 사각형이 막대보다 가로·세로로 커지는 양(양쪽 합)
+BAR_HEIGHT = 24             # 막대 세로 길이(도트 6칸)
+HEALTH_LABEL_Y = 200        # 체력 아이콘·라벨 줄의 위쪽 y (게이지 묶음 200~380: 패널 안쪽 위아래 여백 80/76)
+HEALTH_BAR_Y = 232          # 체력 막대 위쪽 y
+MENTAL_LABEL_Y = 320        # 멘탈 아이콘·라벨 줄의 위쪽 y
+MENTAL_BAR_Y = 352          # 멘탈 막대 위쪽 y
+GAUGE_LABEL_GAP = 8         # 아이콘과 라벨 글자 사이 간격
 
 HEALTH_LABEL = "체력"
 MENTAL_LABEL = "멘탈"
 KNOWLEDGE_LABEL = "지식"
 
 # ---------------------------------------------------------------
-# 12. 행동 버튼 (화면 아래쪽에 가로로 3개)
+# 13. 행동 버튼 (화면 아래쪽에 가로로 3개)
 # ---------------------------------------------------------------
 # 행동 이름 (Game.do_action 에 넘기는 값)
 ACTION_FEED = "feed"        # 학식 먹이기
@@ -210,68 +434,195 @@ FEED_BUTTON_TEXT = "학식 먹이기 [1]"
 REST_BUTTON_TEXT = "쉬게 하기 [2]"
 STUDY_BUTTON_TEXT = "공부시키기 [3]"
 
-BUTTON_WIDTH = 220          # 버튼 하나의 가로 길이
-BUTTON_HEIGHT = 50          # 버튼 하나의 세로 길이
-BUTTON_GAP = 30             # 버튼 사이 간격
-BUTTON_Y = 480              # 버튼 위쪽 y
-BUTTON_BORDER_WIDTH = 2     # 버튼 테두리 두께
-# 버튼 3개를 가운데 정렬했을 때 첫 버튼의 왼쪽 x: (800 - (220*3 + 30*2)) / 2 = 40
-BUTTON_START_X = (SCREEN_WIDTH - (BUTTON_WIDTH * 3 + BUTTON_GAP * 2)) // 2
-
-COLOR_BUTTON_TEXT = COLOR_WHITE  # 버튼 글자 색
+BUTTON_COUNT = 3            # 행동 버튼 개수
+BUTTON_WIDTH = 232          # 버튼 하나의 가로 길이
+BUTTON_HEIGHT = 52          # 버튼 하나의 세로 길이 (아래 남색 받침 1칸은 별도)
+BUTTON_GAP = 24             # 버튼 사이 간격
+BUTTON_Y = 476              # 버튼 위쪽 y
+# 버튼 3개를 가운데 정렬했을 때 첫 버튼의 왼쪽 x: (800 - (232*3 + 24*2)) / 2 = 28
+BUTTON_START_X = (SCREEN_WIDTH - (BUTTON_WIDTH * BUTTON_COUNT
+                                  + BUTTON_GAP * (BUTTON_COUNT - 1))) // 2
 
 # 버튼 아래 쿨타임 안내 문구
 COOLDOWN_HINT_TEXT = "누른 뒤 1초 동안 회색 (쿨타임)"
-COOLDOWN_HINT_Y = 545       # 안내 문구 위쪽 y
+COOLDOWN_HINT_Y = 546       # 안내 문구 위쪽 y
 COOLDOWN_HINT_X = SCREEN_WIDTH // 2  # 안내 문구 가운데 x (화면 가운데)
 
 # ---------------------------------------------------------------
-# 13. 시험 기간 배너 (상단 정보바 바로 아래, 게이지 구역 위)
+# 14. 시험 기간 배너 (상단 정보바 바로 아래, 패널 위)
 # ---------------------------------------------------------------
 EXAM_BANNER_TEXT = "시험 기간! 공부 효과 2배, 멘탈 감소 2배"
-EXAM_BANNER_X = 20          # 배너 왼쪽 x
-EXAM_BANNER_Y = 60          # 배너 위쪽 y (정보바 높이 50 아래)
+EXAM_BANNER_X = 12          # 배너 왼쪽 x
+EXAM_BANNER_Y = 64          # 배너 위쪽 y (정보바 구역 56 아래)
 EXAM_BANNER_WIDTH = SCREEN_WIDTH - EXAM_BANNER_X * 2  # 배너 가로 길이(좌우 여백 같게)
-EXAM_BANNER_HEIGHT = 40     # 배너 세로 길이 -> 아래 끝 100, 게이지 라벨(150)과 겹치지 않음
-EXAM_BANNER_BORDER_WIDTH = 2  # 배너 테두리 두께
+EXAM_BANNER_HEIGHT = 40     # 배너 세로 길이 -> 아래 끝 104 (+그림자 1칸), 패널(116)과 겹치지 않음
+EXAM_ICON_MARGIN = 24       # 배너 양 끝에서 느낌표 아이콘까지 거리
 
 # ---------------------------------------------------------------
-# 14. 타이틀 화면
+# 15. 타이틀·엔딩 화면 (가운데 크림 패널 위에 그린다)
 # ---------------------------------------------------------------
 TITLE_FONT_SIZE = 64        # 큰 제목 글자 크기
+TITLE_SHADOW_OFFSET = 4     # 큰 제목 아래·오른쪽으로 깔리는 그림자 글자 거리
+COLOR_TITLE_SHADOW = COLOR_APRICOT  # 큰 제목 그림자 글자 색
+MENU_PANEL_RECT = (96, 64, 608, 432)  # 타이틀·엔딩 가운데 패널 (x, y, 가로, 세로)
+
 TITLE_TEXT = "제자 키우기"   # 게임 제목
-TITLE_TEXT_Y = 170          # 제목 가운데 y
-TITLE_LINE_Y = 225          # 제목 아래 장식 선 y
-TITLE_LINE_HALF = 180       # 장식 선의 절반 길이(화면 가운데에서 좌우로)
-TITLE_LINE_WIDTH = 3        # 장식 선 두께
+TITLE_TEXT_Y = 172          # 제목 가운데 y
+TITLE_LINE_Y = 232          # 제목 아래 도트 장식 줄의 위쪽 y
+TITLE_LINE_DOTS = 23        # 장식 줄의 도트 수(가운데 정렬)
+TITLE_LINE_COLORS = [COLOR_PINK, COLOR_APRICOT, COLOR_MINT_DARK, COLOR_SKY]  # 장식 줄 색 순서
 BEST_RECORD_TEXT = "최고 기록: 지식 {}"  # 최고 기록 글자 틀
-BEST_RECORD_Y = 300         # 최고 기록 가운데 y
+BEST_RECORD_Y = 312         # 최고 기록 가운데 y
 BEST_RECORD_START = 0       # 최고 기록 기본값 (record.json 이 없거나 깨졌을 때)
+BADGE_PADDING_X = 24        # 글자 배지 상자의 좌우 여백
+BADGE_HEIGHT = 48           # 글자 배지 상자의 세로 길이
 START_HINT_TEXT = "Enter를 눌러 시작"
-START_HINT_Y = 420          # 시작 안내 가운데 y
-SCREEN_CENTER_X = SCREEN_WIDTH // 2  # 화면 가운데 x
+START_HINT_Y = 408          # 시작 안내 가운데 y
+HINT_ARROW_GAP = 12         # 안내 글자와 앞 화살표 사이 간격
 
-# ---------------------------------------------------------------
-# 15. 엔딩 화면
-# ---------------------------------------------------------------
-ENDING_NAME_Y = 110         # 엔딩 이름 가운데 y
+# 장식 별: (x, y, 색). 별 하나는 7 x 7칸 x PIXEL_SIZE = 28 x 28 픽셀
+TITLE_STARS = [
+    (140, 104, COLOR_PINK), (628, 116, COLOR_SKY),
+    (168, 388, COLOR_MINT_DARK), (604, 376, COLOR_APRICOT),
+    (128, 228, COLOR_APRICOT), (644, 232, COLOR_PINK),
+]
+ENDING_STARS = [
+    (232, 204, COLOR_PINK), (540, 192, COLOR_SKY),
+    (192, 272, COLOR_APRICOT), (584, 264, COLOR_MINT_DARK),
+]
+
+ENDING_NAME_Y = 136         # 엔딩 이름 가운데 y
 ENDING_KNOWLEDGE_TEXT = "누적 지식 {}"  # 누적 지식 글자 틀
-ENDING_KNOWLEDGE_Y = 400    # 누적 지식 가운데 y
+ENDING_KNOWLEDGE_Y = 356    # 누적 지식 가운데 y
 RESTART_HINT_TEXT = "R을 눌러 다시 하기"
-RESTART_HINT_Y = 480        # 다시 하기 안내 가운데 y
+RESTART_HINT_Y = 428        # 다시 하기 안내 가운데 y
 
-# 학사모 (졸업 엔딩일 때만): 위 판(납작한 사각형) + 몸체(사각형) + 술(선 + 끝 원)
-CAP_CENTER_X = SCREEN_WIDTH // 2  # 학사모 가운데 x
-CAP_BOARD_Y = 220           # 위 판 위쪽 y
-CAP_BOARD_WIDTH = 200       # 위 판 가로 길이
-CAP_BOARD_HEIGHT = 20       # 위 판 세로 길이(두께)
-CAP_BODY_Y = 240            # 몸체 위쪽 y (위 판 바로 아래)
-CAP_BODY_WIDTH = 120        # 몸체 가로 길이
-CAP_BODY_HEIGHT = 60        # 몸체 세로 길이
-CAP_BUTTON_RADIUS = 6       # 판 가운데 단추(원) 반지름
-CAP_TASSEL_END_X = 90       # 술이 판 가운데에서 오른쪽으로 뻗는 거리
-CAP_TASSEL_DROP = 70        # 술이 판 끝에서 아래로 늘어지는 길이
-CAP_TASSEL_WIDTH = 3        # 술 선 두께
-CAP_TASSEL_END_RADIUS = 7   # 술 끝 매듭(원) 반지름
-COLOR_CAP = (40, 40, 60)        # 학사모 색(짙은 남색)
-COLOR_TASSEL = (230, 180, 40)   # 술 색(금색)
+# 휴학 엔딩 비구름 위치·크기
+CLOUD_PIXEL = 5             # 비구름 도트 1칸 크기 -> 125 x 100 픽셀
+CLOUD_TOP_Y = 200           # 비구름 위쪽 y -> 아래 끝 300 (누적 지식 배지 위)
+
+# 학사모 (졸업 엔딩일 때만): CAP_SPRITE를 칸 크기 CAP_PIXEL로 찍는다 (196 x 100 픽셀)
+CAP_PIXEL = PIXEL_SIZE      # 학사모 도트 1칸 크기(4)
+CAP_TOP_Y = 196             # 학사모 위쪽 y -> 아래 끝 296 (누적 지식 배지 위)
+
+# ---------------------------------------------------------------
+# 16. 상호작용 효과 E1~E6 (jeja-spec 13절). 보기만 바꾸고 게임 결과에는 영향이 없다
+# ---------------------------------------------------------------
+FULL_RATIO = 1.0            # 진행률·비율의 끝값(100%). 진행률 p 의 나머지 = FULL_RATIO - p
+NO_CHANGE = 0               # 게이지 변화량이 0 (늘지도 줄지도 않음)
+BLINK_SHOW = 0              # 깜빡임 차례 번호 % 2 가 이 값이면 "보임"
+BLINK_HIDE = 1              # 깜빡임 차례 번호 % 2 가 이 값이면 "숨김"
+
+# E1 버튼 호버·눌림·쿨타임 진행 막대
+BUTTON_PRESS_OFFSET = 4     # 행동이 실행되면 버튼이 내려가는 거리(픽셀) = 받침 1칸
+BUTTON_PRESS_TIME = 0.12    # 버튼이 눌린 채로 있는 시간(초)
+COOLDOWN_BAR_HEIGHT = PIXEL_SIZE * 2   # 쿨타임 진행 막대 세로 길이(도트 2칸, 버튼 안쪽 맨 아래)
+COLOR_COOLDOWN_TRACK = COLOR_GRAY_DARK  # 진행 막대의 아직 안 찬 부분
+COLOR_COOLDOWN_FILL = COLOR_BUTTON      # 진행 막대의 찬 부분 (다시 쓸 수 있게 되는 하늘색)
+
+# E2 행동별 파티클 (random 대신 정해진 표를 차례로 쓴다)
+PARTICLE_COUNT = 10         # 행동 한 번에 나오는 파티클 수 (8~12개)
+# 퍼지는 방향 (가로, 세로). 세로가 음수면 위쪽. 길이가 대략 1인 방향 표
+# 머리 위는 수치 팝업 글자 자리라서 위쪽으로 가는 방향은 쓰지 않는다:
+# 옆(살짝 위 포함)과 비스듬한 아래로만 왼쪽·오른쪽 번갈아 퍼진다
+PARTICLE_DIRECTIONS = [
+    (-1.0, -0.2), (1.0, -0.2), (-0.9, 0.4), (0.9, 0.4), (-0.6, 0.8),
+    (0.6, 0.8), (-0.95, -0.35), (0.95, -0.35), (-0.8, 0.6), (0.8, 0.6),
+]
+PARTICLE_SPEEDS = [60, 80, 50, 70, 75]      # 퍼지는 속도(픽셀/초), 차례로 돌려 쓴다
+PARTICLE_LIFETIMES = [0.6, 0.7, 0.8]        # 파티클 수명(초), 차례로 돌려 쓴다
+PARTICLE_RISE_SPEED = 40    # 모든 파티클이 함께 위로 떠오르는 속도(픽셀/초)
+PARTICLE_START_RATIO = 1.1  # 파티클이 생기는 거리 = 반지름 x 이 비율 (얼굴 가장자리 바로 바깥)
+PARTICLE_SHRINK_RATIO = 0.65  # 수명의 이 비율이 지나면 도트가 반 크기로 줄어들며 사라진다
+
+# 파티클 도트 스프라이트 (칸 크기 PIXEL_SIZE)
+PARTICLE_HEART = [          # 학식: 하트
+    "xx.xx",
+    "xwxxx",
+    "xxxxx",
+    ".xxx.",
+    "..x..",
+]
+PARTICLE_RICE = [           # 학식: 밥알 (흰색은 크림 바탕에서 안 보이므로 남색 테두리)
+    ".OO.",
+    "OWWO",
+    ".OO.",
+]
+PARTICLE_ZZZ = [            # 휴식: Z
+    "xxxx",
+    "..x.",
+    ".x..",
+    "xxxx",
+]
+PARTICLE_CLOUD = [          # 휴식: 작은 구름
+    "..ll..",
+    ".lxxx.",
+    "xxxxxx",
+    "dddddd",
+]
+PARTICLE_STAR = [           # 공부: 반짝이 별
+    "..d..",
+    ".dyd.",
+    "dyyyd",
+    ".dyd.",
+    "..d..",
+]
+PARTICLE_PENCIL = [         # 공부: 연필 (분홍 지우개, 노란 몸통, 남색 심)
+    "...pp",
+    "..yyp",
+    ".yyy.",
+    "Oyy..",
+    "OO...",
+]
+# 행동 이름 -> [(스프라이트, 색 사전), ...]. 파티클 번호 순서대로 번갈아 쓴다
+PARTICLE_KINDS = {
+    ACTION_FEED: [
+        (PARTICLE_HEART, {"x": COLOR_PINK_DARK, "w": COLOR_PINK_LIGHT}),
+        (PARTICLE_RICE, {"O": COLOR_OUTLINE, "W": COLOR_WHITE}),
+    ],
+    ACTION_REST: [
+        (PARTICLE_ZZZ, {"x": COLOR_SKY_DARK}),
+        (PARTICLE_CLOUD, {"x": COLOR_SKY, "l": COLOR_SKY_LIGHT, "d": COLOR_SKY_DARK}),
+    ],
+    ACTION_STUDY: [
+        (PARTICLE_STAR, {"y": COLOR_YELLOW, "d": COLOR_YELLOW_DARK}),
+        (PARTICLE_PENCIL, {"p": COLOR_PINK, "y": COLOR_YELLOW_DARK, "O": COLOR_OUTLINE}),
+    ],
+}
+
+# E3 수치 팝업 ("체력 +20")
+POPUP_FONT_SIZE = 18        # 팝업 글자 크기
+POPUP_FONT_BOLD = True      # 팝업은 굵은 글씨 (가는 획은 그림자에 묻혀 안 읽힌다)
+POPUP_TEXT = "{} {:+d}"     # 팝업 글자 틀: 라벨 + 부호 붙은 변화량
+POPUP_TIME = 0.8            # 팝업이 보이는 시간(초)
+POPUP_RISE_SPEED = 15       # 팝업이 떠오르는 속도(픽셀/초) -> 0.8초에 12픽셀
+POPUP_LINE_HEIGHT = 22     # 팝업 여러 개를 세로로 쌓을 때 줄 간격
+POPUP_HEAD_GAP = 0          # 제자 머리(점프·숨쉬기 최고점)와 맨 아래 팝업 글자 상자 사이 간격
+                            # (글자 상자 안에 위아래 여백이 있어 0이어도 머리와 닿지 않는다)
+POPUP_BLINK_START = 0.5     # 이 시각(초)부터 깜빡이며 사라진다
+POPUP_BLINK_STEP = 0.075    # 깜빡임 한 번(보임 또는 숨김)의 길이(초)
+POPUP_OUTLINE_OFFSETS = [(1, 0), (0, 1), (1, 1)]  # 남색 그림자 글자를 찍을 위치(오른쪽·아래 1픽셀)
+COLOR_POPUP_UP = COLOR_GREEN        # 늘어난 값 글자 색
+COLOR_POPUP_DOWN = COLOR_RED        # 줄어든 값 글자 색
+
+# E4 게이지 부드러운 변화
+GAUGE_ANIM_TIME = 0.25      # 행동으로 바뀐 막대 길이가 새 값을 따라가는 시간(초)
+GAUGE_HEALTH = "health"     # Student 의 체력 속성 이름 (표시값 사전의 키)
+GAUGE_MENTAL = "mental"     # Student 의 멘탈 속성 이름
+GAUGE_KNOWLEDGE = "knowledge"  # Student 의 지식 속성 이름
+GAUGE_NAMES = [GAUGE_HEALTH, GAUGE_MENTAL]   # 막대가 있어서 부드럽게 움직이는 게이지
+# 수치 팝업을 띄울 게이지와 라벨 (위에서부터 이 순서로 쌓인다)
+POPUP_GAUGES = [(GAUGE_HEALTH, HEALTH_LABEL), (GAUGE_MENTAL, MENTAL_LABEL),
+                (GAUGE_KNOWLEDGE, KNOWLEDGE_LABEL)]
+
+# E5 제자 반응 (점프·숨쉬기). 높이는 PIXEL_SIZE 단위로 끊어 도트 느낌을 낸다
+JUMP_TIME = 0.3             # 점프 한 번 시간(초)
+JUMP_HEIGHT = 8             # 점프 최고 높이(픽셀)
+JUMP_CURVE = 4              # 포물선 4 x p x (1 - p) 의 4: 가운데(p=0.5)에서 1이 된다
+BREATH_PERIOD = 1.5         # 숨쉬기 한 주기(초)
+BREATH_HEIGHT = 4           # 숨쉬기 최고 높이(픽셀)
+SHADOW_SHRINK_PER_LIFT = 1  # 제자가 1픽셀 뜰 때마다 발밑 그림자 가로가 줄어드는 양(픽셀)
+
+# E6 안내 문구 깜빡임: 화살표가 보였다 숨었다 하고, 숨을 때 글자 색이 살짝 옅어진다
+BLINK_INTERVAL = 0.5        # 깜빡임 간격(초)
+COLOR_HINT_DIM = COLOR_TEXT_SOFT   # 화살표가 숨었을 때의 안내 글자 색
