@@ -8,14 +8,11 @@ import config
 from button import Button
 from student import Student
 
-# 키보드 단축키 -> 행동 이름 (윗줄 숫자키와 숫자패드 모두 허용)
+# 키보드 단축키 -> 행동 이름 (기획서 조작키: 1/2/3)
 ACTION_KEYS = {
     pygame.K_1: config.ACTION_FEED,
     pygame.K_2: config.ACTION_REST,
     pygame.K_3: config.ACTION_STUDY,
-    pygame.K_KP1: config.ACTION_FEED,
-    pygame.K_KP2: config.ACTION_REST,
-    pygame.K_KP3: config.ACTION_STUDY,
 }
 
 
@@ -37,7 +34,7 @@ class Game:
         # (config.START_STATE 를 5일차에 STATE_TITLE 로 바꾸면 된다)
         self.state = config.START_STATE
         self.student = Student()
-        self.cooldown = 0.0              # 남은 쿨타임(초). 0이면 행동할 수 있다
+        self.cooldown = config.ZERO_TIME  # 남은 쿨타임(초). 0이면 행동할 수 있다
         self.buttons = self.make_buttons()
 
     def make_buttons(self):
@@ -82,7 +79,7 @@ class Game:
 
         - 창 닫기(QUIT) 또는 ESC: running을 False로 바꾼다.
         - 게임 화면에서 마우스 왼쪽 클릭이 버튼 위면 그 버튼의 행동을 한다.
-        - 게임 화면에서 1/2/3 키(숫자패드 포함)도 같은 행동을 한다.
+        - 게임 화면에서 1/2/3 키도 같은 행동을 한다.
         쿨타임 중이면 do_action이 입력을 무시한다.
         """
         if event.type == pygame.QUIT:
@@ -107,19 +104,53 @@ class Game:
         """
         if self.state == config.STATE_PLAYING:
             self.student.update(dt)
-            self.cooldown = max(0.0, self.cooldown - dt)
+            self.cooldown = max(config.ZERO_TIME, self.cooldown - dt)
 
     def draw(self):
         """현재 상태의 화면을 그린다.
 
-        배경을 칠하고, 게임 화면이면 제자의 게이지(체력·멘탈 막대, 지식 숫자),
+        배경을 칠하고, 게임 화면이면 상단 정보바(학년·남은 시간·지식),
+        제자의 게이지(체력·멘탈 막대), 제자 얼굴,
         행동 버튼 3개(쿨타임 중이면 회색)와 쿨타임 안내 문구를 그린다.
         """
         self.screen.fill(config.COLOR_BG)
         if self.state == config.STATE_PLAYING:
+            self.draw_info_bar()
             self.student.draw_gauges(self.screen, self.font)
+            self.student.draw(self.screen)
             self.draw_buttons()
         pygame.display.flip()
+
+    def draw_info_bar(self):
+        """상단 정보바를 그린다.
+
+        배경 사각형 위에 왼쪽 "N학년", 가운데 "남은 시간 N초"(현재 학년 남은 시간),
+        오른쪽 "지식 N"을 쓴다.
+        """
+        bar_rect = pygame.Rect(config.ORIGIN,
+                               (config.SCREEN_WIDTH, config.INFO_BAR_HEIGHT))
+        pygame.draw.rect(self.screen, config.COLOR_INFO_BAR, bar_rect)
+
+        grade = self.font.render(config.GRADE_TEXT.format(self.student.get_grade()),
+                                 True, config.COLOR_BLACK)
+        grade_rect = grade.get_rect()
+        grade_rect.topleft = (config.INFO_BAR_MARGIN, config.INFO_BAR_Y)
+        self.screen.blit(grade, grade_rect)
+
+        time_left = self.font.render(
+            config.TIME_LEFT_TEXT.format(self.student.get_grade_time_left()),
+            True, config.COLOR_BLACK)
+        time_rect = time_left.get_rect()
+        time_rect.midtop = (config.INFO_TIME_X, config.INFO_BAR_Y)
+        self.screen.blit(time_left, time_rect)
+
+        knowledge = self.font.render(
+            config.KNOWLEDGE_TEXT.format(config.KNOWLEDGE_LABEL, self.student.knowledge),
+            True, config.COLOR_BLACK)
+        knowledge_rect = knowledge.get_rect()
+        knowledge_rect.topright = (config.SCREEN_WIDTH - config.INFO_BAR_MARGIN,
+                                   config.INFO_BAR_Y)
+        self.screen.blit(knowledge, knowledge_rect)
 
     def draw_buttons(self):
         """행동 버튼 3개와 그 아래 "누른 뒤 1초 동안 회색 (쿨타임)" 안내 문구를 그린다."""

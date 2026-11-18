@@ -267,14 +267,19 @@ def test_cooldown_not_counting_outside_playing(game):
     (pygame.K_1, (100, 80, 0)),
     (pygame.K_2, (80, 100, 0)),
     (pygame.K_3, (75, 72, 10)),
-    (pygame.K_KP1, (100, 80, 0)),
-    (pygame.K_KP2, (80, 100, 0)),
-    (pygame.K_KP3, (75, 72, 10)),
 ])
 def test_keys(game, k, expected):
     game.handle_event(key(k))
     assert gauges(game) == expected
     assert game.is_cooling_down() is True
+
+
+@pytest.mark.parametrize("k", [pygame.K_KP1, pygame.K_KP2, pygame.K_KP3])
+def test_numpad_keys_no_action(game, k):
+    """(4일차 리드 결정) 숫자패드는 기획서에 없으므로 행동을 일으키지 않는다."""
+    game.handle_event(key(k))
+    assert gauges(game) == (80, 80, 0)
+    assert game.is_cooling_down() is False
 
 
 @pytest.mark.parametrize("k", [pygame.K_0, pygame.K_4, pygame.K_a, pygame.K_RETURN, pygame.K_r,

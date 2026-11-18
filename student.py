@@ -10,6 +10,17 @@ def clamp(value, low, high):
     return max(low, min(value, high))
 
 
+def draw_thick_arc(screen, color, rect, start, stop, thickness):
+    """두께 thickness인 호를 그린다.
+
+    pygame.draw.arc에 두께를 크게 주면 호 사이에 빈 점이 생겨서,
+    두께 1짜리 호를 1픽셀씩 아래로 옮기며 thickness번 겹쳐 그린다.
+    """
+    for step in range(thickness):
+        moved = rect.move(config.ARC_SHIFT_X, step * config.ARC_LINE_STEP)
+        pygame.draw.arc(screen, color, moved, start, stop, config.ARC_LINE_STEP)
+
+
 class Student:
     """교수가 돌보는 제자 한 명.
 
@@ -22,8 +33,8 @@ class Student:
         self.health = config.HEALTH_START
         self.mental = config.MENTAL_START
         self.knowledge = config.KNOWLEDGE_START
-        self.elapsed = 0.0      # 게임 시작 후 흐른 시간(초)
-        self.decay_timer = 0.0  # 다음 자연 감소까지 모아 둔 시간(초)
+        self.elapsed = config.ZERO_TIME      # 게임 시작 후 흐른 시간(초)
+        self.decay_timer = config.ZERO_TIME  # 다음 자연 감소까지 모아 둔 시간(초)
 
     # ------------------------------------------------------------
     # 게이지 값 바꾸기
@@ -99,22 +110,70 @@ class Student:
         return config.STUDY_KNOWLEDGE
 
     # ------------------------------------------------------------
+    # 학년과 성장 (4일차)
+    # ------------------------------------------------------------
+    def get_grade(self):
+        """경과 시간으로 지금 학년(1~4)을 계산해 돌려준다.
+
+        0~60초 미만 1학년, 60~120초 미만 2학년, 120~180초 미만 3학년, 180초부터 4학년.
+        240초가 넘어도 4학년으로 둔다(졸업 처리는 5일차).
+        1/60초를 3600번 더하면 59.9999…가 될 수 있어서 TIME_EPSILON 만큼 봐준다.
+        """
+        passed_grades = int((self.elapsed + config.TIME_EPSILON)
+                            // config.SECONDS_PER_GRADE)
+        return min(config.FIRST_GRADE + passed_grades, config.MAX_GRADE)
+
+    def get_grade_time_left(self):
+        """현재 학년의 남은 시간(정수 초, 60 -> 1)을 돌려준다.
+
+        학년 안에서 흐른 시간의 정수 부분을 60에서 뺀다(= 남은 시간을 올림).
+        그래서 학년이 막 시작하면 60, 59초가 지나 1초 미만이 남으면 1이 된다.
+        4학년에서 240초가 지나면 0으로 둔다(음수가 되지 않음).
+        """
+        grade_start = (self.get_grade() - config.FIRST_GRADE) * config.SECONDS_PER_GRADE
+        time_in_grade = self.elapsed - grade_start
+        passed_seconds = int(time_in_grade + config.TIME_EPSILON)
+        return max(config.GAUGE_MIN, config.SECONDS_PER_GRADE - passed_seconds)
+
+    def get_radius(self):
+        """캐릭터 반지름을 돌려준다: 40 + (학년-1) x 10 -> 40/50/60/70."""
+        return (config.BASE_RADIUS
+                + (self.get_grade() - config.FIRST_GRADE) * config.RADIUS_PER_GRADE)
+
+    # ------------------------------------------------------------
+    # 표정 (4일차)
+    # ------------------------------------------------------------
+    def get_mouth(self):
+        """멘탈에 따른 입 모양 이름을 돌려준다.
+
+        멘탈 60 이상 "smile"(웃는 입), 30~59 "flat"(일자 입), 30 미만 "cry"(우는 입).
+        """
+        if self.mental >= config.MENTAL_SMILE_MIN:
+            return config.MOUTH_SMILE
+        if self.mental >= config.MENTAL_FLAT_MIN:
+            return config.MOUTH_FLAT
+        return config.MOUTH_CRY
+
+    def has_dark_circles(self):
+        """체력이 30 미만이면 True(다크서클을 그린다)."""
+        return self.health < config.LOW_GAUGE_LIMIT
+
+    def has_glasses(self):
+        """3학년부터 True(안경을 그린다)."""
+        return self.get_grade() >= config.GLASSES_GRADE
+
+    # ------------------------------------------------------------
     # 그리기
     # ------------------------------------------------------------
     def draw_gauges(self, screen, font):
-        """왼쪽 게이지 구역에 체력·멘탈 막대를, 정보바 오른쪽에 지식 숫자를 그린다."""
+        """왼쪽 게이지 구역에 체력·멘탈 막대를 그린다.
+
+        지식 숫자는 4일차부터 상단 정보바에서 Game이 학년·남은 시간과 함께 그린다.
+        """
         self.draw_bar(screen, font, config.HEALTH_LABEL, self.health,
                       config.HEALTH_LABEL_Y, config.HEALTH_BAR_Y)
         self.draw_bar(screen, font, config.MENTAL_LABEL, self.mental,
                       config.MENTAL_LABEL_Y, config.MENTAL_BAR_Y)
-
-        # 지식은 막대 없이 숫자로, 상단 정보바 오른쪽 끝에 표시
-        text = font.render(f"{config.KNOWLEDGE_LABEL} {self.knowledge}",
-                           True, config.COLOR_BLACK)
-        text_rect = text.get_rect()
-        text_rect.topright = (config.SCREEN_WIDTH - config.INFO_BAR_MARGIN,
-                              config.INFO_BAR_Y)
-        screen.blit(text, text_rect)
 
     def draw_bar(self, screen, font, label, value, label_y, bar_y):
         """라벨과 게이지 막대 하나를 그린다.
@@ -150,5 +209,92 @@ class Student:
                          config.BAR_BORDER_WIDTH)
 
     def draw(self, screen):
-        """제자를 화면에 그린다. (4일차에 구현)"""
-        pass
+        """오른쪽 제자 구역에 제자 얼굴을 그린다.
+
+        얼굴(원 + 테두리), 눈 2개, 입을 그리고,
+        체력 30 미만이면 다크서클, 3학년부터 안경을 더 그린다.
+        모든 요소의 크기와 위치는 반지름에 비례하므로 학년이 오르면 함께 커진다.
+        """
+        radius = self.get_radius()
+        cx = config.STUDENT_CENTER_X
+        cy = config.STUDENT_CENTER_Y
+        line = max(config.MIN_LINE_WIDTH, int(radius * config.FACE_BORDER_RATIO))
+
+        # 1) 얼굴: 살구색 원 + 검은 테두리
+        pygame.draw.circle(screen, config.COLOR_SKIN, (cx, cy), radius)
+        pygame.draw.circle(screen, config.COLOR_FACE_LINE, (cx, cy), radius, line)
+
+        # 2) 눈 2개 (왼쪽, 오른쪽)
+        eye_dx = int(radius * config.EYE_OFFSET_X_RATIO)
+        eye_y = cy - int(radius * config.EYE_OFFSET_Y_RATIO)
+        eye_radius = max(config.MIN_LINE_WIDTH, int(radius * config.EYE_RADIUS_RATIO))
+        eye_centers = [(cx - eye_dx, eye_y), (cx + eye_dx, eye_y)]
+        for eye in eye_centers:
+            pygame.draw.circle(screen, config.COLOR_FACE_LINE, eye, eye_radius)
+
+        # 3) 다크서클 (체력 30 미만): 각 눈 아래 아래쪽 반원 호
+        if self.has_dark_circles():
+            self.draw_dark_circles(screen, radius, eye_centers, line)
+
+        # 4) 안경 (3학년부터): 눈 둘레 원 2개 + 가운데 다리 + 양옆 다리
+        if self.has_glasses():
+            self.draw_glasses(screen, radius, eye_centers, line)
+
+        # 5) 입
+        self.draw_mouth(screen, radius, cx, cy, line)
+
+    def draw_dark_circles(self, screen, radius, eye_centers, line):
+        """각 눈 바로 아래에 다크서클(아래쪽 반원 호)을 그린다."""
+        width = int(radius * config.DARK_CIRCLE_WIDTH_RATIO)
+        height = int(radius * config.DARK_CIRCLE_HEIGHT_RATIO)
+        offset_y = int(radius * config.DARK_CIRCLE_OFFSET_Y_RATIO)
+        thickness = max(config.MIN_DARK_CIRCLE_LINE,
+                        int(radius * config.DARK_CIRCLE_LINE_RATIO))
+        for eye_x, eye_y in eye_centers:
+            rect = pygame.Rect(config.ORIGIN, (width, height))
+            rect.center = (eye_x, eye_y + offset_y)
+            draw_thick_arc(screen, config.COLOR_DARK_CIRCLE, rect,
+                           config.ARC_LOWER_START, config.ARC_LOWER_STOP, thickness)
+
+    def draw_glasses(self, screen, radius, eye_centers, line):
+        """눈 둘레에 안경알(원) 2개를 그리고, 안경알 사이와 양옆(얼굴 끝까지)에 다리 선을 그린다."""
+        lens = int(radius * config.GLASSES_RADIUS_RATIO)
+        (left_x, eye_y), (right_x, _) = eye_centers
+        for eye in eye_centers:
+            pygame.draw.circle(screen, config.COLOR_FACE_LINE, eye, lens, line)
+        # 가운데 다리: 왼쪽 안경알 오른쪽 끝 -> 오른쪽 안경알 왼쪽 끝
+        pygame.draw.line(screen, config.COLOR_FACE_LINE,
+                         (left_x + lens, eye_y), (right_x - lens, eye_y), line)
+        # 양옆 다리: 안경알 바깥쪽 끝 -> 얼굴 테두리 쪽
+        cx = config.STUDENT_CENTER_X
+        pygame.draw.line(screen, config.COLOR_FACE_LINE,
+                         (left_x - lens, eye_y), (cx - radius, eye_y), line)
+        pygame.draw.line(screen, config.COLOR_FACE_LINE,
+                         (right_x + lens, eye_y), (cx + radius, eye_y), line)
+
+    def draw_mouth(self, screen, radius, cx, cy, line):
+        """멘탈에 따라 입을 그린다.
+
+        웃는 입: 아래로 볼록한 호(타원의 아래쪽 반)
+        일자 입: 가로 선
+        우는 입: 위로 볼록한 호(타원의 위쪽 반)
+        """
+        width = int(radius * config.MOUTH_WIDTH_RATIO)
+        height = int(radius * config.MOUTH_HEIGHT_RATIO)
+        mouth_y = cy + int(radius * config.MOUTH_OFFSET_Y_RATIO)
+        rect = pygame.Rect(config.ORIGIN, (width, height))
+        rect.center = (cx, mouth_y)
+
+        # 타원의 가운데 가로줄이 입 높이(mouth_y)다. 입꼬리 두 점이 이 줄 위에 있다.
+        mouth = self.get_mouth()
+        if mouth == config.MOUTH_SMILE:
+            # 타원의 아래쪽 반만 그린다 -> 입꼬리에서 아래로 볼록
+            draw_thick_arc(screen, config.COLOR_FACE_LINE, rect,
+                           config.ARC_LOWER_START, config.ARC_LOWER_STOP, line)
+        elif mouth == config.MOUTH_FLAT:
+            pygame.draw.line(screen, config.COLOR_FACE_LINE,
+                             (rect.left, mouth_y), (rect.right, mouth_y), line)
+        else:
+            # 타원의 위쪽 반만 그린다 -> 입꼬리에서 위로 볼록
+            draw_thick_arc(screen, config.COLOR_FACE_LINE, rect,
+                           config.ARC_UPPER_START, config.ARC_UPPER_STOP, line)

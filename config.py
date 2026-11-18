@@ -33,6 +33,8 @@ SECONDS_PER_GRADE = 60                      # 학년당 시간(초)
 MAX_GRADE = 4                               # 마지막 학년
 TOTAL_SECONDS = SECONDS_PER_GRADE * MAX_GRADE  # 전체 시간 240초
 EXAM_SECONDS = 15                           # 각 학년 마지막 15초가 시험 기간
+FIRST_GRADE = 1                             # 처음 학년
+ZERO_TIME = 0.0                             # 시간 값의 시작값·하한(초): 타이머 초기값, 쿨타임 하한
 
 # ---------------------------------------------------------------
 # 4. 게이지
@@ -80,6 +82,40 @@ BASE_RADIUS = 40            # 1학년 반지름
 RADIUS_PER_GRADE = 10       # 학년이 오를 때마다 늘어나는 반지름
 GLASSES_GRADE = 3           # 이 학년부터 안경을 쓴다
 
+# 표정 이름 (Student.get_mouth 가 돌려주는 값)
+MOUTH_SMILE = "smile"       # 웃는 입 (아래로 볼록한 호)
+MOUTH_FLAT = "flat"         # 일자 입 (선)
+MOUTH_CRY = "cry"           # 우는 입 (위로 볼록한 호)
+
+# 제자 얼굴 위치: 오른쪽 제자 구역(게이지 구역 오른쪽 ~ 창 오른쪽, 배너 아래 ~ 버튼 위)의 가운데쯤
+STUDENT_CENTER_X = 530      # 얼굴 중심 x
+STUDENT_CENTER_Y = 290      # 얼굴 중심 y
+
+# 얼굴 요소 크기·위치 비율 (모두 "반지름 x 비율"로 계산해서 학년이 오르면 함께 커진다)
+FACE_BORDER_RATIO = 0.05        # 얼굴 테두리·입·안경 선 두께
+MIN_LINE_WIDTH = 2              # 선 두께 최솟값(픽셀)
+EYE_OFFSET_X_RATIO = 0.35       # 눈: 얼굴 중심에서 좌우로 떨어진 거리
+EYE_OFFSET_Y_RATIO = 0.2        # 눈: 얼굴 중심보다 위로 올라간 거리
+EYE_RADIUS_RATIO = 0.08         # 눈 반지름
+MOUTH_OFFSET_Y_RATIO = 0.35     # 입: 얼굴 중심보다 아래로 내려간 거리
+MOUTH_WIDTH_RATIO = 0.5         # 입 가로 길이
+MOUTH_HEIGHT_RATIO = 0.3        # 웃는/우는 입 호를 담는 타원의 세로 길이
+DARK_CIRCLE_OFFSET_Y_RATIO = 0.2    # 다크서클 호를 담는 타원의 중심이 눈 중심보다 아래로 내려간 거리(안경알 아래)
+DARK_CIRCLE_WIDTH_RATIO = 0.3       # 다크서클 호를 담는 타원의 가로 길이
+DARK_CIRCLE_HEIGHT_RATIO = 0.16     # 다크서클 호를 담는 타원의 세로 길이
+DARK_CIRCLE_LINE_RATIO = 0.07       # 다크서클 선 두께
+MIN_DARK_CIRCLE_LINE = 3            # 다크서클 선 두께 최솟값(픽셀)
+ARC_SHIFT_X = 0                     # 두꺼운 호를 겹쳐 그릴 때 가로로는 옮기지 않는다
+ARC_LINE_STEP = 1                   # 두꺼운 호를 1픽셀 호 여러 개로 겹쳐 그릴 때 한 번에 옮기는 픽셀
+GLASSES_RADIUS_RATIO = 0.18         # 안경알(원) 반지름
+
+# 호(arc) 각도. pygame 각도는 오른쪽이 0, 반시계 방향으로 커진다(위쪽이 원주율/2).
+PI = 3.141592653589793      # 원주율 (math 모듈 없이 쓰려고 상수로 둔다)
+ARC_UPPER_START = 0         # 위쪽 반원 호: 0 ~ 원주율
+ARC_UPPER_STOP = PI
+ARC_LOWER_START = PI        # 아래쪽 반원 호: 원주율 ~ 2 x 원주율
+ARC_LOWER_STOP = PI * 2
+
 # ---------------------------------------------------------------
 # 8. 엔딩 기준
 # ---------------------------------------------------------------
@@ -108,17 +144,25 @@ COLOR_RED = (220, 60, 60)           # 30 미만 게이지 막대 색
 COLOR_YELLOW = (250, 220, 60)       # 시험 기간 배너 색
 COLOR_BUTTON = (100, 140, 220)      # 평소 버튼 색
 COLOR_SKIN = (255, 220, 180)        # 제자 얼굴 색
-COLOR_DARK_CIRCLE = (120, 100, 140)  # 다크서클 색
+COLOR_DARK_CIRCLE = (110, 80, 140)   # 다크서클 색
 COLOR_BAR_BG = (255, 255, 255)      # 게이지 막대의 빈 부분(배경) 색
+COLOR_INFO_BAR = (220, 210, 190)    # 상단 정보바 배경색
+COLOR_FACE_LINE = (0, 0, 0)         # 얼굴 테두리·눈·입·안경 색
 
 # ---------------------------------------------------------------
 # 11. 게임 화면 배치 - 글자 크기와 게이지 구역(왼쪽)
 # ---------------------------------------------------------------
 FONT_SIZE = 24              # 기본 글자 크기
 
-# 상단 정보바 (지식 숫자는 오른쪽 끝에 표시)
+# 상단 정보바: 왼쪽 "N학년", 가운데 "남은 시간 N초", 오른쪽 "지식 N" (Game이 그린다)
+ORIGIN = (0, 0)             # 창 왼쪽 위 꼭짓점. 사각형을 만든 뒤 center 등으로 옮길 때 임시 위치로도 쓴다
+INFO_BAR_HEIGHT = 50        # 정보바 배경 사각형 높이 (창 맨 위부터)
+INFO_TIME_X = SCREEN_WIDTH // 2  # "남은 시간" 글자의 가운데 x (화면 가운데)
 INFO_BAR_Y = 15             # 정보바 글자의 위쪽 y
 INFO_BAR_MARGIN = 20        # 정보바 글자와 창 가장자리 사이 여백
+GRADE_TEXT = "{}학년"            # 학년 글자 틀
+TIME_LEFT_TEXT = "남은 시간 {}초"  # 현재 학년 남은 시간 글자 틀
+KNOWLEDGE_TEXT = "{} {}"         # 지식 글자 틀: "지식 120"
 
 # 왼쪽 게이지 구역: 라벨("체력"/"멘탈")과 막대
 GAUGE_X = 30                # 라벨과 막대의 왼쪽 x

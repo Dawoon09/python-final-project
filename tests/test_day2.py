@@ -344,29 +344,37 @@ def test_bar_value_one_visible_red(screen_font):
         assert _color(surface, config.GAUGE_X + width, y) == config.COLOR_BAR_BG
 
 
-def test_knowledge_drawn_as_number(screen_font):
-    surface, font = screen_font
-    rec = RecordingFont(font)
-    s = Student()
-    s.change_knowledge(123)
-    s.draw_gauges(surface, rec)
-    assert "지식 123" in rec.texts
-    assert config.HEALTH_LABEL in rec.texts
-    assert config.MENTAL_LABEL in rec.texts
+def test_knowledge_drawn_as_number():
+    """(4일차부터) 지식 숫자는 Game.draw(정보바)가 그리고, 막대 라벨은 draw_gauges가 그린다."""
+    g = Game()
+    try:
+        rec = RecordingFont(g.font)
+        g.font = rec
+        g.student.change_knowledge(123)
+        g.draw()
+        assert "지식 123" in rec.texts
+        assert config.HEALTH_LABEL in rec.texts
+        assert config.MENTAL_LABEL in rec.texts
+    finally:
+        pygame.quit()
 
 
-def test_knowledge_text_in_top_right(screen_font):
-    """지식 숫자가 정보바 오른쪽(상단)에 그려진다: 그 구역 픽셀이 배경색이 아님."""
-    surface, font = screen_font
-    Student().draw_gauges(surface, font)
-    region = pygame.Rect(config.SCREEN_WIDTH // 2, 0,
-                         config.SCREEN_WIDTH // 2, config.HEALTH_LABEL_Y)
-    changed = any(
-        _color(surface, x, y) != config.COLOR_BG
-        for x in range(region.left, region.right)
-        for y in range(region.top, region.bottom)
-    )
-    assert changed
+def test_knowledge_text_in_top_right():
+    """지식 숫자가 정보바 오른쪽(상단)에 그려진다: 정보바 오른쪽 끝 구역에 글자색(검정) 픽셀이 있다."""
+    g = Game()
+    try:
+        g.student.change_knowledge(123)
+        g.draw()
+        region = pygame.Rect(config.SCREEN_WIDTH * 3 // 4, 0,
+                             config.SCREEN_WIDTH // 4, config.INFO_BAR_HEIGHT)
+        dark = any(
+            sum(_color(g.screen, x, y)) < 200
+            for x in range(region.left, region.right)
+            for y in range(region.top, region.bottom)
+        )
+        assert dark
+    finally:
+        pygame.quit()
 
 
 # ======================= 완료 기준: 시간이 지나면 막대가 줄어듦 =======================
