@@ -1,0 +1,9 @@
+[project]
+name = "final-project"
+version = "0.1.0"
+description = "파이썬 기말 과제"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
