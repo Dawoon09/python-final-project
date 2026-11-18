@@ -19,9 +19,12 @@ class Game:
         )
         pygame.display.set_caption(config.WINDOW_TITLE)
         self.clock = pygame.time.Clock()
+        self.font = pygame.font.SysFont(config.FONT_NAME, config.FONT_SIZE)
 
         self.running = True              # False가 되면 메인 루프가 끝난다
-        self.state = config.STATE_TITLE  # 지금 보여 줄 화면
+        # 지금 보여 줄 화면. 2일차에는 타이틀이 없어 임시로 게임 화면에서 시작한다.
+        # (config.START_STATE 를 5일차에 STATE_TITLE 로 바꾸면 된다)
+        self.state = config.START_STATE
         self.student = Student()
 
     def handle_event(self, event):
@@ -35,12 +38,21 @@ class Game:
             self.running = False
 
     def update(self, dt):
-        """dt초만큼 게임 상태를 진행한다. (이후 단위에서 채운다)"""
-        pass
+        """dt초만큼 게임 상태를 진행한다.
+
+        게임 화면일 때만 제자의 시간을 흘려 게이지를 자연 감소시킨다.
+        """
+        if self.state == config.STATE_PLAYING:
+            self.student.update(dt)
 
     def draw(self):
-        """현재 상태의 화면을 그린다. 지금은 배경색만 칠한다."""
+        """현재 상태의 화면을 그린다.
+
+        배경을 칠하고, 게임 화면이면 제자의 게이지(체력·멘탈 막대, 지식 숫자)를 그린다.
+        """
         self.screen.fill(config.COLOR_BG)
+        if self.state == config.STATE_PLAYING:
+            self.student.draw_gauges(self.screen, self.font)
         pygame.display.flip()
 
     def run(self):
