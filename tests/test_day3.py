@@ -57,9 +57,12 @@ def color_at(surface, pos):
 
 
 def button_body_point(g, name):
-    """테두리와 글자를 피한 버튼 안쪽 점(왼쪽 위 근처)."""
+    """(도트 재디자인) 외곽선·위 하이라이트·아래 그림자 줄과 글자를 피한 버튼 몸통 점.
+
+    외곽선 1칸 바로 안쪽(왼쪽 끝에서 2칸) 열의 세로 가운데. 글자는 가운데 정렬이라 닿지 않는다.
+    """
     r = g.buttons[name].rect
-    return (r.left + config.BUTTON_BORDER_WIDTH + 3, r.top + config.BUTTON_BORDER_WIDTH + 3)
+    return (r.left + 2 * config.PIXEL_SIZE, r.centery)
 
 
 # ======================= 기능 1~3: Student 행동 수치 =======================
@@ -406,11 +409,12 @@ def test_buttons_gray_during_cooldown_then_back(game):
 def test_button_draw_direct(game):
     surface = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
     b = Button(10, 10, 100, 40, "x")
+    body = (b.rect.left + 2 * config.PIXEL_SIZE, b.rect.centery)
     b.draw(surface, game.font, True)
-    assert color_at(surface, (15, 15)) == config.COLOR_GRAY
-    assert color_at(surface, (10, 30)) == config.COLOR_BLACK   # 테두리
+    assert color_at(surface, body) == config.COLOR_GRAY
+    assert color_at(surface, (10, 30)) == config.COLOR_OUTLINE   # 왼쪽 외곽선(도트 1칸)
     b.draw(surface, game.font, False)
-    assert color_at(surface, (15, 15)) == config.COLOR_BUTTON
+    assert color_at(surface, body) == config.COLOR_BUTTON
 
 
 def test_gray_differs_from_normal():

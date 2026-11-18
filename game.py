@@ -6,7 +6,7 @@ import sys
 import pygame
 
 import config
-from button import Button
+from button import Button, draw_pixel_box, draw_sprite, render_text, sprite_size
 from student import Student
 
 # 키보드 단축키 -> 행동 이름 (기획서 조작키: 1/2/3)
@@ -38,6 +38,7 @@ class Game:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(config.FONT_NAME, config.FONT_SIZE)
         self.title_font = pygame.font.SysFont(config.FONT_NAME, config.TITLE_FONT_SIZE)
+        self.backdrop = self.make_backdrop()  # 도트 무늬 배경(한 번만 그려 둔다)
 
         self.running = True              # False가 되면 메인 루프가 끝난다
         self.best_record = self.load_best_record()  # 최고 기록(지식). 타이틀에 표시
@@ -214,11 +215,27 @@ class Game:
             self.check_ending()
 
     # ------------------------------------------------------------
-    # 그리기
+    # 그리기 (도트 스타일)
     # ------------------------------------------------------------
+    def make_backdrop(self):
+        """창 전체 배경을 한 번만 그려 둔 Surface를 만들어 돌려준다.
+
+        크림색 바탕에 일정 간격으로 아주 연한 도트를 찍어 은은한 무늬를 만든다.
+        매 프레임 도트를 다시 찍지 않고 이 Surface를 통째로 붙인다.
+        """
+        backdrop = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+        backdrop.fill(config.COLOR_BACKDROP)
+        for x in range(config.BACKDROP_DOT_START, config.SCREEN_WIDTH,
+                       config.BACKDROP_DOT_STEP):
+            for y in range(config.BACKDROP_DOT_START, config.SCREEN_HEIGHT,
+                           config.BACKDROP_DOT_STEP):
+                pygame.draw.rect(backdrop, config.COLOR_BACKDROP_DOT,
+                                 (x, y, config.PIXEL_SIZE, config.PIXEL_SIZE))
+        return backdrop
+
     def draw(self):
         """현재 상태(타이틀/게임/엔딩)의 화면을 그린다."""
-        self.screen.fill(config.COLOR_BG)
+        self.screen.blit(self.backdrop, config.ORIGIN)
         if self.state == config.STATE_TITLE:
             self.draw_title()
         elif self.state == config.STATE_PLAYING:
@@ -227,112 +244,162 @@ class Game:
             self.draw_ending()
         pygame.display.flip()
 
-    def draw_text_center(self, font, text, center_y):
-        """글자 text를 화면 가운데(가로)에, 세로 가운데가 center_y가 되게 그린다."""
-        surface = font.render(text, True, config.COLOR_BLACK)
+    def draw_panel(self, rect):
+        """크림색 도트 패널(계단 모서리, 남색 외곽선, 아래 그림자)을 그리고 안쪽 사각형을 돌려준다."""
+        return draw_pixel_box(self.screen, rect, config.COLOR_BG,
+                              config.COLOR_PANEL_LIGHT, config.COLOR_PANEL_SHADOW,
+                              drop=config.COLOR_DROP)
+
+    def draw_text_center(self, font, text, center_y, color=config.COLOR_TEXT):
+        """글자 text를 화면 가운데(가로)에, 세로 가운데가 center_y가 되게 그리고 사각형을 돌려준다."""
+        surface = render_text(font, text, color)
         rect = surface.get_rect()
         rect.center = (config.SCREEN_CENTER_X, center_y)
         self.screen.blit(surface, rect)
+        return rect
+
+    def draw_big_text(self, text, center_y):
+        """큰 제목 글자를 살구색 그림자 글자와 겹쳐 화면 가운데에 그린다(레트로 느낌)."""
+        shadow = render_text(self.title_font, text, config.COLOR_TITLE_SHADOW)
+        rect = shadow.get_rect()
+        rect.center = (config.SCREEN_CENTER_X + config.TITLE_SHADOW_OFFSET,
+                       center_y + config.TITLE_SHADOW_OFFSET)
+        self.screen.blit(shadow, rect)
+        self.draw_text_center(self.title_font, text, center_y)
+
+    def draw_badge(self, text, center_y, fill, light):
+        """글자 하나를 감싸는 작은 도트 배지(상자)를 화면 가운데에 그린다."""
+        surface = render_text(self.font, text)
+        rect = surface.get_rect()
+        box = pygame.Rect(config.ORIGIN, (rect.width + config.BADGE_PADDING_X * config.HALF,
+                                          config.BADGE_HEIGHT))
+        box.center = (config.SCREEN_CENTER_X, center_y)
+        inner = draw_pixel_box(self.screen, box, fill, light, drop=config.COLOR_DROP)
+        rect.center = inner.center
+        self.screen.blit(surface, rect)
+
+    def draw_key_hint(self, text, center_y):
+        """키 안내 문구(예: "Enter를 눌러 시작") 앞에 작은 도트 화살표를 붙여 그린다."""
+        rect = self.draw_text_center(self.font, text, center_y)
+        arrow_width, arrow_height = sprite_size(config.ARROW_SPRITE, config.PIXEL_SIZE)
+        draw_sprite(self.screen, config.ARROW_SPRITE,
+                    rect.left - config.HINT_ARROW_GAP - arrow_width,
+                    center_y - arrow_height // config.HALF,
+                    config.PIXEL_SIZE, {config.SPRITE_INK: config.COLOR_PINK_DARK})
+
+    def draw_stars(self, stars):
+        """장식용 반짝이 별들을 (x, y, 색) 목록대로 찍는다."""
+        for x, y, color in stars:
+            draw_sprite(self.screen, config.STAR_SPRITE, x, y, config.PIXEL_SIZE,
+                        {config.SPRITE_INK: color})
 
     def draw_title(self):
-        """타이틀 화면: 게임 제목, 제목 아래 장식 선, 최고 기록, "Enter를 눌러 시작"."""
-        self.draw_text_center(self.title_font, config.TITLE_TEXT, config.TITLE_TEXT_Y)
-        pygame.draw.line(self.screen, config.COLOR_BLACK,
-                         (config.SCREEN_CENTER_X - config.TITLE_LINE_HALF, config.TITLE_LINE_Y),
-                         (config.SCREEN_CENTER_X + config.TITLE_LINE_HALF, config.TITLE_LINE_Y),
-                         config.TITLE_LINE_WIDTH)
-        self.draw_text_center(self.font, config.BEST_RECORD_TEXT.format(self.best_record),
-                              config.BEST_RECORD_Y)
-        self.draw_text_center(self.font, config.START_HINT_TEXT, config.START_HINT_Y)
+        """타이틀 화면: 패널, 큰 제목, 도트 장식 줄·별, 최고 기록 배지, "Enter를 눌러 시작"."""
+        self.draw_panel(config.MENU_PANEL_RECT)
+        self.draw_stars(config.TITLE_STARS)
+        self.draw_big_text(config.TITLE_TEXT, config.TITLE_TEXT_Y)
+        self.draw_dot_line(config.TITLE_LINE_Y)
+        self.draw_badge(config.BEST_RECORD_TEXT.format(self.best_record),
+                        config.BEST_RECORD_Y, config.COLOR_PINK_LIGHT, config.COLOR_WHITE)
+        self.draw_key_hint(config.START_HINT_TEXT, config.START_HINT_Y)
+
+    def draw_dot_line(self, y):
+        """제목 아래에 여러 색 도트를 한 칸씩 띄워 늘어놓은 장식 줄을 그린다(화면 가운데 정렬)."""
+        step = config.PIXEL_SIZE * config.HALF
+        start_x = config.SCREEN_CENTER_X - (config.TITLE_LINE_DOTS * step) // config.HALF
+        for index in range(config.TITLE_LINE_DOTS):
+            color = config.TITLE_LINE_COLORS[index % len(config.TITLE_LINE_COLORS)]
+            pygame.draw.rect(self.screen, color,
+                             (start_x + index * step, y, config.PIXEL_SIZE, config.PIXEL_SIZE))
 
     def draw_playing(self):
-        """게임 화면: 상단 정보바, (시험 기간이면) 노란 배너, 게이지 막대, 제자 얼굴, 버튼."""
+        """게임 화면: 상단 정보바, (시험 기간이면) 노란 배너, 상태 패널(게이지), 제자 무대, 버튼."""
         self.draw_info_bar()
         if self.student.is_exam_period():
             self.draw_exam_banner()
+        self.draw_panel((config.STATUS_PANEL_X, config.PANEL_Y,
+                         config.STATUS_PANEL_WIDTH, config.PANEL_HEIGHT))
+        self.draw_panel((config.STAGE_X, config.PANEL_Y,
+                         config.STAGE_WIDTH, config.PANEL_HEIGHT))
         self.student.draw_gauges(self.screen, self.font)
         self.student.draw(self.screen)
         self.draw_buttons()
 
     def draw_ending(self):
-        """엔딩 화면: 엔딩 이름, 졸업이면 학사모, 누적 지식, "R을 눌러 다시 하기"."""
-        self.draw_text_center(self.title_font, self.ending, config.ENDING_NAME_Y)
-        if self.ending != config.ENDING_LEAVE:
+        """엔딩 화면: 패널, 엔딩 이름, (졸업) 학사모와 별 / (휴학) 비구름, 누적 지식 배지, "R을 눌러 다시 하기"."""
+        self.draw_panel(config.MENU_PANEL_RECT)
+        self.draw_big_text(self.ending, config.ENDING_NAME_Y)
+        if self.ending == config.ENDING_LEAVE:
+            self.draw_center_sprite(config.CLOUD_SPRITE, config.CLOUD_TOP_Y,
+                                    config.CLOUD_PIXEL, config.CLOUD_COLORS)
+        else:
+            self.draw_stars(config.ENDING_STARS)
             self.draw_graduation_cap()
-        self.draw_text_center(
-            self.font, config.ENDING_KNOWLEDGE_TEXT.format(self.student.knowledge),
-            config.ENDING_KNOWLEDGE_Y)
-        self.draw_text_center(self.font, config.RESTART_HINT_TEXT, config.RESTART_HINT_Y)
+        self.draw_badge(config.ENDING_KNOWLEDGE_TEXT.format(self.student.knowledge),
+                        config.ENDING_KNOWLEDGE_Y, config.COLOR_MINT_LIGHT, config.COLOR_WHITE)
+        self.draw_key_hint(config.RESTART_HINT_TEXT, config.RESTART_HINT_Y)
+
+    def draw_center_sprite(self, grid, top, cell, colors):
+        """스프라이트 grid를 화면 가운데(가로)에, 위쪽 y가 top이 되게 칸 크기 cell로 찍는다."""
+        width, _ = sprite_size(grid, cell)
+        draw_sprite(self.screen, grid, config.SCREEN_CENTER_X - width // config.HALF, top,
+                    cell, colors)
 
     def draw_graduation_cap(self):
-        """학사모를 사각형·원·선으로 그린다.
-
-        몸체(사각형) 위에 납작한 판(사각형)을 얹고, 판 가운데 단추(원)에서
-        술(선)이 오른쪽으로 뻗었다가 아래로 늘어지며 끝에 매듭(원)이 달린다.
-        """
-        cx = config.CAP_CENTER_X
-        body = pygame.Rect(config.ORIGIN, (config.CAP_BODY_WIDTH, config.CAP_BODY_HEIGHT))
-        body.midtop = (cx, config.CAP_BODY_Y)
-        pygame.draw.rect(self.screen, config.COLOR_CAP, body)
-
-        board = pygame.Rect(config.ORIGIN, (config.CAP_BOARD_WIDTH, config.CAP_BOARD_HEIGHT))
-        board.midtop = (cx, config.CAP_BOARD_Y)
-        pygame.draw.rect(self.screen, config.COLOR_CAP, board)
-
-        button_pos = board.center
-        tassel_x = cx + config.CAP_TASSEL_END_X
-        tassel_corner = (tassel_x, board.centery)
-        tassel_end = (tassel_x, board.centery + config.CAP_TASSEL_DROP)
-        pygame.draw.line(self.screen, config.COLOR_TASSEL, button_pos, tassel_corner,
-                         config.CAP_TASSEL_WIDTH)
-        pygame.draw.line(self.screen, config.COLOR_TASSEL, tassel_corner, tassel_end,
-                         config.CAP_TASSEL_WIDTH)
-        pygame.draw.circle(self.screen, config.COLOR_TASSEL, button_pos,
-                           config.CAP_BUTTON_RADIUS)
-        pygame.draw.circle(self.screen, config.COLOR_TASSEL, tassel_end,
-                           config.CAP_TASSEL_END_RADIUS)
+        """도트 학사모(납작한 마름모 윗판 + 띠 + 금색 술)를 화면 가운데 위쪽에 찍는다."""
+        self.draw_center_sprite(config.CAP_SPRITE, config.CAP_TOP_Y,
+                                config.CAP_PIXEL, config.CAP_COLORS)
 
     def draw_exam_banner(self):
-        """정보바 바로 아래에 노란 시험 기간 배너와 문구를 그린다(게이지 구역 위)."""
+        """정보바 바로 아래에 노란 도트 배너와 문구, 양옆 느낌표를 그린다(패널 위)."""
         banner = pygame.Rect(config.EXAM_BANNER_X, config.EXAM_BANNER_Y,
                              config.EXAM_BANNER_WIDTH, config.EXAM_BANNER_HEIGHT)
-        pygame.draw.rect(self.screen, config.COLOR_YELLOW, banner)
-        pygame.draw.rect(self.screen, config.COLOR_BLACK, banner,
-                         config.EXAM_BANNER_BORDER_WIDTH)
-        text = self.font.render(config.EXAM_BANNER_TEXT, True, config.COLOR_BLACK)
+        inner = draw_pixel_box(self.screen, banner, config.COLOR_YELLOW,
+                               config.COLOR_YELLOW_LIGHT, config.COLOR_YELLOW_DARK,
+                               drop=config.COLOR_DROP)
+        text = render_text(self.font, config.EXAM_BANNER_TEXT)
         text_rect = text.get_rect()
-        text_rect.center = banner.center
+        text_rect.center = inner.center
         self.screen.blit(text, text_rect)
+
+        icon_width, icon_height = sprite_size(config.EXCLAIM_SPRITE, config.PIXEL_SIZE)
+        icon_y = inner.centery - icon_height // config.HALF
+        ink = {config.SPRITE_INK: config.COLOR_OUTLINE}
+        draw_sprite(self.screen, config.EXCLAIM_SPRITE,
+                    banner.left + config.EXAM_ICON_MARGIN, icon_y, config.PIXEL_SIZE, ink)
+        draw_sprite(self.screen, config.EXCLAIM_SPRITE,
+                    banner.right - config.EXAM_ICON_MARGIN - icon_width, icon_y,
+                    config.PIXEL_SIZE, ink)
 
     def draw_info_bar(self):
         """상단 정보바를 그린다.
 
-        배경 사각형 위에 왼쪽 "N학년", 가운데 "남은 시간 N초"(현재 학년 남은 시간),
+        민트색 도트 상자 위에 왼쪽 "N학년", 가운데 "남은 시간 N초"(현재 학년 남은 시간),
         오른쪽 "지식 N"을 쓴다.
         """
-        bar_rect = pygame.Rect(config.ORIGIN,
-                               (config.SCREEN_WIDTH, config.INFO_BAR_HEIGHT))
-        pygame.draw.rect(self.screen, config.COLOR_INFO_BAR, bar_rect)
+        box = pygame.Rect(config.INFO_BOX_X, config.INFO_BOX_Y,
+                          config.INFO_BOX_WIDTH, config.INFO_BOX_HEIGHT)
+        draw_pixel_box(self.screen, box, config.COLOR_INFO_BAR,
+                       config.COLOR_MINT_LIGHT, config.COLOR_MINT_DARK,
+                       drop=config.COLOR_DROP)
 
-        grade = self.font.render(config.GRADE_TEXT.format(self.student.get_grade()),
-                                 True, config.COLOR_BLACK)
+        grade = render_text(self.font, config.GRADE_TEXT.format(self.student.get_grade()))
         grade_rect = grade.get_rect()
-        grade_rect.topleft = (config.INFO_BAR_MARGIN, config.INFO_BAR_Y)
+        grade_rect.midleft = (config.INFO_BAR_MARGIN, config.INFO_TEXT_CENTER_Y)
         self.screen.blit(grade, grade_rect)
 
-        time_left = self.font.render(
-            config.TIME_LEFT_TEXT.format(self.student.get_grade_time_left()),
-            True, config.COLOR_BLACK)
+        time_left = render_text(
+            self.font, config.TIME_LEFT_TEXT.format(self.student.get_grade_time_left()))
         time_rect = time_left.get_rect()
-        time_rect.midtop = (config.INFO_TIME_X, config.INFO_BAR_Y)
+        time_rect.center = (config.INFO_TIME_X, config.INFO_TEXT_CENTER_Y)
         self.screen.blit(time_left, time_rect)
 
-        knowledge = self.font.render(
-            config.KNOWLEDGE_TEXT.format(config.KNOWLEDGE_LABEL, self.student.knowledge),
-            True, config.COLOR_BLACK)
+        knowledge = render_text(
+            self.font,
+            config.KNOWLEDGE_TEXT.format(config.KNOWLEDGE_LABEL, self.student.knowledge))
         knowledge_rect = knowledge.get_rect()
-        knowledge_rect.topright = (config.SCREEN_WIDTH - config.INFO_BAR_MARGIN,
-                                   config.INFO_BAR_Y)
+        knowledge_rect.midright = (config.SCREEN_WIDTH - config.INFO_BAR_MARGIN,
+                                   config.INFO_TEXT_CENTER_Y)
         self.screen.blit(knowledge, knowledge_rect)
 
     def draw_buttons(self):
@@ -341,7 +408,7 @@ class Game:
         for button in self.buttons.values():
             button.draw(self.screen, self.font, cooling_down)
 
-        hint = self.font.render(config.COOLDOWN_HINT_TEXT, True, config.COLOR_BLACK)
+        hint = render_text(self.font, config.COOLDOWN_HINT_TEXT, config.COLOR_TEXT_SOFT)
         hint_rect = hint.get_rect()
         hint_rect.midtop = (config.COOLDOWN_HINT_X, config.COOLDOWN_HINT_Y)
         self.screen.blit(hint, hint_rect)

@@ -18,6 +18,7 @@ import student as student_module  # noqa: E402
 from conftest import press  # noqa: E402
 from game import Game  # noqa: E402
 from student import Student, judge_ending  # noqa: E402
+from button import sprite_size  # noqa: E402
 
 FRAME = 1 / 60
 GRADE_STARTS = [0, 60, 120, 180]
@@ -462,18 +463,18 @@ def _ending_screen(g, ending, knowledge):
     g.draw()
 
 
-CAP_REGION = pygame.Rect(config.CAP_CENTER_X - config.CAP_BOARD_WIDTH // 2,
-                         config.CAP_BOARD_Y,
-                         config.CAP_BOARD_WIDTH,
-                         config.CAP_BODY_Y + config.CAP_BODY_HEIGHT - config.CAP_BOARD_Y)
+# (도트 재디자인) 학사모는 CAP_SPRITE를 칸 크기 CAP_PIXEL로 화면 가운데, 위쪽 y = CAP_TOP_Y에 찍는다.
+_CAP_W, _CAP_H = sprite_size(config.CAP_SPRITE, config.CAP_PIXEL)
+CAP_REGION = pygame.Rect(config.SCREEN_CENTER_X - _CAP_W // 2, config.CAP_TOP_Y, _CAP_W, _CAP_H)
+# 학사모 몸통(띠 위, 가운데 열의 14번째 행) 점
+CAP_BODY_POINT = (config.SCREEN_CENTER_X, config.CAP_TOP_Y + 14 * config.CAP_PIXEL + 2)
 
 
 @pytest.mark.parametrize("ending", GRADUATIONS)
 def test_graduation_cap_pixels(playing_game, ending):
     g = playing_game
     _ending_screen(g, ending, 321)
-    body_center = (config.CAP_CENTER_X, config.CAP_BODY_Y + config.CAP_BODY_HEIGHT // 2)
-    assert color(g.screen, *body_center) == config.COLOR_CAP
+    assert color(g.screen, *CAP_BODY_POINT) == config.COLOR_CAP
     assert count_color(g.screen, config.COLOR_CAP, CAP_REGION) > 1000
     assert count_color(g.screen, config.COLOR_TASSEL, g.screen.get_rect()) > 0
 
@@ -486,13 +487,15 @@ def test_leave_ending_has_no_cap(playing_game):
 
 
 def test_cap_does_not_overlap_texts():
-    """학사모 영역이 엔딩 이름·누적 지식·다시 하기 글자 줄과 겹치지 않는다."""
+    """학사모 영역이 엔딩 이름·누적 지식·다시 하기 글자 줄과 겹치지 않는다.
+
+    (도트 재디자인) 학사모 스프라이트 영역(술 포함)이 엔딩 이름 아래, 누적 지식 배지 상자 위에 있고
+    가운데 패널 안쪽에 들어간다.
+    """
     assert CAP_REGION.top > config.ENDING_NAME_Y + config.TITLE_FONT_SIZE // 2
-    tassel_bottom = (config.CAP_BOARD_Y + config.CAP_BOARD_HEIGHT // 2
-                     + config.CAP_TASSEL_DROP + config.CAP_TASSEL_END_RADIUS)
-    assert max(CAP_REGION.bottom, tassel_bottom) < config.ENDING_KNOWLEDGE_Y - config.FONT_SIZE
-    assert config.CAP_CENTER_X + config.CAP_TASSEL_END_X + config.CAP_TASSEL_END_RADIUS \
-        < config.SCREEN_WIDTH
+    assert CAP_REGION.bottom < config.ENDING_KNOWLEDGE_Y - config.BADGE_HEIGHT // 2
+    panel = pygame.Rect(config.MENU_PANEL_RECT)
+    assert panel.inflate(-2 * config.PIXEL_SIZE, -2 * config.PIXEL_SIZE).contains(CAP_REGION)
 
 
 @pytest.mark.parametrize("ending", [config.ENDING_LEAVE, *GRADUATIONS])
@@ -648,7 +651,9 @@ def test_full_240_seconds_total_decay():
 
 
 def _banner_pixel(g):
-    return color(g.screen, config.EXAM_BANNER_X + 5, config.EXAM_BANNER_Y + 5)
+    """(도트 재디자인) 배너 몸통 점: 왼쪽 외곽선 1칸 안쪽, 세로 가운데."""
+    return color(g.screen, config.EXAM_BANNER_X + 2 * config.PIXEL_SIZE,
+                 config.EXAM_BANNER_Y + config.EXAM_BANNER_HEIGHT // 2)
 
 
 @pytest.mark.parametrize("elapsed, shown", [
@@ -681,11 +686,19 @@ def test_banner_does_not_overlap_gauges_or_info_bar():
     banner = pygame.Rect(config.EXAM_BANNER_X, config.EXAM_BANNER_Y,
                          config.EXAM_BANNER_WIDTH, config.EXAM_BANNER_HEIGHT)
     info = pygame.Rect(0, 0, config.SCREEN_WIDTH, config.INFO_BAR_HEIGHT)
-    health_area = pygame.Rect(config.GAUGE_X - config.BAR_BORDER_WIDTH, config.HEALTH_LABEL_Y,
-                              config.BAR_WIDTH + config.BAR_BORDER_GROW,
-                              config.MENTAL_BAR_Y + config.BAR_HEIGHT - config.HEALTH_LABEL_Y)
-    assert not banner.colliderect(info)
-    assert not banner.colliderect(health_area)
+    health_area = pygame.Rect(config.GAUGE_X - config.PIXEL_SIZE, config.HEALTH_LABEL_Y,
+                              config.BAR_WIDTH + 2 * config.PIXEL_SIZE,
+                              config.MENTAL_BAR_Y + config.BAR_HEIGHT + config.PIXEL_SIZE
+                              - config.HEALTH_LABEL_Y)
+    # (도트 재디자인) 배너 아래 그림자 1칸까지 포함해 정보바(그림자 포함)·게이지·두 패널과 겹치지 않는다
+    banner_with_drop = pygame.Rect(banner.left, banner.top, banner.width,
+                                   banner.height + config.PIXEL_SIZE)
+    assert not banner_with_drop.colliderect(info)
+    assert not banner_with_drop.colliderect(health_area)
+    for panel in ((config.STATUS_PANEL_X, config.PANEL_Y, config.STATUS_PANEL_WIDTH,
+                   config.PANEL_HEIGHT),
+                  (config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH, config.PANEL_HEIGHT)):
+        assert not banner_with_drop.colliderect(pygame.Rect(panel))
     assert banner.right <= config.SCREEN_WIDTH
     # 4학년(반지름 70) 얼굴과도 겹치지 않음
     face_top = config.STUDENT_CENTER_Y - (config.BASE_RADIUS + 3 * config.RADIUS_PER_GRADE)
@@ -702,8 +715,9 @@ def test_banner_pixels_do_not_cover_gauges(playing_game):
     y_m = config.MENTAL_BAR_Y + config.BAR_HEIGHT // 2
     assert color(g.screen, config.GAUGE_X + 5, y_h) == config.COLOR_GREEN
     assert color(g.screen, config.GAUGE_X + 5, y_m) == config.COLOR_RED
-    # 정보바 배경도 남아 있다
-    assert color(g.screen, 2, 2) == config.COLOR_INFO_BAR
+    # 정보바 몸통도 남아 있다 (도트 재디자인: 외곽선 1칸 안쪽, 글자 세로 가운데)
+    assert color(g.screen, config.INFO_BOX_X + 2 * config.PIXEL_SIZE,
+                 config.INFO_TEXT_CENTER_Y) == config.COLOR_INFO_BAR
 
 
 # ======================= 회귀: 쿨타임, 게이지 범위 =======================

@@ -3,6 +3,7 @@
 import pygame
 
 import config
+from button import draw_cut_rect, draw_pixel_box, draw_sprite, render_text, sprite_size
 
 
 def clamp(value, low, high):
@@ -21,17 +22,6 @@ def judge_ending(knowledge):
     if knowledge >= config.NORMAL_GRADUATE_KNOWLEDGE:
         return config.ENDING_NORMAL
     return config.ENDING_BARELY
-
-
-def draw_thick_arc(screen, color, rect, start, stop, thickness):
-    """두께 thickness인 호를 그린다.
-
-    pygame.draw.arc에 두께를 크게 주면 호 사이에 빈 점이 생겨서,
-    두께 1짜리 호를 1픽셀씩 아래로 옮기며 thickness번 겹쳐 그린다.
-    """
-    for step in range(thickness):
-        moved = rect.move(config.ARC_SHIFT_X, step * config.ARC_LINE_STEP)
-        pygame.draw.arc(screen, color, moved, start, stop, config.ARC_LINE_STEP)
 
 
 class Student:
@@ -226,138 +216,115 @@ class Student:
         return self.get_grade() >= config.GLASSES_GRADE
 
     # ------------------------------------------------------------
-    # 그리기
+    # 그리기 (도트 스타일)
     # ------------------------------------------------------------
     def draw_gauges(self, screen, font):
-        """왼쪽 게이지 구역에 체력·멘탈 막대를 그린다.
+        """왼쪽 상태 패널에 체력·멘탈 게이지를 그린다.
 
-        지식 숫자는 4일차부터 상단 정보바에서 Game이 학년·남은 시간과 함께 그린다.
+        지식 숫자는 상단 정보바에서 Game이 학년·남은 시간과 함께 그린다.
+        체력 줄에는 하트 아이콘, 멘탈 줄에는 별 아이콘을 라벨 앞에 붙인다.
         """
         self.draw_bar(screen, font, config.HEALTH_LABEL, self.health,
-                      config.HEALTH_LABEL_Y, config.HEALTH_BAR_Y)
+                      config.HEALTH_LABEL_Y, config.HEALTH_BAR_Y,
+                      config.HEART_SPRITE, config.HEART_COLORS)
         self.draw_bar(screen, font, config.MENTAL_LABEL, self.mental,
-                      config.MENTAL_LABEL_Y, config.MENTAL_BAR_Y)
+                      config.MENTAL_LABEL_Y, config.MENTAL_BAR_Y,
+                      config.STAR_SPRITE, {config.SPRITE_INK: config.COLOR_SKY})
 
-    def draw_bar(self, screen, font, label, value, label_y, bar_y):
-        """라벨과 게이지 막대 하나를 그린다.
+    def draw_bar(self, screen, font, label, value, label_y, bar_y, icon, icon_colors):
+        """아이콘·라벨과 도트 게이지 막대 하나를 그린다.
 
-        배경(흰색)을 깔고 값 비율만큼 색을 채운 뒤 검은 테두리를 그린다.
-        값이 30 미만이면 빨간색, 아니면 초록색으로 채운다.
-        테두리는 막대 바깥쪽에 그려서 채움을 덮지 않는다.
-        그래서 값이 1이어도 채움이 보이고, 채움 길이가 값에 정확히 비례한다.
+        - 막대 바깥에 계단형 모서리 남색 테두리(도트 1칸)를 두르고, 안쪽 빈 부분은 연한 색.
+        - 채움 폭 = 막대 폭 x 값 / 100 (픽셀 단위로 정확히 비례). 값이 1이어도 2픽셀이 보인다.
+        - 채움 색은 실제 값이 30 미만이면 빨강, 아니면 초록. 맨 위 줄은 밝게, 맨 아래 줄은 어둡게.
+        테두리는 막대 바깥쪽에 있어서 채움을 가리지 않는다.
         """
-        label_text = font.render(label, True, config.COLOR_BLACK)
-        screen.blit(label_text, (config.GAUGE_X, label_y))
+        # 1) 아이콘 + 라벨 (아이콘 세로 가운데에 글자를 맞춘다)
+        icon_width, icon_height = sprite_size(icon, config.PIXEL_SIZE)
+        draw_sprite(screen, icon, config.GAUGE_X, label_y, config.PIXEL_SIZE, icon_colors)
+        label_text = render_text(font, label)
+        label_rect = label_text.get_rect()
+        label_rect.midleft = (config.GAUGE_X + icon_width + config.GAUGE_LABEL_GAP,
+                              label_y + icon_height // config.HALF)
+        screen.blit(label_text, label_rect)
 
-        # 1) 막대 배경
-        bar_rect = pygame.Rect(config.GAUGE_X, bar_y,
-                               config.BAR_WIDTH, config.BAR_HEIGHT)
-        # 테두리용 사각형: 막대보다 사방으로 테두리 두께만큼 크다
-        border_rect = bar_rect.inflate(config.BAR_BORDER_GROW,
-                                       config.BAR_BORDER_GROW)
-        pygame.draw.rect(screen, config.COLOR_BAR_BG, bar_rect)
+        # 2) 테두리 상자: 막대보다 사방으로 1칸 크다 -> 상자 안쪽 = 막대 자리
+        bar_rect = pygame.Rect(config.GAUGE_X, bar_y, config.BAR_WIDTH, config.BAR_HEIGHT)
+        draw_pixel_box(screen, bar_rect.inflate(config.BOX_INSET, config.BOX_INSET),
+                       config.COLOR_BAR_BG, light=config.COLOR_BAR_BG_SHADE)
 
-        # 2) 값 비율만큼 채우기
+        # 3) 값 비율만큼 채우기 (색은 실제 값 기준)
         if value < config.LOW_GAUGE_LIMIT:
-            fill_color = config.COLOR_RED
+            colors = (config.COLOR_RED, config.COLOR_RED_LIGHT, config.COLOR_RED_DARK)
         else:
-            fill_color = config.COLOR_GREEN
+            colors = (config.COLOR_GREEN, config.COLOR_GREEN_LIGHT, config.COLOR_GREEN_DARK)
         fill_width = int(config.BAR_WIDTH * value / config.GAUGE_MAX)
-        fill_rect = pygame.Rect(config.GAUGE_X, bar_y,
-                                fill_width, config.BAR_HEIGHT)
-        pygame.draw.rect(screen, fill_color, fill_rect)
+        self.draw_bar_fill(screen, bar_rect, fill_width, colors)
 
-        # 3) 테두리 (막대 바깥쪽)
-        pygame.draw.rect(screen, config.COLOR_BLACK, border_rect,
-                         config.BAR_BORDER_WIDTH)
+    def draw_bar_fill(self, screen, bar_rect, fill_width, colors):
+        """막대 왼쪽부터 fill_width 픽셀만큼 채운다. colors = (몸통, 위 줄, 아래 줄).
+
+        fill_width가 0이면 폭 0인 사각형이라 아무것도 그려지지 않는다.
+        """
+        main, light, dark = colors
+        fill = pygame.Rect(bar_rect.left, bar_rect.top, fill_width, bar_rect.height)
+        pygame.draw.rect(screen, main, fill)
+        pygame.draw.rect(screen, light, (fill.left, fill.top, fill.width, config.PIXEL_SIZE))
+        pygame.draw.rect(screen, dark, (fill.left, fill.bottom - config.PIXEL_SIZE,
+                                        fill.width, config.PIXEL_SIZE))
+
+    def get_cell_size(self):
+        """제자 스프라이트의 도트 1칸 크기를 돌려준다: 반지름 // 10 -> 4/5/6/7 픽셀.
+
+        얼굴 격자가 20칸이므로 얼굴 지름 = 20 x 칸 크기 = 2 x 반지름(80/100/120/140)이 된다.
+        """
+        return self.get_radius() // config.FACE_CELL_DIVISOR
 
     def draw(self, screen):
-        """오른쪽 제자 구역에 제자 얼굴을 그린다.
+        """오른쪽 제자 무대에 제자를 도트 스프라이트로 그린다.
 
-        얼굴(원 + 테두리), 눈 2개, 입을 그리고,
-        체력 30 미만이면 다크서클, 3학년부터 안경을 더 그린다.
-        모든 요소의 크기와 위치는 반지름에 비례하므로 학년이 오르면 함께 커진다.
+        발밑 그림자 -> 얼굴(머리카락 포함) -> 볼 홍조 -> 눈 -> (체력 30 미만) 다크서클
+        -> (3학년부터) 안경 -> 입 순서로 찍는다. 모든 부품은 얼굴 격자 칸 단위로 놓이고,
+        칸 크기가 학년마다 커지므로 얼굴과 부품이 함께 커진다.
         """
         radius = self.get_radius()
-        cx = config.STUDENT_CENTER_X
-        cy = config.STUDENT_CENTER_Y
-        line = max(config.MIN_LINE_WIDTH, int(radius * config.FACE_BORDER_RATIO))
+        cell = self.get_cell_size()
+        left = config.STUDENT_CENTER_X - radius
+        top = config.STUDENT_CENTER_Y - radius
 
-        # 1) 얼굴: 살구색 원 + 검은 테두리
-        pygame.draw.circle(screen, config.COLOR_SKIN, (cx, cy), radius)
-        pygame.draw.circle(screen, config.COLOR_FACE_LINE, (cx, cy), radius, line)
-
-        # 2) 눈 2개 (왼쪽, 오른쪽)
-        eye_dx = int(radius * config.EYE_OFFSET_X_RATIO)
-        eye_y = cy - int(radius * config.EYE_OFFSET_Y_RATIO)
-        eye_radius = max(config.MIN_LINE_WIDTH, int(radius * config.EYE_RADIUS_RATIO))
-        eye_centers = [(cx - eye_dx, eye_y), (cx + eye_dx, eye_y)]
-        for eye in eye_centers:
-            pygame.draw.circle(screen, config.COLOR_FACE_LINE, eye, eye_radius)
-
-        # 3) 다크서클 (체력 30 미만): 각 눈 아래 아래쪽 반원 호
+        self.draw_shadow(screen, radius, cell)
+        draw_sprite(screen, config.FACE_SPRITE, left, top, cell, config.FACE_COLORS)
+        self.draw_parts(screen, left, top, cell, config.BLUSH_SPRITE, config.BLUSH_POSITIONS)
+        self.draw_parts(screen, left, top, cell, config.EYE_SPRITE, config.EYE_POSITIONS)
         if self.has_dark_circles():
-            self.draw_dark_circles(screen, radius, eye_centers, line)
-
-        # 4) 안경 (3학년부터): 눈 둘레 원 2개 + 가운데 다리 + 양옆 다리
+            self.draw_parts(screen, left, top, cell,
+                            config.DARK_CIRCLE_SPRITE, config.DARK_CIRCLE_POSITIONS)
         if self.has_glasses():
-            self.draw_glasses(screen, radius, eye_centers, line)
+            self.draw_glasses(screen, left, top, cell)
+        self.draw_mouth(screen, left, top, cell)
 
-        # 5) 입
-        self.draw_mouth(screen, radius, cx, cy, line)
+    def draw_shadow(self, screen, radius, cell):
+        """얼굴 아래에 납작한 도트 그림자(모서리 깎은 사각형)를 그린다."""
+        width = int(radius * config.SHADOW_WIDTH_RATIO)
+        shadow = pygame.Rect(config.ORIGIN, (width, config.SHADOW_HEIGHT))
+        shadow.midtop = (config.STUDENT_CENTER_X,
+                         config.STUDENT_CENTER_Y + radius + config.SHADOW_GAP)
+        draw_cut_rect(screen, config.COLOR_STAGE_SHADOW, shadow)
 
-    def draw_dark_circles(self, screen, radius, eye_centers, line):
-        """각 눈 바로 아래에 다크서클(아래쪽 반원 호)을 그린다."""
-        width = int(radius * config.DARK_CIRCLE_WIDTH_RATIO)
-        height = int(radius * config.DARK_CIRCLE_HEIGHT_RATIO)
-        offset_y = int(radius * config.DARK_CIRCLE_OFFSET_Y_RATIO)
-        thickness = max(config.MIN_DARK_CIRCLE_LINE,
-                        int(radius * config.DARK_CIRCLE_LINE_RATIO))
-        for eye_x, eye_y in eye_centers:
-            rect = pygame.Rect(config.ORIGIN, (width, height))
-            rect.center = (eye_x, eye_y + offset_y)
-            draw_thick_arc(screen, config.COLOR_DARK_CIRCLE, rect,
-                           config.ARC_LOWER_START, config.ARC_LOWER_STOP, thickness)
+    def draw_parts(self, screen, left, top, cell, grid, positions):
+        """같은 모양 부품 grid를 얼굴 격자의 여러 칸 위치(positions)에 찍는다."""
+        for col, row in positions:
+            draw_sprite(screen, grid, left + col * cell, top + row * cell,
+                        cell, config.FACE_COLORS)
 
-    def draw_glasses(self, screen, radius, eye_centers, line):
-        """눈 둘레에 안경알(원) 2개를 그리고, 안경알 사이와 양옆(얼굴 끝까지)에 다리 선을 그린다."""
-        lens = int(radius * config.GLASSES_RADIUS_RATIO)
-        (left_x, eye_y), (right_x, _) = eye_centers
-        for eye in eye_centers:
-            pygame.draw.circle(screen, config.COLOR_FACE_LINE, eye, lens, line)
-        # 가운데 다리: 왼쪽 안경알 오른쪽 끝 -> 오른쪽 안경알 왼쪽 끝
-        pygame.draw.line(screen, config.COLOR_FACE_LINE,
-                         (left_x + lens, eye_y), (right_x - lens, eye_y), line)
-        # 양옆 다리: 안경알 바깥쪽 끝 -> 얼굴 테두리 쪽
-        cx = config.STUDENT_CENTER_X
-        pygame.draw.line(screen, config.COLOR_FACE_LINE,
-                         (left_x - lens, eye_y), (cx - radius, eye_y), line)
-        pygame.draw.line(screen, config.COLOR_FACE_LINE,
-                         (right_x + lens, eye_y), (cx + radius, eye_y), line)
+    def draw_glasses(self, screen, left, top, cell):
+        """안경(둥근 안경알 2개 + 가운데 다리 + 양옆 다리)을 얼굴 위에 찍는다."""
+        for (col, row), grid in config.GLASSES_PARTS:
+            draw_sprite(screen, grid, left + col * cell, top + row * cell,
+                        cell, config.FACE_COLORS)
 
-    def draw_mouth(self, screen, radius, cx, cy, line):
-        """멘탈에 따라 입을 그린다.
-
-        웃는 입: 아래로 볼록한 호(타원의 아래쪽 반)
-        일자 입: 가로 선
-        우는 입: 위로 볼록한 호(타원의 위쪽 반)
-        """
-        width = int(radius * config.MOUTH_WIDTH_RATIO)
-        height = int(radius * config.MOUTH_HEIGHT_RATIO)
-        mouth_y = cy + int(radius * config.MOUTH_OFFSET_Y_RATIO)
-        rect = pygame.Rect(config.ORIGIN, (width, height))
-        rect.center = (cx, mouth_y)
-
-        # 타원의 가운데 가로줄이 입 높이(mouth_y)다. 입꼬리 두 점이 이 줄 위에 있다.
-        mouth = self.get_mouth()
-        if mouth == config.MOUTH_SMILE:
-            # 타원의 아래쪽 반만 그린다 -> 입꼬리에서 아래로 볼록
-            draw_thick_arc(screen, config.COLOR_FACE_LINE, rect,
-                           config.ARC_LOWER_START, config.ARC_LOWER_STOP, line)
-        elif mouth == config.MOUTH_FLAT:
-            pygame.draw.line(screen, config.COLOR_FACE_LINE,
-                             (rect.left, mouth_y), (rect.right, mouth_y), line)
-        else:
-            # 타원의 위쪽 반만 그린다 -> 입꼬리에서 위로 볼록
-            draw_thick_arc(screen, config.COLOR_FACE_LINE, rect,
-                           config.ARC_UPPER_START, config.ARC_UPPER_STOP, line)
+    def draw_mouth(self, screen, left, top, cell):
+        """멘탈에 따른 입(웃는 입 / 일자 입 / 우는 입)을 찍는다. 모양은 get_mouth가 정한다."""
+        (col, row), grid = config.MOUTH_SPRITES[self.get_mouth()]
+        draw_sprite(screen, grid, left + col * cell, top + row * cell,
+                    cell, config.FACE_COLORS)
