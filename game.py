@@ -1,5 +1,6 @@
 """게임 전체(Game) 클래스가 들어 있는 파일."""
 
+import json
 import sys
 
 import pygame
@@ -17,10 +18,18 @@ ACTION_KEYS = {
 
 
 class Game:
-    """메인 루프와 화면 전환(타이틀/게임/엔딩), 시간 관리(행동 쿨타임 포함)를 맡는 클래스."""
+    """메인 루프와 화면 전환(타이틀/게임/엔딩), 시간 관리(행동 쿨타임 포함), 기록 저장을 맡는 클래스."""
 
-    def __init__(self):
-        """pygame을 켜고 800x600 창과 시계, 글꼴, 버튼 3개, 첫 화면(타이틀)을 준비한다."""
+    def __init__(self, record_path=None):
+        """pygame을 켜고 800x600 창과 시계, 글꼴, 버튼 3개, 첫 화면(타이틀)을 준비한다.
+
+        record_path는 최고 기록 파일 경로다. 주지 않으면 config.RECORD_PATH
+        (exe 옆 또는 main.py 옆의 record.json)를 쓴다. 테스트에서는 임시 폴더 경로를 넘긴다.
+        시작할 때 이 파일에서 최고 기록을 불러온다.
+        """
+        if record_path is None:
+            record_path = config.RECORD_PATH
+        self.record_path = record_path   # 최고 기록 파일(record.json) 경로
         pygame.init()
         self.screen = pygame.display.set_mode(
             (config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
@@ -31,8 +40,7 @@ class Game:
         self.title_font = pygame.font.SysFont(config.FONT_NAME, config.TITLE_FONT_SIZE)
 
         self.running = True              # False가 되면 메인 루프가 끝난다
-        # 최고 기록(지식). record.json 저장·불러오기는 6일차에 붙인다.
-        self.best_record = config.BEST_RECORD_START
+        self.best_record = self.load_best_record()  # 최고 기록(지식). 타이틀에 표시
         self.buttons = self.make_buttons()
         self.reset_round()
         self.state = config.START_STATE  # 처음 보여 줄 화면(타이틀)
@@ -52,9 +60,64 @@ class Game:
         self.state = config.STATE_PLAYING
 
     def end_game(self, ending):
-        """엔딩 이름 ending을 저장하고 엔딩 화면으로 바꾼다."""
+        """엔딩 이름 ending을 저장하고 엔딩 화면으로 바꾼다.
+
+        휴학·졸업 모두 여기를 지나간다. 이번 판 누적 지식이 최고 기록보다 크면
+        최고 기록을 바꾸고 record.json에 저장한다.
+        """
         self.ending = ending
         self.state = config.STATE_ENDING
+        self.update_best_record(self.student.knowledge)
+
+    # ------------------------------------------------------------
+    # 최고 기록 (record.json)
+    # ------------------------------------------------------------
+    def load_best_record(self):
+        """record.json에서 최고 기록(지식)을 읽어 돌려준다.
+
+        파일이 없거나, 읽을 수 없거나, JSON이 깨졌거나, 형식이 틀리면
+        (사전이 아님, 키 없음, 정수가 아님, 음수) 0을 돌려준다. 어떤 경우에도 멈추지 않는다.
+        """
+        try:
+            with open(self.record_path, encoding=config.RECORD_ENCODING) as file:
+                data = json.load(file)
+        except (OSError, ValueError):
+            # OSError: 파일 없음·권한 없음 등 / ValueError: JSON 깨짐·글자 깨짐
+            return config.BEST_RECORD_START
+        if not isinstance(data, dict):
+            return config.BEST_RECORD_START
+        value = data.get(config.RECORD_KEY)
+        # bool(True/False)도 int의 한 종류라서 따로 빼 준다
+        if not isinstance(value, int) or isinstance(value, bool):
+            return config.BEST_RECORD_START
+        if value < config.BEST_RECORD_START:
+            return config.BEST_RECORD_START
+        return value
+
+    def save_best_record(self):
+        """지금 최고 기록을 record.json에 {"best_knowledge": 값} 형태로 저장한다.
+
+        저장에 실패하면(폴더 권한 없음 등) False를 돌려주고 게임은 그대로 계속한다.
+        성공하면 True를 돌려준다.
+        """
+        data = {config.RECORD_KEY: self.best_record}
+        try:
+            with open(self.record_path, "w", encoding=config.RECORD_ENCODING) as file:
+                json.dump(data, file)
+        except OSError:
+            return False
+        return True
+
+    def update_best_record(self, knowledge):
+        """knowledge가 최고 기록보다 크면 최고 기록을 바꾸고 파일에 저장한다.
+
+        바뀌었으면 True, 같거나 작아서 그대로면 False를 돌려준다.
+        """
+        if knowledge <= self.best_record:
+            return False
+        self.best_record = knowledge
+        self.save_best_record()
+        return True
 
     def check_ending(self):
         """제자 상태를 보고 엔딩이 났으면 엔딩 화면으로 바꾼다.

@@ -4,6 +4,9 @@
 값은 docs/기획서.md 와 jeja-spec 기준표를 따른다.
 """
 
+import os
+import sys
+
 # ---------------------------------------------------------------
 # 1. 창과 화면
 # ---------------------------------------------------------------
@@ -129,6 +132,23 @@ ENDING_BARELY = "아슬아슬 졸업"
 # 9. 최고 기록
 # ---------------------------------------------------------------
 RECORD_FILENAME = "record.json"  # 최고 기록을 저장할 파일 이름
+RECORD_KEY = "best_knowledge"    # record.json 안에서 최고 지식을 담는 키: {"best_knowledge": 520}
+RECORD_ENCODING = "utf-8"        # record.json 을 읽고 쓸 때 쓰는 글자 인코딩
+
+
+def get_base_dir():
+    """record.json을 저장할 폴더를 돌려준다.
+
+    PyInstaller로 만든 exe로 실행 중이면(sys.frozen) exe 파일이 있는 폴더,
+    파이썬으로 실행 중이면 이 파일(config.py, main.py와 같은 폴더)이 있는 폴더다.
+    --onefile exe는 임시 폴더에 풀려서 돌아가므로 __file__ 기준으로 저장하면 기록이 사라진다.
+    """
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+RECORD_PATH = os.path.join(get_base_dir(), RECORD_FILENAME)  # 최고 기록 파일 전체 경로
 
 # ---------------------------------------------------------------
 # 10. 색 (R, G, B)
@@ -226,7 +246,7 @@ TITLE_LINE_HALF = 180       # 장식 선의 절반 길이(화면 가운데에서
 TITLE_LINE_WIDTH = 3        # 장식 선 두께
 BEST_RECORD_TEXT = "최고 기록: 지식 {}"  # 최고 기록 글자 틀
 BEST_RECORD_Y = 300         # 최고 기록 가운데 y
-BEST_RECORD_START = 0       # 최고 기록 시작값 (record.json 저장·불러오기는 6일차)
+BEST_RECORD_START = 0       # 최고 기록 기본값 (record.json 이 없거나 깨졌을 때)
 START_HINT_TEXT = "Enter를 눌러 시작"
 START_HINT_Y = 420          # 시작 안내 가운데 y
 SCREEN_CENTER_X = SCREEN_WIDTH // 2  # 화면 가운데 x

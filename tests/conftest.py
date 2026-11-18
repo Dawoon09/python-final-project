@@ -20,6 +20,20 @@ def press(game, key):
     game.handle_event(pygame.event.Event(pygame.KEYDOWN, key=key))
 
 
+@pytest.fixture(autouse=True)
+def isolated_record_path(tmp_path, monkeypatch):
+    """(6일차) 모든 테스트에서 최고 기록 파일을 임시 폴더로 돌린다.
+
+    어떤 테스트도 프로젝트 루트에 실제 record.json을 만들거나 읽지 않게 한다.
+    Game(record_path=None)은 생성 시점의 config.RECORD_PATH를 쓰므로 이것으로 충분하다.
+    """
+    import config
+
+    path = str(tmp_path / "record.json")
+    monkeypatch.setattr(config, "RECORD_PATH", path)
+    yield path
+
+
 @pytest.fixture
 def playing_game():
     """(5일차부터 타이틀에서 시작) Game을 만들고 타이틀에서 Enter를 눌러 게임 진행 중으로 만든다."""

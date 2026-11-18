@@ -816,8 +816,14 @@ def test_judge_ending_takes_only_knowledge():
     assert callable(getattr(student_module, "judge_ending"))
 
 
-def test_no_record_file_io_yet():
-    """최고 기록 저장은 6일차: 5일차 game.py는 파일을 열지 않는다(표시만)."""
+def test_record_file_io_only_in_game():
+    """(6일차 기준으로 변경) 기록 파일 입출력은 Game(game.py)만 맡는다.
+
+    5일차에는 game.py에 open(이 없어야 했지만, 6일차부터는 game.py에 있는 것이 정상이다.
+    Student·Button·main은 파일을 열지 않는다.
+    """
     from pathlib import Path
-    src = (Path(config.__file__).parent / "game.py").read_text(encoding="utf-8")
-    assert "open(" not in src
+    root = Path(config.__file__).parent
+    assert "open(" in (root / "game.py").read_text(encoding="utf-8")
+    for name in ("student.py", "button.py", "main.py"):
+        assert "open(" not in (root / name).read_text(encoding="utf-8"), name
