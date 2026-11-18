@@ -1,0 +1,42 @@
+# 제자 키우기
+
+교수가 되어 신입생 제자 한 명을 240초(1~4학년) 동안 돌보며 졸업시키는 pygame 육성 게임.
+
+- 기준 문서: `docs/기획서.md` (유일한 기준). 요약 기준표는 스킬 `jeja-spec`.
+- 기획서와 다르게 구현해야 할 이유가 생기면, 바꾸기 전에 사용자에게 먼저 물어본다.
+
+## 실행 방법
+
+```
+python main.py
+```
+
+이 PC에는 Python 3.14도 설치되어 있으므로 3.12로 실행하려면 `py -3.12 main.py`를 쓴다.
+
+테스트: `py -3.12 -m pytest` (검수팀 테스트는 `tests/`, `SDL_VIDEODRIVER=dummy`)
+
+## 제약
+
+- Python 3.12, pygame 2.6, 표준 라이브러리(json, sys, os)만 사용한다. 다른 외부 라이브러리는 쓰지 않는다.
+  - 예외: 테스트 도구 pytest(개발용, 게임 실행에는 쓰지 않음), 빌드 도구 PyInstaller.
+- 이미지·사운드 파일은 쓰지 않는다. 모든 그래픽은 `pygame.draw`의 도형으로만 그린다.
+- 한글 폰트는 `pygame.font.SysFont("malgungothic", 크기)`를 쓴다. 기본 폰트(`Font(None)`)는 한글이 깨진다.
+- 기획서 구조대로 클래스는 Student, Button, Game 3개로 한다. 파일 구성:
+  - `main.py`: 실행 진입점
+  - `student.py`: Student 클래스
+  - `button.py`: Button 클래스
+  - `game.py`: Game 클래스
+  - `config.py`: 게이지 시작값, 증감량, 시간, 엔딩 기준 같은 모든 수치 상수
+- 기획서에 없는 기능은 추가하지 않는다.
+- 대학교 1학년 과제다. 코드는 읽기 쉽게 쓰고, 클래스와 함수마다 한국어 docstring을 단다.
+- Git: 루프 단위 하나가 검수를 통과할 때마다 한국어 메시지로 커밋한다. push는 사용자가 확인한 뒤에 한다.
+  - 작업 브랜치: `feat/jeja-game`
+
+## 저장소에 원래 있던 것
+
+`src/final_project/`, `tests/test_core.py`, `pyproject.toml`은 과제 템플릿 예제다. 지우지 않고 그대로 둔다.
+
+## 작업 방식
+
+- 개발: 에이전트 `dev-team` / 검수: 에이전트 `qa-team` (게임 코드는 고치지 않음)
+- 루프 단위: 기획서 "6. 개발 일정" 1~6일차. 개발 → 검수 → (불통과면 수정 → 재검수), 같은 단위 3회 불통과면 멈춘다.
