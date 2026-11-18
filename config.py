@@ -1,0 +1,277 @@
+"""제자 키우기의 모든 수치 상수를 모아 둔 파일.
+
+다른 파일에서는 숫자를 직접 쓰지 않고 여기 있는 상수를 가져다 쓴다.
+값은 docs/기획서.md 와 jeja-spec 기준표를 따른다.
+"""
+
+import os
+import sys
+
+# ---------------------------------------------------------------
+# 1. 창과 화면
+# ---------------------------------------------------------------
+SCREEN_WIDTH = 800          # 창 가로 크기(픽셀)
+SCREEN_HEIGHT = 600         # 창 세로 크기(픽셀)
+FPS = 60                    # 1초에 화면을 몇 번 그릴지
+WINDOW_TITLE = "제자 키우기"  # 창 제목
+FONT_NAME = "malgungothic"  # 한글 폰트 이름 (SysFont 용)
+MS_PER_SECOND = 1000        # 밀리초 -> 초 변환에 쓰는 값
+
+# ---------------------------------------------------------------
+# 2. 화면 상태 이름
+# ---------------------------------------------------------------
+STATE_TITLE = "title"       # 타이틀 화면
+STATE_PLAYING = "playing"   # 게임 화면
+STATE_ENDING = "ending"     # 엔딩 화면
+
+# 게임을 켰을 때 처음 보여 줄 화면: 타이틀 화면
+START_STATE = STATE_TITLE
+
+# ---------------------------------------------------------------
+# 3. 시간
+# ---------------------------------------------------------------
+SECONDS_PER_GRADE = 60                      # 학년당 시간(초)
+MAX_GRADE = 4                               # 마지막 학년
+TOTAL_SECONDS = SECONDS_PER_GRADE * MAX_GRADE  # 전체 시간 240초
+EXAM_SECONDS = 15                           # 각 학년 마지막 15초가 시험 기간
+FIRST_GRADE = 1                             # 처음 학년
+ZERO_TIME = 0.0                             # 시간 값의 시작값·하한(초): 타이머 초기값, 쿨타임 하한
+
+# ---------------------------------------------------------------
+# 4. 게이지
+# ---------------------------------------------------------------
+GAUGE_MIN = 0               # 체력·멘탈·지식의 최솟값
+GAUGE_MAX = 100             # 체력·멘탈의 최댓값 (지식은 상한 없음)
+
+HEALTH_START = 80           # 체력 시작값
+MENTAL_START = 80           # 멘탈 시작값
+KNOWLEDGE_START = 0         # 지식 시작값
+
+HEALTH_DECAY_PER_SEC = 1        # 체력 자연 감소(1초마다)
+MENTAL_DECAY_PER_SEC = 1        # 멘탈 자연 감소(1초마다)
+MENTAL_DECAY_PER_SEC_EXAM = 2   # 시험 기간 멘탈 자연 감소(1초마다)
+DECAY_INTERVAL = 1.0            # 자연 감소가 일어나는 간격(초)
+TIME_EPSILON = 1e-9             # 소수 덧셈 오차 허용치 (0.1을 10번 더하면 0.9999999…가 되는 문제 방지)
+
+LOW_GAUGE_LIMIT = 30        # 이 값 미만이면 막대가 빨간색, 체력은 다크서클
+
+# ---------------------------------------------------------------
+# 5. 행동 증감량과 쿨타임
+# ---------------------------------------------------------------
+FEED_HEALTH = 20            # 학식 먹이기: 체력 +20
+
+REST_MENTAL = 20            # 쉬게 하기: 멘탈 +20
+REST_KNOWLEDGE = -2         # 쉬게 하기: 지식 -2
+
+STUDY_HEALTH = -5           # 공부시키기: 체력 -5
+STUDY_MENTAL = -8           # 공부시키기: 멘탈 -8
+STUDY_KNOWLEDGE = 10        # 공부시키기: 지식 +10
+STUDY_KNOWLEDGE_EXAM = 20   # 시험 기간 공부시키기: 지식 +20
+
+ACTION_COOLDOWN = 1.0       # 행동 후 쿨타임(초), 세 행동이 함께 쓴다
+
+# ---------------------------------------------------------------
+# 6. 표정 기준
+# ---------------------------------------------------------------
+MENTAL_SMILE_MIN = 60       # 멘탈이 이 값 이상이면 웃는 입
+MENTAL_FLAT_MIN = 30        # 멘탈이 이 값 이상(60 미만)이면 일자 입, 미만이면 우는 입
+
+# ---------------------------------------------------------------
+# 7. 캐릭터 크기
+# ---------------------------------------------------------------
+BASE_RADIUS = 40            # 1학년 반지름
+RADIUS_PER_GRADE = 10       # 학년이 오를 때마다 늘어나는 반지름
+GLASSES_GRADE = 3           # 이 학년부터 안경을 쓴다
+
+# 표정 이름 (Student.get_mouth 가 돌려주는 값)
+MOUTH_SMILE = "smile"       # 웃는 입 (아래로 볼록한 호)
+MOUTH_FLAT = "flat"         # 일자 입 (선)
+MOUTH_CRY = "cry"           # 우는 입 (위로 볼록한 호)
+
+# 제자 얼굴 위치: 오른쪽 제자 구역(게이지 구역 오른쪽 ~ 창 오른쪽, 배너 아래 ~ 버튼 위)의 가운데쯤
+STUDENT_CENTER_X = 530      # 얼굴 중심 x
+STUDENT_CENTER_Y = 290      # 얼굴 중심 y
+
+# 얼굴 요소 크기·위치 비율 (모두 "반지름 x 비율"로 계산해서 학년이 오르면 함께 커진다)
+FACE_BORDER_RATIO = 0.05        # 얼굴 테두리·입·안경 선 두께
+MIN_LINE_WIDTH = 2              # 선 두께 최솟값(픽셀)
+EYE_OFFSET_X_RATIO = 0.35       # 눈: 얼굴 중심에서 좌우로 떨어진 거리
+EYE_OFFSET_Y_RATIO = 0.2        # 눈: 얼굴 중심보다 위로 올라간 거리
+EYE_RADIUS_RATIO = 0.08         # 눈 반지름
+MOUTH_OFFSET_Y_RATIO = 0.35     # 입: 얼굴 중심보다 아래로 내려간 거리
+MOUTH_WIDTH_RATIO = 0.5         # 입 가로 길이
+MOUTH_HEIGHT_RATIO = 0.3        # 웃는/우는 입 호를 담는 타원의 세로 길이
+DARK_CIRCLE_OFFSET_Y_RATIO = 0.2    # 다크서클 호를 담는 타원의 중심이 눈 중심보다 아래로 내려간 거리(안경알 아래)
+DARK_CIRCLE_WIDTH_RATIO = 0.3       # 다크서클 호를 담는 타원의 가로 길이
+DARK_CIRCLE_HEIGHT_RATIO = 0.16     # 다크서클 호를 담는 타원의 세로 길이
+DARK_CIRCLE_LINE_RATIO = 0.07       # 다크서클 선 두께
+MIN_DARK_CIRCLE_LINE = 3            # 다크서클 선 두께 최솟값(픽셀)
+ARC_SHIFT_X = 0                     # 두꺼운 호를 겹쳐 그릴 때 가로로는 옮기지 않는다
+ARC_LINE_STEP = 1                   # 두꺼운 호를 1픽셀 호 여러 개로 겹쳐 그릴 때 한 번에 옮기는 픽셀
+GLASSES_RADIUS_RATIO = 0.18         # 안경알(원) 반지름
+
+# 호(arc) 각도. pygame 각도는 오른쪽이 0, 반시계 방향으로 커진다(위쪽이 원주율/2).
+PI = 3.141592653589793      # 원주율 (math 모듈 없이 쓰려고 상수로 둔다)
+ARC_UPPER_START = 0         # 위쪽 반원 호: 0 ~ 원주율
+ARC_UPPER_STOP = PI
+ARC_LOWER_START = PI        # 아래쪽 반원 호: 원주율 ~ 2 x 원주율
+ARC_LOWER_STOP = PI * 2
+
+# ---------------------------------------------------------------
+# 8. 엔딩 기준
+# ---------------------------------------------------------------
+TOP_GRADUATE_KNOWLEDGE = 500    # 지식 500 이상: 수석 졸업
+NORMAL_GRADUATE_KNOWLEDGE = 300  # 지식 300 이상 499 이하: 무사 졸업, 미만: 아슬아슬 졸업
+
+ENDING_LEAVE = "휴학"
+ENDING_TOP = "수석 졸업"
+ENDING_NORMAL = "무사 졸업"
+ENDING_BARELY = "아슬아슬 졸업"
+
+# ---------------------------------------------------------------
+# 9. 최고 기록
+# ---------------------------------------------------------------
+RECORD_FILENAME = "record.json"  # 최고 기록을 저장할 파일 이름
+RECORD_KEY = "best_knowledge"    # record.json 안에서 최고 지식을 담는 키: {"best_knowledge": 520}
+RECORD_ENCODING = "utf-8"        # record.json 을 읽고 쓸 때 쓰는 글자 인코딩
+
+
+def get_base_dir():
+    """record.json을 저장할 폴더를 돌려준다.
+
+    PyInstaller로 만든 exe로 실행 중이면(sys.frozen) exe 파일이 있는 폴더,
+    파이썬으로 실행 중이면 이 파일(config.py, main.py와 같은 폴더)이 있는 폴더다.
+    --onefile exe는 임시 폴더에 풀려서 돌아가므로 __file__ 기준으로 저장하면 기록이 사라진다.
+    """
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+RECORD_PATH = os.path.join(get_base_dir(), RECORD_FILENAME)  # 최고 기록 파일 전체 경로
+
+# ---------------------------------------------------------------
+# 10. 색 (R, G, B)
+# ---------------------------------------------------------------
+COLOR_BG = (245, 240, 230)          # 배경색
+COLOR_BLACK = (0, 0, 0)
+COLOR_WHITE = (255, 255, 255)
+COLOR_GRAY = (160, 160, 160)        # 쿨타임 중 버튼 색
+COLOR_GREEN = (80, 180, 80)         # 정상 게이지 막대 색
+COLOR_RED = (220, 60, 60)           # 30 미만 게이지 막대 색
+COLOR_YELLOW = (250, 220, 60)       # 시험 기간 배너 색
+COLOR_BUTTON = (100, 140, 220)      # 평소 버튼 색
+COLOR_SKIN = (255, 220, 180)        # 제자 얼굴 색
+COLOR_DARK_CIRCLE = (110, 80, 140)   # 다크서클 색
+COLOR_BAR_BG = (255, 255, 255)      # 게이지 막대의 빈 부분(배경) 색
+COLOR_INFO_BAR = (220, 210, 190)    # 상단 정보바 배경색
+COLOR_FACE_LINE = (0, 0, 0)         # 얼굴 테두리·눈·입·안경 색
+
+# ---------------------------------------------------------------
+# 11. 게임 화면 배치 - 글자 크기와 게이지 구역(왼쪽)
+# ---------------------------------------------------------------
+FONT_SIZE = 24              # 기본 글자 크기
+
+# 상단 정보바: 왼쪽 "N학년", 가운데 "남은 시간 N초", 오른쪽 "지식 N" (Game이 그린다)
+ORIGIN = (0, 0)             # 창 왼쪽 위 꼭짓점. 사각형을 만든 뒤 center 등으로 옮길 때 임시 위치로도 쓴다
+INFO_BAR_HEIGHT = 50        # 정보바 배경 사각형 높이 (창 맨 위부터)
+INFO_TIME_X = SCREEN_WIDTH // 2  # "남은 시간" 글자의 가운데 x (화면 가운데)
+INFO_BAR_Y = 15             # 정보바 글자의 위쪽 y
+INFO_BAR_MARGIN = 20        # 정보바 글자와 창 가장자리 사이 여백
+GRADE_TEXT = "{}학년"            # 학년 글자 틀
+TIME_LEFT_TEXT = "남은 시간 {}초"  # 현재 학년 남은 시간 글자 틀
+KNOWLEDGE_TEXT = "{} {}"         # 지식 글자 틀: "지식 120"
+
+# 왼쪽 게이지 구역: 라벨("체력"/"멘탈")과 막대
+GAUGE_X = 30                # 라벨과 막대의 왼쪽 x
+HEALTH_LABEL_Y = 150        # "체력" 라벨 위쪽 y
+HEALTH_BAR_Y = 180          # 체력 막대 위쪽 y
+MENTAL_LABEL_Y = 240        # "멘탈" 라벨 위쪽 y
+MENTAL_BAR_Y = 270          # 멘탈 막대 위쪽 y
+BAR_WIDTH = 200             # 막대 전체 가로 길이(값 100일 때)
+BAR_HEIGHT = 24             # 막대 세로 길이
+BAR_BORDER_WIDTH = 2        # 막대 테두리 두께 (테두리는 막대 바깥쪽에 그려서 채움을 가리지 않는다)
+BAR_BORDER_GROW = BAR_BORDER_WIDTH * 2  # 테두리 사각형이 막대보다 가로·세로로 커지는 양(양쪽 합)
+
+HEALTH_LABEL = "체력"
+MENTAL_LABEL = "멘탈"
+KNOWLEDGE_LABEL = "지식"
+
+# ---------------------------------------------------------------
+# 12. 행동 버튼 (화면 아래쪽에 가로로 3개)
+# ---------------------------------------------------------------
+# 행동 이름 (Game.do_action 에 넘기는 값)
+ACTION_FEED = "feed"        # 학식 먹이기
+ACTION_REST = "rest"        # 쉬게 하기
+ACTION_STUDY = "study"      # 공부시키기
+
+# 버튼 글자 (jeja-spec 3절, 기획서 화면 예시)
+FEED_BUTTON_TEXT = "학식 먹이기 [1]"
+REST_BUTTON_TEXT = "쉬게 하기 [2]"
+STUDY_BUTTON_TEXT = "공부시키기 [3]"
+
+BUTTON_WIDTH = 220          # 버튼 하나의 가로 길이
+BUTTON_HEIGHT = 50          # 버튼 하나의 세로 길이
+BUTTON_GAP = 30             # 버튼 사이 간격
+BUTTON_Y = 480              # 버튼 위쪽 y
+BUTTON_BORDER_WIDTH = 2     # 버튼 테두리 두께
+# 버튼 3개를 가운데 정렬했을 때 첫 버튼의 왼쪽 x: (800 - (220*3 + 30*2)) / 2 = 40
+BUTTON_START_X = (SCREEN_WIDTH - (BUTTON_WIDTH * 3 + BUTTON_GAP * 2)) // 2
+
+COLOR_BUTTON_TEXT = COLOR_WHITE  # 버튼 글자 색
+
+# 버튼 아래 쿨타임 안내 문구
+COOLDOWN_HINT_TEXT = "누른 뒤 1초 동안 회색 (쿨타임)"
+COOLDOWN_HINT_Y = 545       # 안내 문구 위쪽 y
+COOLDOWN_HINT_X = SCREEN_WIDTH // 2  # 안내 문구 가운데 x (화면 가운데)
+
+# ---------------------------------------------------------------
+# 13. 시험 기간 배너 (상단 정보바 바로 아래, 게이지 구역 위)
+# ---------------------------------------------------------------
+EXAM_BANNER_TEXT = "시험 기간! 공부 효과 2배, 멘탈 감소 2배"
+EXAM_BANNER_X = 20          # 배너 왼쪽 x
+EXAM_BANNER_Y = 60          # 배너 위쪽 y (정보바 높이 50 아래)
+EXAM_BANNER_WIDTH = SCREEN_WIDTH - EXAM_BANNER_X * 2  # 배너 가로 길이(좌우 여백 같게)
+EXAM_BANNER_HEIGHT = 40     # 배너 세로 길이 -> 아래 끝 100, 게이지 라벨(150)과 겹치지 않음
+EXAM_BANNER_BORDER_WIDTH = 2  # 배너 테두리 두께
+
+# ---------------------------------------------------------------
+# 14. 타이틀 화면
+# ---------------------------------------------------------------
+TITLE_FONT_SIZE = 64        # 큰 제목 글자 크기
+TITLE_TEXT = "제자 키우기"   # 게임 제목
+TITLE_TEXT_Y = 170          # 제목 가운데 y
+TITLE_LINE_Y = 225          # 제목 아래 장식 선 y
+TITLE_LINE_HALF = 180       # 장식 선의 절반 길이(화면 가운데에서 좌우로)
+TITLE_LINE_WIDTH = 3        # 장식 선 두께
+BEST_RECORD_TEXT = "최고 기록: 지식 {}"  # 최고 기록 글자 틀
+BEST_RECORD_Y = 300         # 최고 기록 가운데 y
+BEST_RECORD_START = 0       # 최고 기록 기본값 (record.json 이 없거나 깨졌을 때)
+START_HINT_TEXT = "Enter를 눌러 시작"
+START_HINT_Y = 420          # 시작 안내 가운데 y
+SCREEN_CENTER_X = SCREEN_WIDTH // 2  # 화면 가운데 x
+
+# ---------------------------------------------------------------
+# 15. 엔딩 화면
+# ---------------------------------------------------------------
+ENDING_NAME_Y = 110         # 엔딩 이름 가운데 y
+ENDING_KNOWLEDGE_TEXT = "누적 지식 {}"  # 누적 지식 글자 틀
+ENDING_KNOWLEDGE_Y = 400    # 누적 지식 가운데 y
+RESTART_HINT_TEXT = "R을 눌러 다시 하기"
+RESTART_HINT_Y = 480        # 다시 하기 안내 가운데 y
+
+# 학사모 (졸업 엔딩일 때만): 위 판(납작한 사각형) + 몸체(사각형) + 술(선 + 끝 원)
+CAP_CENTER_X = SCREEN_WIDTH // 2  # 학사모 가운데 x
+CAP_BOARD_Y = 220           # 위 판 위쪽 y
+CAP_BOARD_WIDTH = 200       # 위 판 가로 길이
+CAP_BOARD_HEIGHT = 20       # 위 판 세로 길이(두께)
+CAP_BODY_Y = 240            # 몸체 위쪽 y (위 판 바로 아래)
+CAP_BODY_WIDTH = 120        # 몸체 가로 길이
+CAP_BODY_HEIGHT = 60        # 몸체 세로 길이
+CAP_BUTTON_RADIUS = 6       # 판 가운데 단추(원) 반지름
+CAP_TASSEL_END_X = 90       # 술이 판 가운데에서 오른쪽으로 뻗는 거리
+CAP_TASSEL_DROP = 70        # 술이 판 끝에서 아래로 늘어지는 길이
+CAP_TASSEL_WIDTH = 3        # 술 선 두께
+CAP_TASSEL_END_RADIUS = 7   # 술 끝 매듭(원) 반지름
+COLOR_CAP = (40, 40, 60)        # 학사모 색(짙은 남색)
+COLOR_TASSEL = (230, 180, 40)   # 술 색(금색)
