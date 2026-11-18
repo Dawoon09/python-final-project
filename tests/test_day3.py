@@ -459,13 +459,25 @@ def test_done_criteria_play_sequence(game):
 
 
 def test_done_criteria_bar_redrawn_after_action(game):
-    """행동 후 다시 그리면 체력 막대 채움 폭이 바뀐다."""
+    """행동 후 다시 그리면 체력 막대 채움 폭이 바뀐다.
+
+    (화면 연출 E4 이후) 행동 직후 그림은 아직 이전 길이이고, GAUGE_ANIM_TIME 이 지나면
+    새 길이가 된다. 막대 색은 처음부터 실제 값 기준(70 -> 초록).
+    """
     game.student.health = 50
     game.draw()
     y = config.HEALTH_BAR_Y + config.BAR_HEIGHT // 2
     x_after_50 = config.GAUGE_X + config.BAR_WIDTH * 60 // config.GAUGE_MAX
+    x_inside_50 = config.GAUGE_X + config.BAR_WIDTH * 40 // config.GAUGE_MAX
     assert color_at(game.screen, (x_after_50, y)) == config.COLOR_BAR_BG
     game.handle_event(key(pygame.K_1))
-    game.draw()
     assert game.student.health == 70
+    assert game.get_shown_gauge(config.GAUGE_HEALTH) == 50
+    game.draw()
+    # 행동 직후: 길이는 이전(50), 색은 실제 값(70) 기준 초록
+    assert color_at(game.screen, (x_after_50, y)) == config.COLOR_BAR_BG
+    assert color_at(game.screen, (x_inside_50, y)) == config.COLOR_GREEN
+    game.update(config.GAUGE_ANIM_TIME)
+    assert game.get_shown_gauge(config.GAUGE_HEALTH) == 70
+    game.draw()
     assert color_at(game.screen, (x_after_50, y)) == config.COLOR_GREEN

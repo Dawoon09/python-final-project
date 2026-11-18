@@ -150,8 +150,8 @@ COLOR_MINT_LIGHT = (206, 242, 228)
 COLOR_MINT_DARK = (124, 196, 172)
 COLOR_SKY = (150, 202, 240)
 COLOR_SKY_LIGHT = (204, 230, 250)
+COLOR_SKY_DARK = (92, 150, 210)         # 휴식 파티클(Zzz·구름 그림자)처럼 크림 바탕에서 또렷해야 하는 하늘색
 COLOR_APRICOT = (250, 190, 146)
-COLOR_APRICOT_LIGHT = (255, 222, 196)
 COLOR_PINK = (246, 166, 188)
 COLOR_PINK_LIGHT = (253, 214, 224)
 COLOR_PINK_DARK = (222, 120, 150)
@@ -178,7 +178,7 @@ COLOR_BUTTON_TEXT = COLOR_OUTLINE       # 버튼 글자 색
 COLOR_GRAY = (184, 182, 194)            # 쿨타임 중 버튼 몸통
 COLOR_GRAY_LIGHT = (214, 212, 222)
 COLOR_GRAY_DARK = (148, 146, 162)
-COLOR_BUTTON_TEXT_COOL = (112, 108, 132)  # 쿨타임 중 버튼 글자 색
+COLOR_BUTTON_TEXT_COOL = (78, 74, 104)  # 쿨타임 중 버튼 글자 색 (회색 몸통 위에서도 읽히게 진하게)
 
 COLOR_INFO_BAR = COLOR_MINT             # 상단 정보바 몸통
 
@@ -411,10 +411,10 @@ SHADOW_WIDTH_RATIO = 1.2    # 발밑 그림자 가로 길이 = 반지름 x 이 �
 GAUGE_X = 40                # 아이콘과 막대의 왼쪽 x (막대 채움이 여기서 시작)
 BAR_WIDTH = 200             # 막대 전체 가로 길이(값 100일 때)
 BAR_HEIGHT = 24             # 막대 세로 길이(도트 6칸)
-HEALTH_LABEL_Y = 212        # 체력 아이콘·라벨 줄의 위쪽 y
-HEALTH_BAR_Y = 244          # 체력 막대 위쪽 y
-MENTAL_LABEL_Y = 308        # 멘탈 아이콘·라벨 줄의 위쪽 y
-MENTAL_BAR_Y = 340          # 멘탈 막대 위쪽 y
+HEALTH_LABEL_Y = 200        # 체력 아이콘·라벨 줄의 위쪽 y (게이지 묶음 200~380: 패널 안쪽 위아래 여백 80/76)
+HEALTH_BAR_Y = 232          # 체력 막대 위쪽 y
+MENTAL_LABEL_Y = 320        # 멘탈 아이콘·라벨 줄의 위쪽 y
+MENTAL_BAR_Y = 352          # 멘탈 막대 위쪽 y
 GAUGE_LABEL_GAP = 8         # 아이콘과 라벨 글자 사이 간격
 
 HEALTH_LABEL = "체력"
@@ -504,3 +504,123 @@ CLOUD_TOP_Y = 200           # 비구름 위쪽 y -> 아래 끝 300 (누적 지�
 # 학사모 (졸업 엔딩일 때만): CAP_SPRITE를 칸 크기 CAP_PIXEL로 찍는다 (196 x 100 픽셀)
 CAP_PIXEL = PIXEL_SIZE      # 학사모 도트 1칸 크기(4)
 CAP_TOP_Y = 196             # 학사모 위쪽 y -> 아래 끝 296 (누적 지식 배지 위)
+
+# ---------------------------------------------------------------
+# 16. 상호작용 효과 E1~E6 (jeja-spec 13절). 보기만 바꾸고 게임 결과에는 영향이 없다
+# ---------------------------------------------------------------
+FULL_RATIO = 1.0            # 진행률·비율의 끝값(100%). 진행률 p 의 나머지 = FULL_RATIO - p
+NO_CHANGE = 0               # 게이지 변화량이 0 (늘지도 줄지도 않음)
+BLINK_SHOW = 0              # 깜빡임 차례 번호 % 2 가 이 값이면 "보임"
+BLINK_HIDE = 1              # 깜빡임 차례 번호 % 2 가 이 값이면 "숨김"
+
+# E1 버튼 호버·눌림·쿨타임 진행 막대
+BUTTON_PRESS_OFFSET = 4     # 행동이 실행되면 버튼이 내려가는 거리(픽셀) = 받침 1칸
+BUTTON_PRESS_TIME = 0.12    # 버튼이 눌린 채로 있는 시간(초)
+COOLDOWN_BAR_HEIGHT = PIXEL_SIZE * 2   # 쿨타임 진행 막대 세로 길이(도트 2칸, 버튼 안쪽 맨 아래)
+COLOR_COOLDOWN_TRACK = COLOR_GRAY_DARK  # 진행 막대의 아직 안 찬 부분
+COLOR_COOLDOWN_FILL = COLOR_BUTTON      # 진행 막대의 찬 부분 (다시 쓸 수 있게 되는 하늘색)
+
+# E2 행동별 파티클 (random 대신 정해진 표를 차례로 쓴다)
+PARTICLE_COUNT = 10         # 행동 한 번에 나오는 파티클 수 (8~12개)
+# 퍼지는 방향 (가로, 세로). 세로가 음수면 위쪽. 길이가 대략 1인 방향 표
+PARTICLE_DIRECTIONS = [
+    (-1.0, -0.2), (-0.7, -0.7), (-0.3, -1.0), (0.3, -1.0), (0.7, -0.7),
+    (1.0, -0.2), (-0.9, 0.4), (0.9, 0.4), (-0.5, -0.9), (0.5, -0.9),
+]
+PARTICLE_SPEEDS = [60, 80, 50, 70, 75]      # 퍼지는 속도(픽셀/초), 차례로 돌려 쓴다
+PARTICLE_LIFETIMES = [0.6, 0.7, 0.8]        # 파티클 수명(초), 차례로 돌려 쓴다
+PARTICLE_RISE_SPEED = 40    # 모든 파티클이 함께 위로 떠오르는 속도(픽셀/초)
+PARTICLE_START_RATIO = 1.1  # 파티클이 생기는 거리 = 반지름 x 이 비율 (얼굴 가장자리 바로 바깥)
+PARTICLE_SHRINK_RATIO = 0.65  # 수명의 이 비율이 지나면 도트가 반 크기로 줄어들며 사라진다
+
+# 파티클 도트 스프라이트 (칸 크기 PIXEL_SIZE)
+PARTICLE_HEART = [          # 학식: 하트
+    "xx.xx",
+    "xwxxx",
+    "xxxxx",
+    ".xxx.",
+    "..x..",
+]
+PARTICLE_RICE = [           # 학식: 밥알 (흰색은 크림 바탕에서 안 보이므로 남색 테두리)
+    ".OO.",
+    "OWWO",
+    ".OO.",
+]
+PARTICLE_ZZZ = [            # 휴식: Z
+    "xxxx",
+    "..x.",
+    ".x..",
+    "xxxx",
+]
+PARTICLE_CLOUD = [          # 휴식: 작은 구름
+    "..ll..",
+    ".lxxx.",
+    "xxxxxx",
+    "dddddd",
+]
+PARTICLE_STAR = [           # 공부: 반짝이 별
+    "..d..",
+    ".dyd.",
+    "dyyyd",
+    ".dyd.",
+    "..d..",
+]
+PARTICLE_PENCIL = [         # 공부: 연필 (분홍 지우개, 노란 몸통, 남색 심)
+    "...pp",
+    "..yyp",
+    ".yyy.",
+    "Oyy..",
+    "OO...",
+]
+# 행동 이름 -> [(스프라이트, 색 사전), ...]. 파티클 번호 순서대로 번갈아 쓴다
+PARTICLE_KINDS = {
+    ACTION_FEED: [
+        (PARTICLE_HEART, {"x": COLOR_PINK_DARK, "w": COLOR_PINK_LIGHT}),
+        (PARTICLE_RICE, {"O": COLOR_OUTLINE, "W": COLOR_WHITE}),
+    ],
+    ACTION_REST: [
+        (PARTICLE_ZZZ, {"x": COLOR_SKY_DARK}),
+        (PARTICLE_CLOUD, {"x": COLOR_SKY, "l": COLOR_SKY_LIGHT, "d": COLOR_SKY_DARK}),
+    ],
+    ACTION_STUDY: [
+        (PARTICLE_STAR, {"y": COLOR_YELLOW, "d": COLOR_YELLOW_DARK}),
+        (PARTICLE_PENCIL, {"p": COLOR_PINK, "y": COLOR_YELLOW_DARK, "O": COLOR_OUTLINE}),
+    ],
+}
+
+# E3 수치 팝업 ("체력 +20")
+POPUP_FONT_SIZE = 18        # 팝업 글자 크기
+POPUP_FONT_BOLD = True      # 팝업은 굵은 글씨 (가는 획은 그림자에 묻혀 안 읽힌다)
+POPUP_TEXT = "{} {:+d}"     # 팝업 글자 틀: 라벨 + 부호 붙은 변화량
+POPUP_TIME = 0.8            # 팝업이 보이는 시간(초)
+POPUP_RISE_SPEED = 15       # 팝업이 떠오르는 속도(픽셀/초) -> 0.8초에 12픽셀
+POPUP_LINE_HEIGHT = 22     # 팝업 여러 개를 세로로 쌓을 때 줄 간격
+POPUP_HEAD_GAP = 0          # 제자 머리(점프·숨쉬기 최고점)와 맨 아래 팝업 글자 상자 사이 간격
+                            # (글자 상자 안에 위아래 여백이 있어 0이어도 머리와 닿지 않는다)
+POPUP_BLINK_START = 0.5     # 이 시각(초)부터 깜빡이며 사라진다
+POPUP_BLINK_STEP = 0.075    # 깜빡임 한 번(보임 또는 숨김)의 길이(초)
+POPUP_OUTLINE_OFFSETS = [(1, 0), (0, 1), (1, 1)]  # 남색 그림자 글자를 찍을 위치(오른쪽·아래 1픽셀)
+COLOR_POPUP_UP = COLOR_GREEN        # 늘어난 값 글자 색
+COLOR_POPUP_DOWN = COLOR_RED        # 줄어든 값 글자 색
+
+# E4 게이지 부드러운 변화
+GAUGE_ANIM_TIME = 0.25      # 행동으로 바뀐 막대 길이가 새 값을 따라가는 시간(초)
+GAUGE_HEALTH = "health"     # Student 의 체력 속성 이름 (표시값 사전의 키)
+GAUGE_MENTAL = "mental"     # Student 의 멘탈 속성 이름
+GAUGE_KNOWLEDGE = "knowledge"  # Student 의 지식 속성 이름
+GAUGE_NAMES = [GAUGE_HEALTH, GAUGE_MENTAL]   # 막대가 있어서 부드럽게 움직이는 게이지
+# 수치 팝업을 띄울 게이지와 라벨 (위에서부터 이 순서로 쌓인다)
+POPUP_GAUGES = [(GAUGE_HEALTH, HEALTH_LABEL), (GAUGE_MENTAL, MENTAL_LABEL),
+                (GAUGE_KNOWLEDGE, KNOWLEDGE_LABEL)]
+
+# E5 제자 반응 (점프·숨쉬기). 높이는 PIXEL_SIZE 단위로 끊어 도트 느낌을 낸다
+JUMP_TIME = 0.3             # 점프 한 번 시간(초)
+JUMP_HEIGHT = 8             # 점프 최고 높이(픽셀)
+JUMP_CURVE = 4              # 포물선 4 x p x (1 - p) 의 4: 가운데(p=0.5)에서 1이 된다
+BREATH_PERIOD = 1.5         # 숨쉬기 한 주기(초)
+BREATH_HEIGHT = 4           # 숨쉬기 최고 높이(픽셀)
+SHADOW_SHRINK_PER_LIFT = 1  # 제자가 1픽셀 뜰 때마다 발밑 그림자 가로가 줄어드는 양(픽셀)
+
+# E6 안내 문구 깜빡임: 화살표가 보였다 숨었다 하고, 숨을 때 글자 색이 살짝 옅어진다
+BLINK_INTERVAL = 0.5        # 깜빡임 간격(초)
+COLOR_HINT_DIM = COLOR_TEXT_SOFT   # 화살표가 숨었을 때의 안내 글자 색

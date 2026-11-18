@@ -218,25 +218,32 @@ class Student:
     # ------------------------------------------------------------
     # 그리기 (도트 스타일)
     # ------------------------------------------------------------
-    def draw_gauges(self, screen, font):
+    def draw_gauges(self, screen, font, shown_health=None, shown_mental=None):
         """왼쪽 상태 패널에 체력·멘탈 게이지를 그린다.
 
         지식 숫자는 상단 정보바에서 Game이 학년·남은 시간과 함께 그린다.
         체력 줄에는 하트 아이콘, 멘탈 줄에는 별 아이콘을 라벨 앞에 붙인다.
+        shown_health / shown_mental은 막대 길이에 쓸 "표시값"이다(E4 부드러운 변화).
+        주지 않으면 실제 값을 그대로 쓴다. 막대 색(빨강/초록)은 언제나 실제 값으로 정한다.
         """
+        if shown_health is None:
+            shown_health = self.health
+        if shown_mental is None:
+            shown_mental = self.mental
         self.draw_bar(screen, font, config.HEALTH_LABEL, self.health,
                       config.HEALTH_LABEL_Y, config.HEALTH_BAR_Y,
-                      config.HEART_SPRITE, config.HEART_COLORS)
+                      config.HEART_SPRITE, config.HEART_COLORS, shown_health)
         self.draw_bar(screen, font, config.MENTAL_LABEL, self.mental,
                       config.MENTAL_LABEL_Y, config.MENTAL_BAR_Y,
-                      config.STAR_SPRITE, {config.SPRITE_INK: config.COLOR_SKY})
+                      config.STAR_SPRITE, {config.SPRITE_INK: config.COLOR_SKY}, shown_mental)
 
-    def draw_bar(self, screen, font, label, value, label_y, bar_y, icon, icon_colors):
+    def draw_bar(self, screen, font, label, value, label_y, bar_y, icon, icon_colors,
+                 shown_value):
         """아이콘·라벨과 도트 게이지 막대 하나를 그린다.
 
         - 막대 바깥에 계단형 모서리 남색 테두리(도트 1칸)를 두르고, 안쪽 빈 부분은 연한 색.
-        - 채움 폭 = 막대 폭 x 값 / 100 (픽셀 단위로 정확히 비례). 값이 1이어도 2픽셀이 보인다.
-        - 채움 색은 실제 값이 30 미만이면 빨강, 아니면 초록. 맨 위 줄은 밝게, 맨 아래 줄은 어둡게.
+        - 채움 폭 = 막대 폭 x 표시값 / 100 (픽셀 단위로 정확히 비례). 값이 1이어도 2픽셀이 보인다.
+        - 채움 색은 실제 값(value)이 30 미만이면 빨강, 아니면 초록. 맨 위 줄은 밝게, 맨 아래 줄은 어둡게.
         테두리는 막대 바깥쪽에 있어서 채움을 가리지 않는다.
         """
         # 1) 아이콘 + 라벨 (아이콘 세로 가운데에 글자를 맞춘다)
@@ -258,7 +265,7 @@ class Student:
             colors = (config.COLOR_RED, config.COLOR_RED_LIGHT, config.COLOR_RED_DARK)
         else:
             colors = (config.COLOR_GREEN, config.COLOR_GREEN_LIGHT, config.COLOR_GREEN_DARK)
-        fill_width = int(config.BAR_WIDTH * value / config.GAUGE_MAX)
+        fill_width = int(config.BAR_WIDTH * shown_value / config.GAUGE_MAX)
         self.draw_bar_fill(screen, bar_rect, fill_width, colors)
 
     def draw_bar_fill(self, screen, bar_rect, fill_width, colors):
@@ -280,19 +287,21 @@ class Student:
         """
         return self.get_radius() // config.FACE_CELL_DIVISOR
 
-    def draw(self, screen):
+    def draw(self, screen, lift=config.NO_OFFSET):
         """오른쪽 제자 무대에 제자를 도트 스프라이트로 그린다.
 
         발밑 그림자 -> 얼굴(머리카락 포함) -> 볼 홍조 -> 눈 -> (체력 30 미만) 다크서클
         -> (3학년부터) 안경 -> 입 순서로 찍는다. 모든 부품은 얼굴 격자 칸 단위로 놓이고,
         칸 크기가 학년마다 커지므로 얼굴과 부품이 함께 커진다.
+        lift는 점프·숨쉬기로 제자가 위로 뜬 높이(픽셀)다. 얼굴만 그만큼 올라가고
+        발밑 그림자는 제자리에서 조금 작아진다. 크기(반지름)는 바뀌지 않는다.
         """
         radius = self.get_radius()
         cell = self.get_cell_size()
         left = config.STUDENT_CENTER_X - radius
-        top = config.STUDENT_CENTER_Y - radius
+        top = config.STUDENT_CENTER_Y - radius - lift
 
-        self.draw_shadow(screen, radius, cell)
+        self.draw_shadow(screen, radius, lift)
         draw_sprite(screen, config.FACE_SPRITE, left, top, cell, config.FACE_COLORS)
         self.draw_parts(screen, left, top, cell, config.BLUSH_SPRITE, config.BLUSH_POSITIONS)
         self.draw_parts(screen, left, top, cell, config.EYE_SPRITE, config.EYE_POSITIONS)
@@ -303,9 +312,13 @@ class Student:
             self.draw_glasses(screen, left, top, cell)
         self.draw_mouth(screen, left, top, cell)
 
-    def draw_shadow(self, screen, radius, cell):
-        """얼굴 아래에 납작한 도트 그림자(모서리 깎은 사각형)를 그린다."""
-        width = int(radius * config.SHADOW_WIDTH_RATIO)
+    def draw_shadow(self, screen, radius, lift):
+        """얼굴 아래에 납작한 도트 그림자(모서리 깎은 사각형)를 그린다.
+
+        제자가 lift 픽셀 떠 있으면 그림자 가로를 조금 줄여 공중에 뜬 느낌을 준다.
+        """
+        width = (int(radius * config.SHADOW_WIDTH_RATIO)
+                 - lift * config.SHADOW_SHRINK_PER_LIFT)
         shadow = pygame.Rect(config.ORIGIN, (width, config.SHADOW_HEIGHT))
         shadow.midtop = (config.STUDENT_CENTER_X,
                          config.STUDENT_CENTER_Y + radius + config.SHADOW_GAP)

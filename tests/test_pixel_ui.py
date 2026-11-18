@@ -166,9 +166,53 @@ def _is_drawing(name):
                                                  "render_text")
 
 
+# (화면 연출 B 단위) 로직 함수에 허용되는 "연출 연결" 문장. 이 문장만 빼면 main 과 같아야 한다.
+EFFECT_HOOKS = {
+    "Game.reset_round": ["self.clear_effects()"],
+    "Game.end_game": ["self.clear_effects()"],
+    "Game.do_action": ["before = self.get_gauge_values()",
+                       "self.start_action_effects(name, before)"],
+    "Game.update": ["self.update_effects(dt)"],
+}
+MOUSEMOTION_TEST = "event.type == pygame.MOUSEMOTION"
+MOUSEMOTION_BODY = ["self.mouse_pos = event.pos"]
+
+
+def _remove_effect_hooks(fname, node):
+    """node(함수)에서 허용된 연출 연결 문장을 하나씩만 지운 사본을 돌려준다.
+
+    지울 문장이 없으면(개발팀이 연결을 빠뜨림) AssertionError.
+    handle_event 의 MOUSEMOTION elif 분기는 if-elif 사슬에서 그 분기만 걷어 낸다.
+    """
+    node = ast.parse(ast.unparse(node)).body[0]
+    if fname == "Game.update":
+        # update_effects 는 맨 끝(게임 진행 if 블록 뒤, if 밖)에 있어야 한다
+        assert ast.unparse(node.body[-1]) == "self.update_effects(dt)"
+    for stmt in EFFECT_HOOKS.get(fname, []):
+        lines = [ast.unparse(s) for s in node.body]
+        assert lines.count(stmt) == 1, f"{fname}: '{stmt}' 가 함수 본문에 정확히 한 번 있어야 함"
+        node.body.pop(lines.index(stmt))
+    if fname == "Game.handle_event":
+        found = []
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.If) and len(sub.orelse) == 1 and isinstance(sub.orelse[0], ast.If):
+                branch = sub.orelse[0]
+                if ast.unparse(branch.test) == MOUSEMOTION_TEST:
+                    assert [ast.unparse(s) for s in branch.body] == MOUSEMOTION_BODY
+                    sub.orelse = branch.orelse
+                    found.append(branch)
+                    break
+        assert len(found) == 1, "handle_event: MOUSEMOTION elif 분기가 없음"
+    return node
+
+
 @pytest.mark.parametrize("name", ["student.py", "game.py", "button.py"])
 def test_logic_functions_unchanged_from_main(name):
-    """그리기 외 함수(게이지·쿨타임·학년·엔딩·기록·입력)는 main 과 docstring 빼고 똑같다."""
+    """그리기 외 함수(게이지·쿨타임·학년·엔딩·기록·입력)는 main 과 docstring 빼고 똑같다.
+
+    (B 단위) 단, reset_round/end_game 의 clear_effects, do_action 의 before 저장과
+    start_action_effects, handle_event 의 MOUSEMOTION 분기, update 끝 update_effects 는 허용.
+    """
     old = _functions(git_show(name))
     new = _functions((ROOT / name).read_text(encoding="utf-8"))
     changed = []
@@ -176,20 +220,41 @@ def test_logic_functions_unchanged_from_main(name):
         if _is_drawing(fname) or fname == "Game.__init__":
             continue
         assert fname in new, f"{name}: {fname} 이 사라짐"
-        if _strip_docstrings(node) != _strip_docstrings(new[fname]):
+        new_node = new[fname]
+        if name == "game.py":
+            new_node = _remove_effect_hooks(fname, new_node)
+        if _strip_docstrings(node) != _strip_docstrings(new_node):
             changed.append(fname)
     assert changed == []
 
 
+def test_do_action_effects_start_after_action_before_ending_check():
+    """do_action: before 저장은 행동 전, start_action_effects 는 쿨타임 설정 뒤·check_ending 앞."""
+    node = _functions((ROOT / "game.py").read_text(encoding="utf-8"))["Game.do_action"]
+    lines = [ast.unparse(s) for s in node.body]
+    i_before = lines.index("before = self.get_gauge_values()")
+    i_if = next(i for i, s in enumerate(lines) if s.startswith("if name == config.ACTION_FEED"))
+    i_cool = lines.index("self.cooldown = config.ACTION_COOLDOWN")
+    i_fx = lines.index("self.start_action_effects(name, before)")
+    i_end = lines.index("self.check_ending()")
+    assert i_before < i_if < i_cool < i_fx < i_end
+
+
 def test_game_init_only_adds_backdrop():
-    """Game.__init__ 은 배경 Surface 한 줄만 늘었다(나머지 문장은 main 과 같음)."""
+    """Game.__init__ 은 배경 Surface + (B 단위) 팝업 글꼴·마우스 위치·깜빡임 시계 줄만 늘었다."""
     old = _functions(git_show("game.py"))["Game.__init__"]
     new = _functions((ROOT / "game.py").read_text(encoding="utf-8"))["Game.__init__"]
     old_lines = [ast.unparse(s) for s in old.body[1:]]
     new_lines = [ast.unparse(s) for s in new.body[1:]]
     extra = [line for line in new_lines if line not in old_lines]
     assert [line for line in new_lines if line in old_lines] == old_lines
-    assert extra == ["self.backdrop = self.make_backdrop()"]
+    assert extra == [
+        "self.backdrop = self.make_backdrop()",
+        "self.popup_font = pygame.font.SysFont(config.FONT_NAME, config.POPUP_FONT_SIZE, "
+        "bold=config.POPUP_FONT_BOLD)",
+        "self.mouse_pos = None",
+        "self.blink_time = config.ZERO_TIME",
+    ]
 
 
 def test_action_keys_unchanged():
@@ -717,6 +782,27 @@ def test_cap_and_cloud_colors_not_used_in_game_screen(game):
 
 
 def test_button_class_still_button_only():
-    """Button 클래스는 위치·글자·클릭 판정·쿨타임 표시만 맡는다(눌림·호버 같은 효과는 다음 단위)."""
+    """Button 클래스는 위치·글자·클릭 판정·쿨타임 표시만 맡는다.
+
+    (B 단위) 호버·눌림·진행 막대는 새 메서드 없이 draw 인자로만 받는다:
+    draw(screen, font, cooling_down, hovered=False, press_offset=0, cooldown_progress=None).
+    """
+    import inspect
     methods = {n for n in vars(Button) if not n.startswith("__")}
     assert methods == {"is_clicked", "get_colors", "draw"}
+    params = inspect.signature(Button.draw).parameters
+    assert list(params) == ["self", "screen", "font", "cooling_down", "hovered",
+                            "press_offset", "cooldown_progress"]
+    assert params["hovered"].default is False
+    assert params["press_offset"].default == config.NO_OFFSET == 0
+    assert params["cooldown_progress"].default is None
+    # 기존 호출 방식 draw(screen, font, cooling_down) 도 그대로 동작한다
+    pygame.init()
+    try:
+        surf = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+        f = pygame.font.SysFont(config.FONT_NAME, config.FONT_SIZE)
+        b = Button(28, config.BUTTON_Y, config.BUTTON_WIDTH, config.BUTTON_HEIGHT, "x")
+        b.draw(surf, f, False)
+        assert color(surf, b.rect.left + 2 * P, b.rect.centery) == config.COLOR_BUTTON
+    finally:
+        pygame.quit()

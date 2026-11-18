@@ -77,6 +77,21 @@ def render_text(font, text, color=config.COLOR_TEXT):
     return font.render(text, False, color)
 
 
+def draw_progress_bar(screen, inner, progress):
+    """버튼 안쪽(inner) 맨 아래에 쿨타임 진행 막대를 도트 단위로 그린다.
+
+    회색 홈 위에 하늘색이 왼쪽부터 progress(0~1) 비율만큼 찬다.
+    길이는 PIXEL_SIZE 단위로 끊어서 한 칸씩 차오르는 도트 느낌을 낸다.
+    (Button 클래스의 메서드를 늘리지 않으려고 모듈 함수로 둔다.)
+    """
+    track = pygame.Rect(inner.left, inner.bottom - config.COOLDOWN_BAR_HEIGHT,
+                        inner.width, config.COOLDOWN_BAR_HEIGHT)
+    pygame.draw.rect(screen, config.COLOR_COOLDOWN_TRACK, track)
+    cells = int(track.width * progress) // config.PIXEL_SIZE
+    pygame.draw.rect(screen, config.COLOR_COOLDOWN_FILL,
+                     (track.left, track.top, cells * config.PIXEL_SIZE, track.height))
+
+
 # ----------------------------------------------------------------
 # Button 클래스
 # ----------------------------------------------------------------
@@ -107,17 +122,29 @@ class Button:
         return (config.COLOR_BUTTON, config.COLOR_BUTTON_LIGHT,
                 config.COLOR_BUTTON_DARK, config.COLOR_BUTTON_TEXT)
 
-    def draw(self, screen, font, cooling_down):
+    def draw(self, screen, font, cooling_down, hovered=False, press_offset=config.NO_OFFSET,
+             cooldown_progress=None):
         """버튼을 도트 상자로 그린다.
 
         버튼 아래에 남색 받침(도트 1칸)을 깔고, 계단형 모서리 + 남색 외곽선 +
         위 하이라이트 / 아래 그림자 줄로 입체감을 준 뒤 가운데에 글자를 쓴다.
         쿨타임 중이면 몸통이 회색 계열로 바뀐다.
+        - hovered: 마우스가 버튼 위에 있으면 True. 쿨타임이 아닐 때만 몸통을 밝은 색으로 칠한다.
+        - press_offset: 버튼 몸통을 아래로 내려 그릴 거리(픽셀). 받침은 제자리에 있으므로
+          4픽셀 내려가면 받침 위에 딱 붙어 "눌린" 것처럼 보인다.
+        - cooldown_progress: 0~1. 주어지면 버튼 안쪽 맨 아래에 쿨타임 진행 막대를 그린다.
         """
         fill, light, shadow, text_color = self.get_colors(cooling_down)
-        inner = draw_pixel_box(screen, self.rect, fill, light, shadow,
-                               drop=config.COLOR_OUTLINE)
+        if hovered and not cooling_down:
+            fill = config.COLOR_BUTTON_BRIGHT
+        # 받침은 원래 자리에, 몸통은 press_offset 만큼 내려서 그린다
+        draw_cut_rect(screen, config.COLOR_OUTLINE,
+                      self.rect.move(config.NO_OFFSET, config.PIXEL_SIZE))
+        body = self.rect.move(config.NO_OFFSET, press_offset)
+        inner = draw_pixel_box(screen, body, fill, light, shadow)
         text = render_text(font, self.text, text_color)
         text_rect = text.get_rect()
         text_rect.center = inner.center
         screen.blit(text, text_rect)
+        if cooldown_progress is not None:
+            draw_progress_bar(screen, inner, cooldown_progress)
