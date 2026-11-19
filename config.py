@@ -132,6 +132,12 @@ ENDING_BARELY = "아슬아슬 졸업"
 RECORD_FILENAME = "record.json"  # 최고 기록을 저장할 파일 이름
 RECORD_KEY = "best_knowledge"    # record.json 안에서 최고 지식을 담는 키: {"best_knowledge": 520}
 RECORD_ENCODING = "utf-8"        # record.json 을 읽고 쓸 때 쓰는 글자 인코딩
+# 방치형(기획서 10절): 최고 기록과 함께 연구비·명성·업그레이드 레벨도 저장한다
+# {"best_knowledge": 520, "money": 340, "fame": 0, "upgrades": {"menu": 1, ...}}
+# 예전 형식({"best_knowledge": n})이나 깨진 파일도 읽을 수 있고, 없는 값은 0으로 본다.
+RECORD_MONEY_KEY = "money"       # 연구비
+RECORD_FAME_KEY = "fame"         # 명성
+RECORD_UPGRADES_KEY = "upgrades"  # 업그레이드 레벨 {업그레이드 id: 레벨}
 
 
 def get_base_dir():
@@ -1050,3 +1056,133 @@ LOOK_SPRITES = {
 }
 LOOKS_BEHIND = [LOOK_GUITAR]
 LOOKS_FRONT = [LOOK_HEADBAND, LOOK_HEART_PIN, LOOK_SUNGLASSES, LOOK_COFFEE]
+
+# ---------------------------------------------------------------
+# 19. 재화(연구비·명성)와 업그레이드 (기획서 10절, H단위)
+# ---------------------------------------------------------------
+MONEY_START = 0             # 연구비 기본값 (record.json 에 없으면 0)
+FAME_START = 0              # 명성 기본값 (record.json 에 없으면 0)
+LEVEL_START = 0             # 업그레이드 레벨 기본값 (사지 않았으면 0)
+LEVEL_STEP = 1              # 업그레이드를 한 번 사면 오르는 레벨
+FAME_MONEY_BONUS = 0.1      # 명성 1당 연구비 획득 배수 +0.1: 배수 = 1 + 0.1 x 명성
+MONEY_EPSILON = 1e-9        # 내림(int) 전에 더하는 아주 작은 값 (1.6 x 80 = 127.999… 같은 소수 오차 방지)
+GAUGE_DECIMALS = 6          # 체력·멘탈을 이 자리에서 반올림해 소수 오차가 쌓이지 않게 한다
+
+# 졸업 보너스 (x 명성 배수, 내림). 휴학이면 없음
+GRADUATION_BONUS = {ENDING_TOP: 200, ENDING_NORMAL: 100, ENDING_BARELY: 50}
+
+# 업그레이드 가격 = 내림(기본 가격 x 1.6 ^ 현재 레벨)
+UPGRADE_COST_GROWTH = 1.6
+
+# 업그레이드 id
+UPGRADE_MENU = "menu"                   # 학식 메뉴 개선
+UPGRADE_BED = "bed"                     # 푹신한 침대
+UPGRADE_BOOK = "reference_book"         # 참고서
+UPGRADE_TIME = "time_management"        # 시간 관리
+UPGRADE_HEALTH_CARE = "health_care"     # 건강 관리
+UPGRADE_LIBRARY = "library"             # 도서관
+UPGRADE_CAFE = "cafe"                   # 카페
+UPGRADE_GYM = "gym"                     # 헬스장
+UPGRADE_CHARM = "lucky_charm"           # 행운 부적
+UPGRADE_SCHOLARSHIP = "scholarship"     # 장학금 제도
+
+# 업그레이드 dict 키
+UPGRADE_ID = "id"
+UPGRADE_NAME = "name"               # 패널에 보일 이름
+UPGRADE_CATEGORY = "category"       # 분류 (행동 효율 / 자동화 속도 / 시설 / 이벤트)
+UPGRADE_MAX_LEVEL = "max_level"     # 최대 레벨
+UPGRADE_BASE_COST = "base_cost"     # 기본 가격
+UPGRADE_PER_LEVEL = "per_level"     # 레벨 1당 효과 크기 (효과 = 레벨 x 이 값)
+UPGRADE_EFFECT_TEXT = "effect"      # 패널에 보일 효과 설명
+
+# 업그레이드 10종 (기획서 10절 표 순서). 시설·장학금은 최대 레벨 1이라 "레벨 x 효과"로 똑같이 계산한다
+UPGRADES = [
+    {UPGRADE_ID: UPGRADE_MENU, UPGRADE_NAME: "학식 메뉴 개선", UPGRADE_CATEGORY: "행동 효율",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 80, UPGRADE_PER_LEVEL: 4,
+     UPGRADE_EFFECT_TEXT: "학식 체력 +4"},
+    {UPGRADE_ID: UPGRADE_BED, UPGRADE_NAME: "푹신한 침대", UPGRADE_CATEGORY: "행동 효율",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 80, UPGRADE_PER_LEVEL: 4,
+     UPGRADE_EFFECT_TEXT: "휴식 멘탈 +4"},
+    {UPGRADE_ID: UPGRADE_BOOK, UPGRADE_NAME: "참고서", UPGRADE_CATEGORY: "행동 효율",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 120, UPGRADE_PER_LEVEL: 2,
+     UPGRADE_EFFECT_TEXT: "공부 지식 +2"},
+    {UPGRADE_ID: UPGRADE_TIME, UPGRADE_NAME: "시간 관리", UPGRADE_CATEGORY: "자동화 속도",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 150, UPGRADE_PER_LEVEL: 0.2,
+     UPGRADE_EFFECT_TEXT: "행동 간격 -0.2초"},
+    {UPGRADE_ID: UPGRADE_HEALTH_CARE, UPGRADE_NAME: "건강 관리", UPGRADE_CATEGORY: "자동화 속도",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 150, UPGRADE_PER_LEVEL: 0.1,
+     UPGRADE_EFFECT_TEXT: "자연 감소 -10%"},
+    {UPGRADE_ID: UPGRADE_LIBRARY, UPGRADE_NAME: "도서관", UPGRADE_CATEGORY: "시설",
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 300, UPGRADE_PER_LEVEL: 3,
+     UPGRADE_EFFECT_TEXT: "공부 지식 +3"},
+    {UPGRADE_ID: UPGRADE_CAFE, UPGRADE_NAME: "카페", UPGRADE_CATEGORY: "시설",
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 300, UPGRADE_PER_LEVEL: 5,
+     UPGRADE_EFFECT_TEXT: "휴식 때 체력 +5"},
+    {UPGRADE_ID: UPGRADE_GYM, UPGRADE_NAME: "헬스장", UPGRADE_CATEGORY: "시설",
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 300, UPGRADE_PER_LEVEL: 2,
+     UPGRADE_EFFECT_TEXT: "공부 체력 소모 -2"},
+    {UPGRADE_ID: UPGRADE_CHARM, UPGRADE_NAME: "행운 부적", UPGRADE_CATEGORY: "이벤트",
+     UPGRADE_MAX_LEVEL: 3, UPGRADE_BASE_COST: 200, UPGRADE_PER_LEVEL: 0.05,
+     UPGRADE_EFFECT_TEXT: "이벤트 확률 +5%p"},
+    {UPGRADE_ID: UPGRADE_SCHOLARSHIP, UPGRADE_NAME: "장학금 제도", UPGRADE_CATEGORY: "이벤트",
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 250, UPGRADE_PER_LEVEL: 30,
+     UPGRADE_EFFECT_TEXT: "장학금 이벤트 추가"},
+]
+UPGRADE_IDS = [upgrade[UPGRADE_ID] for upgrade in UPGRADES]          # 패널 순서
+UPGRADES_BY_ID = {upgrade[UPGRADE_ID]: upgrade for upgrade in UPGRADES}
+
+# 장학금 제도를 사면 자동형 후보에 들어가는 이벤트 (연구비 +30 x 학년, 게이지 변화 없음)
+EVENT_MONEY_PER_GRADE = "money_per_grade"   # 이벤트 dict 키: 학년당 연구비
+SCHOLARSHIP_EVENT = {
+    EVENT_ID: "scholarship", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+    EVENT_REQUIRES: None, EVENT_TITLE: "장학금을 받았다", EVENT_EFFECTS: {},
+    EVENT_MONEY_PER_GRADE: UPGRADES_BY_ID[UPGRADE_SCHOLARSHIP][UPGRADE_PER_LEVEL],
+}
+
+# ---------------------------------------------------------------
+# 20. 업그레이드 화면 (버튼·패널·정보바·타이틀 글자)
+# ---------------------------------------------------------------
+MONEY_LABEL = "연구비"
+MONEY_TEXT = "{} {}"                # 정보바·패널의 연구비 글자: "연구비 340"
+INFO_ITEM_GAP = 28                  # 정보바에서 연구비 글자와 지식 글자 사이 간격
+TITLE_WALLET_TEXT = "명성 {} · 연구비 {}"  # 타이틀 화면 최고 기록 아래 글자
+TITLE_WALLET_Y = 364                # 그 글자 가운데 y (최고 기록 배지 아래, 시작 안내 위)
+GRADUATION_BONUS_TEXT = "졸업 보너스: 연구비 +{}"  # 엔딩 화면 누적 지식 아래 글자
+GRADUATION_BONUS_Y = 398            # 그 글자 가운데 y
+
+# [업그레이드 U] 버튼: 게임 화면에서는 방침 버튼 오른쪽(x 600~776),
+# 엔딩 화면에서는 가운데 패널(아래 끝 496) 아래 같은 x 자리
+UPGRADE_BUTTON_TEXT = "업그레이드 U"
+UPGRADE_BUTTON_X = BUTTON_START_X + POLICY_AREA_WIDTH + BUTTON_GAP   # 600
+UPGRADE_BUTTON_Y = BUTTON_Y                                          # 476
+UPGRADE_BUTTON_ENDING_Y = 516
+
+# 업그레이드 패널: 정보바 아래부터 방침 버튼 위까지 (x 12~788, y 64~468). 반투명 없이 도트 상자
+UPGRADE_PANEL_RECT = (12, 64, 776, 404)
+UPGRADE_PANEL_TITLE = "업그레이드"
+UPGRADE_PANEL_HINT = "↑↓ 고르기 · Enter/클릭 사기 · U 닫기"
+UPGRADE_HEADER_Y = 92               # 패널 머리 줄(제목·안내·연구비) 가운데 y
+UPGRADE_HEADER_MARGIN = 32          # 머리 줄 글자와 패널 좌우 끝 사이 여백
+UPGRADE_ROW_X = 24                  # 항목 줄 상자 왼쪽 x
+UPGRADE_ROW_WIDTH = 752             # 항목 줄 상자 가로 길이 -> 오른쪽 끝 776
+UPGRADE_ROW_TOP = 116               # 첫 항목 줄 위쪽 y
+UPGRADE_ROW_HEIGHT = 32             # 항목 줄 상자 세로 길이
+UPGRADE_ROW_STEP = 34               # 항목 줄 사이 거리 (10줄 -> 마지막 아래 끝 454)
+UPGRADE_CURSOR_X = 32               # 고른 줄 표시 화살표 왼쪽 x
+UPGRADE_NAME_X = 52                 # 이름 글자 왼쪽 x
+UPGRADE_LEVEL_X = 220               # "Lv 0/5" 글자 왼쪽 x
+UPGRADE_EFFECT_X = 320              # 효과 설명 글자 왼쪽 x
+UPGRADE_COST_RIGHT = 760            # 가격 글자 오른쪽 끝 x
+UPGRADE_LEVEL_TEXT = "Lv {}/{}"
+UPGRADE_COST_TEXT = "{} 연구비"
+UPGRADE_MAX_TEXT = "MAX"
+UPGRADE_CURSOR_START = 0            # 패널을 처음 열었을 때 고른 줄 번호
+UPGRADE_CURSOR_STEP = 1             # ↑↓ 한 번에 움직이는 줄 수
+# 항목 줄 색: 살 수 있음(민트) / 살 수 없음(회색) / 마우스 올림(밝은 하늘)
+COLOR_UPGRADE_ROW = COLOR_MINT_LIGHT
+COLOR_UPGRADE_ROW_LIGHT = COLOR_WHITE
+COLOR_UPGRADE_ROW_HOVER = COLOR_BUTTON_BRIGHT
+COLOR_UPGRADE_ROW_OFF = COLOR_GRAY
+COLOR_UPGRADE_ROW_OFF_LIGHT = COLOR_GRAY_LIGHT
+COLOR_UPGRADE_TEXT_OFF = COLOR_BUTTON_TEXT_COOL
+COLOR_UPGRADE_CURSOR = COLOR_PINK_DARK  # 고른 줄 화살표 색

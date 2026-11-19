@@ -395,7 +395,8 @@ def test_info_bar_via_draw_info_bar(game):
     rec = RecordingFont(game.font)
     game.font = rec
     game.draw_info_bar()
-    assert rec.texts == ["1학년", "남은 시간 60초", "지식 0"]
+    # (H단위) 정보바에 연구비가 더해졌다(기획서 10절 화면: 학년·남은 시간·지식·연구비)
+    assert rec.texts == ["1학년", "남은 시간 60초", "지식 0", "연구비 0"]
 
 
 def test_info_bar_updates_with_frames(game):

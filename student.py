@@ -31,12 +31,18 @@ class Student:
     로직은 화면 없이도 호출할 수 있도록 시간(dt)을 인자로 받는다.
     """
 
-    def __init__(self):
+    def __init__(self, upgrades=None):
         """게이지를 시작값으로 정하고 경과 시간을 0으로 둔다.
 
         랜덤 이벤트로 생기는 성장 기록(특성·외형·연계 플래그·나온 선택지형 이벤트·
         학년별 이벤트 수)도 여기서 비운다. 새 판에서 Student를 새로 만들면 모두 초기화된다.
+        upgrades는 업그레이드 레벨 사전 {업그레이드 id: 레벨}이다. Game이 가진 사전을
+        그대로(같은 객체로) 넘기므로, 판 도중에 업그레이드를 사도 효과가 바로 적용된다.
+        주지 않으면 모든 업그레이드가 0레벨이다(화면 없는 테스트용).
         """
+        if upgrades is None:
+            upgrades = {upgrade_id: config.LEVEL_START for upgrade_id in config.UPGRADE_IDS}
+        self.upgrades = upgrades
         self.health = config.HEALTH_START
         self.mental = config.MENTAL_START
         self.knowledge = config.KNOWLEDGE_START
@@ -53,12 +59,18 @@ class Student:
     # 게이지 값 바꾸기
     # ------------------------------------------------------------
     def change_health(self, amount):
-        """체력을 amount만큼 바꾸고 0~100 안으로 맞춘다."""
-        self.health = clamp(self.health + amount, config.GAUGE_MIN, config.GAUGE_MAX)
+        """체력을 amount만큼 바꾸고 0~100 안으로 맞춘다.
+
+        건강 관리 업그레이드로 자연 감소가 소수(예: 0.9)가 되면 체력도 소수가 된다.
+        소수 오차가 쌓이지 않도록 GAUGE_DECIMALS 자리에서 반올림한다(정수는 그대로 정수).
+        """
+        value = round(self.health + amount, config.GAUGE_DECIMALS)
+        self.health = clamp(value, config.GAUGE_MIN, config.GAUGE_MAX)
 
     def change_mental(self, amount):
-        """멘탈을 amount만큼 바꾸고 0~100 안으로 맞춘다."""
-        self.mental = clamp(self.mental + amount, config.GAUGE_MIN, config.GAUGE_MAX)
+        """멘탈을 amount만큼 바꾸고 0~100 안으로 맞춘다(소수 처리는 change_health와 같다)."""
+        value = round(self.mental + amount, config.GAUGE_DECIMALS)
+        self.mental = clamp(value, config.GAUGE_MIN, config.GAUGE_MAX)
 
     def change_knowledge(self, amount):
         """지식을 amount만큼 바꾼다. 지식은 0 아래로 내려가지 않는다(상한 없음)."""
@@ -93,15 +105,45 @@ class Student:
             self.elapsed = config.TOTAL_SECONDS  # 소수 오차를 없애고 240에서 멈춘다
 
     def decay_once(self):
-        """1초분 자연 감소를 한 번 적용한다: 체력 -1, 멘탈 -(멘탈 감소량)."""
-        self.change_health(-config.HEALTH_DECAY_PER_SEC)
+        """1초분 자연 감소를 한 번 적용한다: 체력 -(체력 감소량), 멘탈 -(멘탈 감소량)."""
+        self.change_health(-self.get_health_decay())
         self.change_mental(-self.get_mental_decay())
 
+    def get_health_decay(self):
+        """1초마다 줄어드는 체력 양을 돌려준다: 1 x 건강 관리 배수."""
+        return self.apply_decay_ratio(config.HEALTH_DECAY_PER_SEC)
+
     def get_mental_decay(self):
-        """1초마다 줄어드는 멘탈 양을 돌려준다: 평소 1, 시험 기간 2."""
+        """1초마다 줄어드는 멘탈 양을 돌려준다: 평소 1, 시험 기간 2 (x 건강 관리 배수)."""
         if self.is_exam_period():
-            return config.MENTAL_DECAY_PER_SEC_EXAM
-        return config.MENTAL_DECAY_PER_SEC
+            return self.apply_decay_ratio(config.MENTAL_DECAY_PER_SEC_EXAM)
+        return self.apply_decay_ratio(config.MENTAL_DECAY_PER_SEC)
+
+    def apply_decay_ratio(self, amount):
+        """자연 감소량 amount에 건강 관리 업그레이드 배수 (1 - 0.1 x 레벨)를 곱해 돌려준다.
+
+        건강 관리를 안 샀으면(0레벨) amount를 그대로(정수로) 돌려준다.
+        """
+        level = self.get_upgrade_level(config.UPGRADE_HEALTH_CARE)
+        if level == config.LEVEL_START:
+            return amount
+        ratio = config.FULL_RATIO - self.get_upgrade_bonus(config.UPGRADE_HEALTH_CARE)
+        return round(amount * ratio, config.GAUGE_DECIMALS)
+
+    # ------------------------------------------------------------
+    # 업그레이드 (기획서 10절, H단위)
+    # ------------------------------------------------------------
+    def get_upgrade_level(self, upgrade_id):
+        """업그레이드 upgrade_id의 지금 레벨을 돌려준다(사지 않았으면 0)."""
+        return self.upgrades.get(upgrade_id, config.LEVEL_START)
+
+    def get_upgrade_bonus(self, upgrade_id):
+        """업그레이드 upgrade_id가 주는 효과 크기 = 레벨 x 레벨당 효과 를 돌려준다.
+
+        예: 학식 메뉴 개선 2레벨 -> 2 x 4 = 8 (학식 체력 +8).
+        """
+        per_level = config.UPGRADES_BY_ID[upgrade_id][config.UPGRADE_PER_LEVEL]
+        return self.get_upgrade_level(upgrade_id) * per_level
 
     def is_dropped_out(self):
         """체력이나 멘탈이 0이면 True(휴학 조건)를 돌려준다."""
@@ -152,30 +194,37 @@ class Student:
     # 행동 (3일차)
     # ------------------------------------------------------------
     def feed(self):
-        """학식 먹이기: 체력 +20 (체력 단련 특성이면 +25). 100을 넘지 않음."""
-        self.change_health(config.FEED_HEALTH + self.get_trait_bonus(config.BONUS_FEED_HEALTH))
+        """학식 먹이기: 체력 +20 (체력 단련 특성 +5, 학식 메뉴 개선 +4/Lv). 100을 넘지 않음."""
+        self.change_health(config.FEED_HEALTH + self.get_trait_bonus(config.BONUS_FEED_HEALTH)
+                           + self.get_upgrade_bonus(config.UPGRADE_MENU))
 
     def rest(self):
-        """쉬게 하기: 멘탈 +20 (음악 힐링 +25), 지식 -2, (연애 중이면) 체력 +5.
+        """쉬게 하기: 멘탈 +20 (음악 힐링 +5, 푹신한 침대 +4/Lv), 지식 -2,
+        체력 +0 (연애 중 +5, 카페 +5).
 
         멘탈·체력은 0~100, 지식은 0 아래로 내려가지 않는다.
         """
-        self.change_mental(config.REST_MENTAL + self.get_trait_bonus(config.BONUS_REST_MENTAL))
+        self.change_mental(config.REST_MENTAL + self.get_trait_bonus(config.BONUS_REST_MENTAL)
+                           + self.get_upgrade_bonus(config.UPGRADE_BED))
         self.change_knowledge(config.REST_KNOWLEDGE)
-        self.change_health(config.REST_HEALTH + self.get_trait_bonus(config.BONUS_REST_HEALTH))
+        self.change_health(config.REST_HEALTH + self.get_trait_bonus(config.BONUS_REST_HEALTH)
+                           + self.get_upgrade_bonus(config.UPGRADE_CAFE))
 
     def study(self, knowledge_ratio=config.NO_RATIO, cost_ratio=config.NO_RATIO):
         """공부시키기: 지식 +(공부 지식량), 체력 -5 (카페인 특성이면 -3), 멘탈 -8.
 
         0 아래로 내려가지 않는다. 시험 기간 지식 +20 규칙은 특성과 상관없이 그대로다.
         knowledge_ratio·cost_ratio는 일과표 방침(기획서 10절)의 배수다.
-        기본값(특성 보정 포함)을 먼저 구한 뒤 배수를 곱하고 round()로 정수로 만든다.
-        - 지식: round(공부 지식량 x knowledge_ratio)
-        - 체력: round((-5 + 특성 보정) x cost_ratio), 멘탈: round(-8 x cost_ratio)
+        특성·업그레이드 보너스를 먼저 더한 뒤 배수를 곱하고 round()로 정수로 만든다.
+        - 지식: round((공부 지식량 + 참고서 2/Lv + 도서관 3) x knowledge_ratio)
+        - 체력: round((-5 + 카페인 2 + 헬스장 2) x cost_ratio), 멘탈: round(-8 x cost_ratio)
         배수를 주지 않으면 1.0이라 예전과 같다.
         """
-        health = config.STUDY_HEALTH + self.get_trait_bonus(config.BONUS_STUDY_HEALTH)
-        self.change_knowledge(round(self.get_study_knowledge() * knowledge_ratio))
+        health = (config.STUDY_HEALTH + self.get_trait_bonus(config.BONUS_STUDY_HEALTH)
+                  + self.get_upgrade_bonus(config.UPGRADE_GYM))
+        knowledge = (self.get_study_knowledge() + self.get_upgrade_bonus(config.UPGRADE_BOOK)
+                     + self.get_upgrade_bonus(config.UPGRADE_LIBRARY))
+        self.change_knowledge(round(knowledge * knowledge_ratio))
         self.change_health(round(health * cost_ratio))
         self.change_mental(round(config.STUDY_MENTAL * cost_ratio))
 

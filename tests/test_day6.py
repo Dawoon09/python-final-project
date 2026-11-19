@@ -54,6 +54,19 @@ def read_record(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+# (H단위) record.json 은 이제 4개 키 {"best_knowledge", "money", "fame", "upgrades"} 를 저장한다
+# (기획서 10절). 예전 테스트의 "최고 기록" 의미는 best_knowledge 값으로 그대로 확인한다.
+RECORD_KEYS = {config.RECORD_KEY, config.RECORD_MONEY_KEY, config.RECORD_FAME_KEY,
+               config.RECORD_UPGRADES_KEY}
+
+
+def best_in_file(path):
+    """record.json 이 4개 키 형식인지 확인하고 최고 기록(best_knowledge)을 돌려준다."""
+    data = read_record(path)
+    assert set(data) == RECORD_KEYS, data
+    return data[config.RECORD_KEY]
+
+
 def graduate_with(g, knowledge):
     """게임 중 g를 지식 knowledge로 240초 졸업시킨다(update 경로)."""
     assert g.state == config.STATE_PLAYING
@@ -113,7 +126,7 @@ def test_saved_on_any_ending(rec, finish):
         leave_with(g, 120)
     else:
         graduate_with(g, 120)
-    assert read_record(rec) == {config.RECORD_KEY: 120}
+    assert best_in_file(rec) == 120
     assert g.best_record == 120
 
 
@@ -124,7 +137,7 @@ def test_leave_by_study_action_saves(rec):
     g.student.health = 5
     assert g.do_action(config.ACTION_STUDY)
     assert g.ending == config.ENDING_LEAVE
-    assert read_record(rec) == {"best_knowledge": 50}
+    assert best_in_file(rec) == 50
 
 
 def test_save_format_exact(rec):
@@ -132,12 +145,16 @@ def test_save_format_exact(rec):
     g.start_new_game()
     graduate_with(g, 520)
     data = read_record(rec)
-    assert data == {"best_knowledge": 520}
+    # (H단위) 4개 키 형식. 무사 졸업 보너스 100(명성 0), 업그레이드는 모두 0레벨
+    assert data == {"best_knowledge": 520, "money": 100, "fame": 0,
+                    "upgrades": {uid: 0 for uid in config.UPGRADE_IDS}}
     assert type(data["best_knowledge"]) is int
 
 
+# (H단위) 판이 끝나면 연구비 등과 함께 언제나 저장하므로 파일은 항상 다시 쓰인다(팀장 승인).
+# 최고 기록은 여전히 더 클 때만 바뀐다.
 @pytest.mark.parametrize("new, expected_best, rewritten", [
-    (299, 300, False), (300, 300, False), (301, 301, True), (0, 300, False),
+    (299, 300, True), (300, 300, True), (301, 301, True), (0, 300, True),
 ])
 def test_only_higher_updates(rec, new, expected_best, rewritten):
     original = '{"best_knowledge":   300}'  # 일부러 공백을 넣어 다시 쓰였는지 구별
@@ -147,7 +164,7 @@ def test_only_higher_updates(rec, new, expected_best, rewritten):
     g.start_new_game()
     graduate_with(g, new)
     assert g.best_record == expected_best
-    assert read_record(rec) == {"best_knowledge": expected_best}
+    assert best_in_file(rec) == expected_best
     assert (Path(rec).read_text(encoding="utf-8") != original) is rewritten
 
 
@@ -174,7 +191,7 @@ def test_restart_many_rounds_keeps_max(rec):
             graduate_with(g, k)
         expected = max(expected, k)
         assert g.best_record == expected
-        assert read_record(rec) == {"best_knowledge": expected}
+        assert best_in_file(rec) == expected
         press(g, pygame.K_r)
         assert g.state == config.STATE_PLAYING
         assert g.student.knowledge == 0  # 새 판은 초기화
@@ -223,7 +240,7 @@ def test_broken_file_is_overwritten_by_next_record(rec):
     g = Game()
     g.start_new_game()
     graduate_with(g, 50)
-    assert read_record(rec) == {"best_knowledge": 50}
+    assert best_in_file(rec) == 50
 
 
 def test_record_path_is_directory_no_crash(tmp_path):
@@ -255,7 +272,7 @@ def test_save_returns_true_on_success(rec):
     g = Game()
     g.best_record = 9
     assert g.save_best_record() is True
-    assert read_record(rec) == {"best_knowledge": 9}
+    assert best_in_file(rec) == 9
 
 
 def test_update_best_record_return_values(rec):
@@ -264,7 +281,7 @@ def test_update_best_record_return_values(rec):
     assert not os.path.exists(rec)  # 0판은 저장하지 않음(더 클 때만)
     assert g.update_best_record(5) is True
     assert g.update_best_record(5) is False
-    assert read_record(rec) == {"best_knowledge": 5}
+    assert best_in_file(rec) == 5
 
 
 def test_update_best_record_only_called_from_end_game():
@@ -455,7 +472,7 @@ def test_reach_leave_by_only_study(rec):
     assert g.ending == config.ENDING_LEAVE
     assert g.student.elapsed < config.SECONDS_PER_GRADE
     assert g.student.health == 0 or g.student.mental == 0
-    assert read_record(rec) == {"best_knowledge": g.student.knowledge}
+    assert best_in_file(rec) == g.student.knowledge
 
 
 def test_reach_leave_by_idle(rec):
@@ -463,7 +480,8 @@ def test_reach_leave_by_idle(rec):
     frames = play(g, lambda s: None)
     assert g.ending == config.ENDING_LEAVE
     assert frames == 65 * 60
-    assert not os.path.exists(rec)  # 지식 0 -> 기록 0보다 크지 않아 저장 안 함
+    # (H단위) 판이 끝나면 언제나 저장한다. 지식 0 -> 최고 기록은 0 그대로
+    assert best_in_file(rec) == 0
 
 
 def test_all_endings_in_one_session_with_restart(rec):
@@ -481,7 +499,7 @@ def test_all_endings_in_one_session_with_restart(rec):
         assert g.best_record == best
     assert seen == [config.ENDING_LEAVE, config.ENDING_BARELY,
                     config.ENDING_NORMAL, config.ENDING_TOP]
-    assert read_record(rec) == {"best_knowledge": best}
+    assert best_in_file(rec) == best
 
 
 @pytest.mark.parametrize("interval, allowed", [

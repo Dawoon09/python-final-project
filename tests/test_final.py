@@ -179,7 +179,11 @@ def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_recor
     # 최고 기록은 유지되고 파일에도 저장됨
     assert after_r["best"] == knowledge
     with open(isolated_record_path, encoding="utf-8") as f:
-        assert json.load(f) == {config.RECORD_KEY: knowledge}
+        data = json.load(f)
+    # (H단위) 4개 키 형식. 최고 기록은 그대로 확인한다
+    assert set(data) == {config.RECORD_KEY, config.RECORD_MONEY_KEY, config.RECORD_FAME_KEY,
+                         config.RECORD_UPGRADES_KEY}
+    assert data[config.RECORD_KEY] == knowledge
 
 
 def test_real_loop_leave_by_study_key_then_restart(monkeypatch, isolated_record_path):

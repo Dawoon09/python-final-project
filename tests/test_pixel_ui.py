@@ -215,9 +215,13 @@ EVENT_HOOKS = {
         "self.event_counts = {grade: config.EVENT_COUNT_START for grade in config.ALL_GRADES}",
         # (E 단위) 최소 간격용 직전 이벤트 시각(새 판 None)
         "self.last_event_time = None"]},
-    "Student.feed": {"strip": [" + self.get_trait_bonus(config.BONUS_FEED_HEALTH)"]},
+    # (H단위) 업그레이드 보너스 덧셈(학식 메뉴 개선·푹신한 침대·카페)도 특성 보정처럼 걷어 낸다
+    "Student.feed": {"strip": [" + self.get_trait_bonus(config.BONUS_FEED_HEALTH)",
+                               " + self.get_upgrade_bonus(config.UPGRADE_MENU)"]},
     "Student.rest": {"strip": [" + self.get_trait_bonus(config.BONUS_REST_MENTAL)",
-                               " + self.get_trait_bonus(config.BONUS_REST_HEALTH)"],
+                               " + self.get_upgrade_bonus(config.UPGRADE_BED)",
+                               " + self.get_trait_bonus(config.BONUS_REST_HEALTH)",
+                               " + self.get_upgrade_bonus(config.UPGRADE_CAFE)"],
                      "remove": ["self.change_health(config.REST_HEALTH)"]},
     "Student.study": {"strip": [" + self.get_trait_bonus(config.BONUS_STUDY_HEALTH)"]},
     "Game.reset_round": {"remove": ["self.current_event = None"]},
@@ -291,6 +295,17 @@ def _remove_effect_hooks(fname, node):
 G_CHANGED = {"Game.is_cooling_down", "Game.reset_round", "Game.make_buttons", "Game.do_action",
              "Game.handle_event", "Game.update", "Student.study"}
 
+# (H단위) 기획서 10절(연구비·업그레이드·record.json 확장)이 규칙 자체를 바꾼 함수.
+# 새 규칙은 test_idle_h.py 에서 확인한다.
+# - Student.__init__: upgrades 인자(Game 과 같은 사전을 함께 씀)
+# - Student.change_health / change_mental: 건강 관리로 소수 게이지 -> 6자리 반올림
+# - Student.decay_once / get_mental_decay: 자연 감소 x (1 - 0.1 x 건강 관리 레벨)
+# - Game.end_game: 졸업 보너스, 판이 끝나면 언제나 4개 키 저장
+# - Game.load_best_record / save_best_record: 4개 키 형식 read_record_file / save_record 의 래퍼
+H_CHANGED = {"Student.__init__", "Student.change_health", "Student.change_mental",
+             "Student.decay_once", "Student.get_mental_decay", "Game.end_game",
+             "Game.load_best_record", "Game.save_best_record"}
+
 
 @pytest.mark.parametrize("name", ["student.py", "game.py", "button.py"])
 def test_logic_functions_unchanged_from_main(name):
@@ -305,7 +320,8 @@ def test_logic_functions_unchanged_from_main(name):
     new = _functions((ROOT / name).read_text(encoding="utf-8"))
     changed = []
     for fname, node in old.items():
-        if _is_drawing(fname) or fname == "Game.__init__" or fname in G_CHANGED:
+        if (_is_drawing(fname) or fname == "Game.__init__" or fname in G_CHANGED
+                or fname in H_CHANGED):
             continue
         assert fname in new, f"{name}: {fname} 이 사라짐"
         new_node = _remove_event_hooks(fname, new[fname])
@@ -340,6 +356,9 @@ def test_game_init_only_adds_backdrop():
     new = _functions((ROOT / "game.py").read_text(encoding="utf-8"))["Game.__init__"]
     old_lines = [ast.unparse(s) for s in old.body[1:]]
     new_lines = [ast.unparse(s) for s in new.body[1:]]
+    # (H단위) 최고 기록만 읽던 줄이 최고 기록·연구비·명성·업그레이드를 함께 읽는 줄로 바뀌었다
+    new_lines = ["self.best_record = self.load_best_record()" if line == "self.load_record()"
+                 else line for line in new_lines]
     extra = [line for line in new_lines if line not in old_lines]
     assert [line for line in new_lines if line in old_lines] == old_lines
     assert extra == [
@@ -354,7 +373,17 @@ def test_game_init_only_adds_backdrop():
         "self.notice_font = pygame.font.SysFont(config.FONT_NAME, config.EVENT_NOTICE_FONT_SIZE)",
         "self.mouse_pos = None",
         "self.blink_time = config.ZERO_TIME",
+        # (H 단위) 졸업 보너스·업그레이드 패널 상태
+        "self.graduation_bonus = config.MONEY_START",
+        "self.upgrade_panel_open = False",
+        "self.upgrade_cursor = config.UPGRADE_CURSOR_START",
         "self.choice_buttons = self.make_choice_buttons()",
+        # (H 단위) [업그레이드 U] 버튼 2개(게임/엔딩)
+        "self.upgrade_button = Button(config.UPGRADE_BUTTON_X, config.UPGRADE_BUTTON_Y, "
+        "config.BUTTON_WIDTH, config.BUTTON_HEIGHT, config.UPGRADE_BUTTON_TEXT)",
+        "self.ending_upgrade_button = Button(config.UPGRADE_BUTTON_X, "
+        "config.UPGRADE_BUTTON_ENDING_Y, config.BUTTON_WIDTH, config.BUTTON_HEIGHT, "
+        "config.UPGRADE_BUTTON_TEXT)",
     ]
     # (C 단위) 인자는 record_path=None, seed=None 둘
     assert [a.arg for a in new.args.args] == ["self", "record_path", "seed"]
