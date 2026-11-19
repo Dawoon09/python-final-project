@@ -93,8 +93,8 @@ MOUTH_CRY = "cry"           # 우는 입 (입꼬리가 내려간 ∩자)
 # ---------------------------------------------------------------
 # 8. 엔딩 기준
 # ---------------------------------------------------------------
-TOP_GRADUATE_KNOWLEDGE = 500    # 지식 500 이상: 수석 졸업
-NORMAL_GRADUATE_KNOWLEDGE = 300  # 지식 300 이상 499 이하: 무사 졸업, 미만: 아슬아슬 졸업
+TOP_GRADUATE_KNOWLEDGE = 700    # 지식 700 이상: 수석 졸업 (랜덤 이벤트 반영, 기획서 2절)
+NORMAL_GRADUATE_KNOWLEDGE = 450  # 지식 450 이상 699 이하: 무사 졸업, 미만: 아슬아슬 졸업
 
 ENDING_LEAVE = "휴학"
 ENDING_TOP = "수석 졸업"
@@ -638,6 +638,10 @@ EVENT_MIN_PER_GRADE = 4             # 학년당 최소 보장 이벤트 수 (보
 EVENT_MAX_PER_GRADE = 5             # 학년당 최대 이벤트 수
 EVENT_CHOICE_RATIO = 0.5            # 선택지형 후보가 있을 때 선택지형을 고를 확률
 EVENT_NOTICE_TIME = 2.0             # 자동형 알림 배너가 보이는 시간(초)
+# 최소 간격: 확률로 뜨는 이벤트는 직전 이벤트(같은 판, 학년이 바뀌어도 이어서 셈) 이후
+# 게임 시간이 이만큼 지나야 뜰 수 있다. 최소 보장으로 뜨는 이벤트는 예외.
+# 대화창이 떠 있는 동안은 게임 시간이 멈추므로 간격에 들어가지 않는다.
+EVENT_MIN_GAP = 8.0
 
 # 이벤트 종류
 EVENT_KIND_AUTO = "auto"            # 자동형(작은 사건): 게임이 멈추지 않고 효과가 바로 적용된다
@@ -811,7 +815,7 @@ ALL_EVENTS = AUTO_EVENTS + CHOICE_EVENTS   # 이벤트 표 전체 (자동형 5 +
 # 18. 랜덤 이벤트 화면 (D단위, jeja-spec 14절 "화면"). 보기만 바꾸며 게임 결과에는 영향이 없다
 # ---------------------------------------------------------------
 EVENT_FONT_SIZE = 18                # 대화창 상황 글자·선택 버튼 글자 크기
-SMALL_FONT_SIZE = 14                # 작은 글자 크기: 효과 미리보기, 자동형 알림, 특성 배지
+SMALL_FONT_SIZE = 14                # 작은 글자 크기: 효과 미리보기, 특성 배지 (자동형 알림은 EVENT_NOTICE_FONT_SIZE)
 TEXT_SEPARATOR = " "                # 상황 글자를 줄바꿈할 때 끊는 자리(띄어쓰기)
 TEXT_ELLIPSIS = "…"                 # 줄 수를 넘는 글자를 줄였다는 표시
 
@@ -819,8 +823,9 @@ TEXT_ELLIPSIS = "…"                 # 줄 수를 넘는 글자를 줄였다는
 # (행동 키를 연타하다가 그 키가 선택으로 들어가는 것을 막는다. 대화창 시계로 잰다, 게임 시간은 정지)
 EVENT_INPUT_DELAY = 0.3
 
-# 대화창 뒤 "멈춤" 표시: 화면 전체에 2칸 간격 남색 점무늬를 덮는다 (Surface 알파 대신 도트)
-PAUSE_DOT_STEP = PIXEL_SIZE * 2     # 점 사이 간격(8픽셀 = 2칸). 한 줄 건너 반 칸씩 엇갈려 찍는다
+# 대화창 뒤 "멈춤" 표시: 화면 전체에 3칸 간격 남색 점무늬를 덮는다 (Surface 알파 대신 도트)
+# 점 1칸(4픽셀) + 빈칸 2칸이라 뒤의 정보바·버튼 글자가 읽힐 만큼 옅다
+PAUSE_DOT_STEP = PIXEL_SIZE * 3     # 점 사이 간격(12픽셀 = 3칸). 한 줄 건너 한 칸씩 엇갈려 찍는다
 PAUSE_DOT_SHIFT = PIXEL_SIZE        # 홀수 줄의 점을 옆으로 밀어 찍는 거리(체크무늬 느낌)
 COLOR_PAUSE_DOT = COLOR_OUTLINE     # 점 색(진한 남색)
 
@@ -851,7 +856,7 @@ PREVIEW_LOOK_TEXT = "외형: {}"       # 미리보기의 외형 항목
 PREVIEW_NONE_TEXT = "변화 없음"      # 미리보기에 보일 것이 없을 때
 COLOR_PREVIEW_UP = COLOR_GREEN_DARK     # 미리보기: 늘어나는 값 (크림 바탕에서 또렷한 초록)
 COLOR_PREVIEW_DOWN = COLOR_RED_DARK     # 미리보기: 줄어드는 값
-COLOR_PREVIEW_OTHER = COLOR_TEXT_SOFT   # 미리보기: 특성·외형·구분 글자
+COLOR_PREVIEW_OTHER = (72, 64, 112)     # 미리보기: 특성·외형·구분 글자 (크림 바탕에서 또렷한 진한 보라회색)
 
 # 외형 이름 (미리보기 글자)
 LOOK_NAMES = {
@@ -863,7 +868,13 @@ LOOK_NAMES = {
 EVENT_NOTICE_TEXT = "{}"            # 자동형 알림 글자 틀: 이벤트 제목
 EVENT_NOTICE_X = STAGE_X + PIXEL_SIZE * 2   # 알림 상자 왼쪽 x (292)
 EVENT_NOTICE_Y = PANEL_Y + PIXEL_SIZE * 3   # 알림 상자 위쪽 y (128)
-EVENT_NOTICE_HEIGHT = 36            # 알림 상자 세로 길이 -> 아래 끝 164 (+그림자 1칸)
+EVENT_NOTICE_HEIGHT = 56            # 알림 상자 세로 길이(글자 2줄 자리) -> 아래 끝 184 (+그림자 1칸)
+EVENT_NOTICE_FONT_SIZE = 16         # 알림 글자 크기 (작은 글자 14보다 크게, 잘 읽히게)
+EVENT_NOTICE_LINE_HEIGHT = 20       # 알림 글자 한 줄 높이 (2줄까지)
+FULL_LINE = 1                       # 줄 사이 간격 수 = 줄 수 - FULL_LINE (줄들을 세로 가운데에 놓을 때)
+# 알림 글자 한 줄 최대 가로 길이. 넘으면 띄어쓰기 자리에서 2줄로 나눈다.
+# 상자 오른쪽 끝 = 292 + 44 + 160 = 496 -> 머리 위 행동 팝업(왼쪽 끝 약 500)과 겹치지 않는다
+EVENT_NOTICE_TEXT_MAX_WIDTH = 160
 EVENT_NOTICE_PAD = PIXEL_SIZE       # 상자 안쪽 왼쪽 여백(아이콘 앞)
 EVENT_NOTICE_ICON_GAP = PIXEL_SIZE  # 아이콘과 글자 사이 간격
 EVENT_NOTICE_PAD_RIGHT = PIXEL_SIZE * 2  # 글자 뒤 오른쪽 여백
@@ -892,6 +903,7 @@ NOTICE_BAD_BOX = (COLOR_PINK_LIGHT, COLOR_WHITE, COLOR_PINK)
 # 이벤트 수치 팝업: 무대 왼쪽 위 칸에 위에서 아래로 쌓는다
 # (가운데 머리 위는 행동 팝업 자리, 얼굴 양옆은 파티클 자리라서 겹치지 않는 왼쪽 구석을 쓴다)
 EVENT_POPUP_X = 336                 # 이벤트 팝업 글자 가운데 x (글자 왼쪽 끝 ~299, 오른쪽 끝 ~374)
+                                    # 알림이 있으면 첫 줄 가운데 y = 184 + 28 = 212 (3줄째 256, 무대 안)
 EVENT_POPUP_TOP_MARGIN = 28         # 위 경계(무대 위 끝 또는 알림 아래 끝)와 첫 줄 가운데 사이 거리
                                     # (글자 위 여백 + 0.8초 동안 떠오르는 12픽셀을 포함)
 
@@ -912,7 +924,7 @@ TRAIT_COLORS = {
 
 # 외형 5종 도트 스프라이트. 위치는 얼굴 격자(20 x 20칸) 기준 (열, 행)이고 칸 크기는 얼굴과 같다
 # (반지름 // 10) -> 학년마다 얼굴과 함께 커지고, 점프·숨쉬기 때 얼굴과 함께 움직인다.
-# 자리 나눔: 선글라스 = 머리 꼭대기(열 4~15, 행 -1~2), 하트 머리핀 = 머리 왼쪽 위(열 -2~2, 행 1~5),
+# 자리 나눔: 선글라스 = 머리 꼭대기(열 4~15, 행 -1~2), 하트 머리핀 = 머리 왼쪽 옆(열 -3~1, 행 2~6),
 # 머리띠 = 이마 위 머리카락(행 5~6, 매듭 꼬리는 오른쪽 행 6~8), 커피잔 = 얼굴 오른쪽 아래 바깥(행 11~18),
 # 기타 = 얼굴 뒤(몸통은 왼쪽 아래, 넥은 오른쪽 위로 비스듬히). 서로 칸이 겹치지 않는다.
 COLOR_GUITAR_BODY = (120, 176, 228)       # 기타 몸통(하늘색, 피부색과 또렷이 구분)
@@ -979,7 +991,7 @@ COFFEE_SPRITE = [           # 7 x 8칸, 얼굴 격자 (20, 11)부터: 김 + 손�
     "OwwwOOO",
     ".OOO...",
 ]
-HEART_PIN_SPRITE = [        # 5 x 5칸, 얼굴 격자 (-2, 1)부터: 머리 왼쪽 위 하트 핀
+HEART_PIN_SPRITE = [        # 5 x 5칸, 얼굴 격자 (-3, 2)부터: 머리 왼쪽 옆 하트 핀 (선글라스와 2칸 띄움)
     "qq.qq",
     "qpWpq",
     "qpppq",
@@ -1006,7 +1018,7 @@ LOOK_SPRITES = {
     LOOK_GUITAR: ((-6, -6), GUITAR_SPRITE),
     LOOK_HEADBAND: ((0, 5), HEADBAND_SPRITE),
     LOOK_COFFEE: ((20, 11), COFFEE_SPRITE),
-    LOOK_HEART_PIN: ((-2, 1), HEART_PIN_SPRITE),
+    LOOK_HEART_PIN: ((-3, 2), HEART_PIN_SPRITE),
     LOOK_SUNGLASSES: ((4, -1), SUNGLASSES_SPRITE),
 }
 LOOKS_BEHIND = [LOOK_GUITAR]

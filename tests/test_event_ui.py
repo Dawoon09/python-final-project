@@ -146,6 +146,7 @@ def record_draw(g, monkeypatch):
     g.font = RecFont(g.font, "font", book)
     g.event_font = RecFont(g.event_font, "event", book)
     g.small_font = RecFont(g.small_font, "small", book)
+    g.notice_font = RecFont(g.notice_font, "notice", book)   # E단위: 알림 전용 16px 글꼴
     for method, tag in (("draw_event_dialog", "dialog"), ("draw_event_notice", "notice")):
         real = getattr(g, method)
 
@@ -220,13 +221,36 @@ def particle_rect(g, p):
     return pygame.Rect(left, top, w, h)
 
 
+def notice_lines(font, text, max_width=None):
+    """(E단위) 알림 글자를 띄어쓰기 자리에서 max_width(EVENT_NOTICE_TEXT_MAX_WIDTH) 이하 줄들로 나눈다.
+
+    게임의 wrap_text 를 쓰지 않고 검수팀이 따로 계산한 기대값(줄 수 제한 없음: 2줄 초과 여부도 잡는다).
+    """
+    if max_width is None:
+        max_width = config.EVENT_NOTICE_TEXT_MAX_WIDTH
+    lines, current = [], ""
+    for word in text.split(" "):
+        cand = word if not current else current + " " + word
+        if current and font.size(cand)[0] > max_width:
+            lines.append(current)
+            current = word
+        else:
+            current = cand
+    lines.append(current)
+    return lines
+
+
 def notice_rect(g):
-    """draw_event_notice 와 같은 계산: 알림 상자(아래 그림자 1칸 포함) 사각형. 없으면 None."""
+    """draw_event_notice 와 같은 계산: 알림 상자(아래 그림자 1칸 포함) 사각형. 없으면 None.
+
+    (E단위) 글자는 notice_font(16px)로, 길면 2줄로 나눠 가장 긴 줄 폭이 상자 폭을 정한다.
+    """
     if g.notice is None:
         return None
     icon = config.NOTICE_GOOD_ICON if g.notice["good"] else config.NOTICE_BAD_ICON
     icon_w, _ = sprite_size(icon, P)
-    text_w = g.small_font.size(g.notice["text"])[0]
+    font = getattr(g.notice_font, "font", g.notice_font)
+    text_w = max(font.size(line)[0] for line in notice_lines(font, g.notice["text"]))
     width = (config.BOX_INSET + config.EVENT_NOTICE_PAD + icon_w + config.EVENT_NOTICE_ICON_GAP
              + text_w + config.EVENT_NOTICE_PAD_RIGHT)
     age = config.EVENT_NOTICE_TIME - g.notice["timer"]
@@ -758,10 +782,19 @@ def test_notice_good_bad_colors(make_game, monkeypatch, event_id):
         assert config.COLOR_PINK_DARK in region and config.COLOR_PINK in region   # 하트
     else:
         assert config.COLOR_RED_DARK in region                                    # 느낌표
+    # (E단위) 알림 글자: notice_font(16px), 길면 띄어쓰기 자리에서 2줄로 나눔, 모두 상자 안
     words = [t for t in texts if t["tag"] == "notice"]
-    assert [t["text"] for t in words] == [event[config.EVENT_TITLE]]
-    assert words[0]["font"] == "small"
-    assert inner.contains(words[0]["glyph"])
+    font = g.notice_font.font
+    expected = notice_lines(font, event[config.EVENT_TITLE])
+    assert len(expected) <= config.EVENT_TEXT_MAX_LINES
+    assert [t["text"] for t in words] == expected
+    assert " ".join(t["text"] for t in words) == event[config.EVENT_TITLE]
+    assert all(t["font"] == "notice" for t in words)
+    for t in words:
+        assert inner.contains(t["glyph"]), (t["text"], t["glyph"], inner)
+        assert font.size(t["text"])[0] <= config.EVENT_NOTICE_TEXT_MAX_WIDTH or " " not in t["text"]
+    for a, b in zip(words, words[1:]):
+        assert a["glyph"].bottom <= b["glyph"].top, (a, b)   # 줄끼리 세로로 겹치지 않음
     assert STAGE_INNER.contains(notice_rect(g))
 
 

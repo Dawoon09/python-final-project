@@ -53,6 +53,7 @@ class Game:
                                               bold=config.POPUP_FONT_BOLD)
         self.event_font = pygame.font.SysFont(config.FONT_NAME, config.EVENT_FONT_SIZE)
         self.small_font = pygame.font.SysFont(config.FONT_NAME, config.SMALL_FONT_SIZE)
+        self.notice_font = pygame.font.SysFont(config.FONT_NAME, config.EVENT_NOTICE_FONT_SIZE)
         self.mouse_pos = None            # 마지막 마우스 위치(MOUSEMOTION). None이면 아직 모름
         self.blink_time = config.ZERO_TIME  # 안내 문구 깜빡임 시계(모든 화면에서 흐른다)
 
@@ -216,14 +217,17 @@ class Game:
     def roll_event(self):
         """행동 직후 이벤트가 뜰지 정하고, 뜨면 시작한다. 뜬 이벤트(dict) 또는 None을 돌려준다.
 
-        그 학년 이벤트 수가 최대(5)면 뜨지 않는다. 최소 보장 조건이면 반드시 뜨고,
-        아니면 rng.random() < EVENT_CHANCE(25%)일 때 뜬다.
+        그 학년 이벤트 수가 최대(5)면 뜨지 않는다. 최소 보장 조건이면 반드시 뜬다(간격 예외).
+        아니면 직전 이벤트 이후 게임 시간이 최소 간격(8초) 이상 지났고
+        rng.random() < EVENT_CHANCE(25%)일 때 뜬다. 간격이 안 찼으면 난수를 뽑지 않는다.
         """
         if not self.student.can_have_event():
             return None
-        if not (self.student.needs_guaranteed_event()
-                or self.rng.random() < config.EVENT_CHANCE):
-            return None
+        if not self.student.needs_guaranteed_event():
+            if not self.student.is_event_gap_passed():
+                return None
+            if self.rng.random() >= config.EVENT_CHANCE:
+                return None
         event = self.pick_event()
         self.start_event(event)
         return event
@@ -607,11 +611,13 @@ class Game:
         return self.snap_to_pixel(distance * (config.FULL_RATIO - age / duration))
 
     def draw_event_notice(self):
-        """자동형 이벤트 알림(작은 도트 상자: 아이콘 + 제목)을 무대 왼쪽 위 구석에 그린다.
+        """자동형 이벤트 알림(도트 상자: 아이콘 + 제목)을 무대 왼쪽 위 구석에 그린다.
 
         좋은 일(효과 합 0 이상)은 민트 바탕 + 하트, 나쁜 일은 연분홍 바탕 + 느낌표.
         나타날 때 EVENT_NOTICE_SLIDE_TIME 동안 위에서 한 칸씩 내려온다(무대 안쪽으로 잘라 그림).
-        가운데 머리 위(행동 팝업 자리)와 겹치지 않도록 왼쪽 구석에 둔다.
+        가운데 머리 위(행동 팝업 자리)와 겹치지 않도록 왼쪽 구석에 두고, 제목이 길면
+        EVENT_NOTICE_TEXT_MAX_WIDTH에서 2줄로 나눠 상자가 오른쪽으로 너무 길어지지 않게 한다.
+        상자 높이는 2줄 자리로 늘 같고, 글자 줄들은 상자 세로 가운데에 놓는다.
         """
         if self.notice["good"]:
             icon, icon_colors = config.NOTICE_GOOD_ICON, config.NOTICE_GOOD_COLORS
@@ -622,10 +628,13 @@ class Game:
         age = config.EVENT_NOTICE_TIME - self.notice["timer"]
         slide = self.get_slide_offset(age, config.EVENT_NOTICE_SLIDE_TIME,
                                       config.EVENT_NOTICE_SLIDE_DISTANCE)
-        text = render_text(self.small_font, self.notice["text"])
+        lines = self.wrap_text(self.notice_font, self.notice["text"],
+                               config.EVENT_NOTICE_TEXT_MAX_WIDTH)
+        surfaces = [render_text(self.notice_font, line) for line in lines]
+        text_width = max(surface.get_width() for surface in surfaces)
         icon_width, icon_height = sprite_size(icon, config.PIXEL_SIZE)
         width = (config.BOX_INSET + config.EVENT_NOTICE_PAD + icon_width
-                 + config.EVENT_NOTICE_ICON_GAP + text.get_width() + config.EVENT_NOTICE_PAD_RIGHT)
+                 + config.EVENT_NOTICE_ICON_GAP + text_width + config.EVENT_NOTICE_PAD_RIGHT)
         box = pygame.Rect(config.EVENT_NOTICE_X, config.EVENT_NOTICE_Y - slide,
                           width, config.EVENT_NOTICE_HEIGHT)
         self.screen.set_clip(self.get_stage_inner())
@@ -633,16 +642,22 @@ class Game:
         icon_x = inner.left + config.EVENT_NOTICE_PAD
         draw_sprite(self.screen, icon, icon_x, inner.centery - icon_height // config.HALF,
                     config.PIXEL_SIZE, icon_colors)
-        text_rect = text.get_rect()
-        text_rect.midleft = (icon_x + icon_width + config.EVENT_NOTICE_ICON_GAP, inner.centery)
-        self.screen.blit(text, text_rect)
+        text_x = icon_x + icon_width + config.EVENT_NOTICE_ICON_GAP
+        # 첫 줄 가운데 y: 줄들 전체가 상자 세로 가운데에 오도록
+        first_y = (inner.centery
+                   - (len(surfaces) - config.FULL_LINE) * config.EVENT_NOTICE_LINE_HEIGHT
+                   // config.HALF)
+        for index, surface in enumerate(surfaces):
+            text_rect = surface.get_rect()
+            text_rect.midleft = (text_x, first_y + index * config.EVENT_NOTICE_LINE_HEIGHT)
+            self.screen.blit(surface, text_rect)
         self.screen.set_clip(None)
 
     def draw_pause_dots(self):
-        """대화창 뒤 화면 전체에 2칸 간격 남색 점무늬를 덮어 "게임이 멈췄다"는 느낌을 준다.
+        """대화창 뒤 화면 전체에 3칸(PAUSE_DOT_STEP) 간격 남색 점무늬를 덮어 "게임이 멈췄다"는 느낌을 준다.
 
-        Surface 알파(반투명)로 어둡게 하지 않고 도트를 찍는다. 한 줄 건너 반 칸씩 엇갈려
-        체크무늬처럼 보인다. 대화창은 이 위에 그려지므로 점이 덮이지 않는다.
+        Surface 알파(반투명)로 어둡게 하지 않고 도트를 찍는다. 점을 듬성듬성 찍어
+        뒤 화면 글자가 읽히도록 한다. 대화창은 이 위에 그려지므로 점이 덮이지 않는다.
         """
         rows = range(config.FIRST_ROW, config.SCREEN_HEIGHT, config.PAUSE_DOT_STEP)
         for row, y in enumerate(rows):

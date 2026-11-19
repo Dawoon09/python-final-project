@@ -135,7 +135,9 @@ def test_game_constants_same_as_main(tmp_path):
     main_cfg = load_main_config(tmp_path)
     diff = [(n, getattr(main_cfg, n), getattr(config, n)) for n in GAME_CONSTANTS + UI_TEXTS
             if getattr(main_cfg, n) != getattr(config, n)]
-    assert diff == []
+    # (E단위) 사용자 승인으로 엔딩 기준만 500/300 -> 700/450 으로 바뀌었다. 그 밖에는 main 과 같아야 한다.
+    approved = [("NORMAL_GRADUATE_KNOWLEDGE", 300, 450), ("TOP_GRADUATE_KNOWLEDGE", 500, 700)]
+    assert sorted(diff) == approved
     # get_base_dir (record.json 위치) 도 그대로 (docstring 제외 코드 비교)
     old = _functions(git_show("config.py"))["get_base_dir"]
     new = _functions((ROOT / "config.py").read_text(encoding="utf-8"))["get_base_dir"]
@@ -210,7 +212,9 @@ EVENT_HOOKS = {
         "self.traits = []", "self.looks = []", "self.flags = set()",
         "self.seen_events = set()",
         # (D 단위) 시작값 상수를 NO_CHANGE -> EVENT_COUNT_START 로 바꿈(값 0 동일)
-        "self.event_counts = {grade: config.EVENT_COUNT_START for grade in config.ALL_GRADES}"]},
+        "self.event_counts = {grade: config.EVENT_COUNT_START for grade in config.ALL_GRADES}",
+        # (E 단위) 최소 간격용 직전 이벤트 시각(새 판 None)
+        "self.last_event_time = None"]},
     "Student.feed": {"strip": [" + self.get_trait_bonus(config.BONUS_FEED_HEALTH)"]},
     "Student.rest": {"strip": [" + self.get_trait_bonus(config.BONUS_REST_MENTAL)",
                                " + self.get_trait_bonus(config.BONUS_REST_HEALTH)"],
@@ -330,6 +334,8 @@ def test_game_init_only_adds_backdrop():
         "self.event_font = pygame.font.SysFont(config.FONT_NAME, config.EVENT_FONT_SIZE)",
         # (D 단위) 미리보기·알림·특성 배지용 작은 글꼴
         "self.small_font = pygame.font.SysFont(config.FONT_NAME, config.SMALL_FONT_SIZE)",
+        # (E 단위) 자동형 알림 전용 16px 글꼴
+        "self.notice_font = pygame.font.SysFont(config.FONT_NAME, config.EVENT_NOTICE_FONT_SIZE)",
         "self.mouse_pos = None",
         "self.blink_time = config.ZERO_TIME",
         "self.choice_buttons = self.make_choice_buttons()",

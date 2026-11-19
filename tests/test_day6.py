@@ -231,7 +231,7 @@ def test_record_path_is_directory_no_crash(tmp_path):
     g = Game(record_path=str(tmp_path))
     assert g.best_record == 0
     g.start_new_game()
-    graduate_with(g, 400)
+    graduate_with(g, config.NORMAL_GRADUATE_KNOWLEDGE + 50)
     assert g.ending == config.ENDING_NORMAL
     assert g.save_best_record() is False
     g.draw()
@@ -413,16 +413,17 @@ def test_reach_top_graduate_greedy(rec):
     t = time.perf_counter()
     frames = play(g, greedy)
     assert_graduation(g, frames, config.ENDING_TOP)
-    assert g.student.knowledge >= 500
+    assert g.student.knowledge >= config.TOP_GRADUATE_KNOWLEDGE
     assert time.perf_counter() - t < 3
 
 
 def test_reach_normal_graduate(rec):
     g = Game()
     t = time.perf_counter()
-    frames = play(g, make_steady(350))
+    # E단위: 무사 졸업 기준 450~699 -> 공부 중단 지식을 그 사이(550)로
+    frames = play(g, make_steady(550))
     assert_graduation(g, frames, config.ENDING_NORMAL)
-    assert 300 <= g.student.knowledge <= 499
+    assert config.NORMAL_GRADUATE_KNOWLEDGE <= g.student.knowledge < config.TOP_GRADUATE_KNOWLEDGE
     assert time.perf_counter() - t < 3
 
 
@@ -438,7 +439,7 @@ def test_reach_barely_graduate_with_some_study(rec):
     g = Game()
     frames = play(g, make_steady(200))
     assert_graduation(g, frames, config.ENDING_BARELY)
-    assert 0 < g.student.knowledge < 300
+    assert 0 < g.student.knowledge < config.NORMAL_GRADUATE_KNOWLEDGE
 
 
 def test_reach_leave_by_only_study(rec):
@@ -463,7 +464,7 @@ def test_all_endings_in_one_session_with_restart(rec):
     g = Game()
     seen = []
     best = 0
-    for policy in (lambda s: config.ACTION_STUDY, care_only, make_steady(350), greedy):
+    for policy in (lambda s: config.ACTION_STUDY, care_only, make_steady(550), greedy):
         if g.state == config.STATE_ENDING:
             press(g, pygame.K_r)
             g.state = config.STATE_TITLE  # play()가 Enter부터 시작하므로 타이틀로 맞춘다
@@ -477,9 +478,13 @@ def test_all_endings_in_one_session_with_restart(rec):
 
 
 @pytest.mark.parametrize("interval, allowed", [
+    # E단위(700/450, 이벤트 끈 상태 실측): 1.5초 938 수석, 2.0초 638 무사, 2.5초 480 무사,
+    # 3.0초 378 아슬아슬, 4.0초 228 아슬아슬. 이벤트 켠 상태는 test_balance_events.py에서 본다.
     (1.5, {config.ENDING_TOP}),
-    (2.5, {config.ENDING_NORMAL, config.ENDING_TOP}),
+    (2.0, {config.ENDING_NORMAL, config.ENDING_TOP}),
+    (2.5, {config.ENDING_NORMAL}),
     (3.0, {config.ENDING_NORMAL, config.ENDING_BARELY}),
+    (4.0, {config.ENDING_BARELY}),
 ])
 def test_balance_human_like_interval(rec, interval, allowed):
     """사람처럼 interval초마다 한 번만 행동하는 탐욕 전략도 졸업한다(개발팀 시뮬레이션 대조)."""

@@ -214,7 +214,7 @@ def test_trait_bonus_table():
     assert (config.FEED_HEALTH, config.REST_MENTAL, config.REST_KNOWLEDGE) == (20, 20, -2)
     assert (config.STUDY_HEALTH, config.STUDY_MENTAL) == (-5, -8)
     assert (config.STUDY_KNOWLEDGE, config.STUDY_KNOWLEDGE_EXAM) == (10, 20)
-    assert (config.TOP_GRADUATE_KNOWLEDGE, config.NORMAL_GRADUATE_KNOWLEDGE) == (500, 300)
+    assert (config.TOP_GRADUATE_KNOWLEDGE, config.NORMAL_GRADUATE_KNOWLEDGE) == (700, 450)  # E단위 변경
 
 
 # ======================= 2. 발생 규칙 =======================
@@ -273,6 +273,7 @@ def test_chance_is_about_25_percent(make_game):
     n = 4000
     for _ in range(n):
         g.student.event_counts[1] = 0
+        g.student.last_event_time = None   # (E단위) 최소 간격 영향 없이 확률만 본다
         g.state = config.STATE_PLAYING
         g.current_event = None
         g.student.seen_events.clear()
@@ -357,6 +358,7 @@ def test_max_five_per_grade(make_game, monkeypatch):
     g = make_game(43)
     monkeypatch.setattr(g, "pick_event", lambda: config.AUTO_EVENTS[1])
     for _ in range(12):
+        g.student.last_event_time = None   # (E단위) 최소 간격을 빼고 최대 5회 제한만 본다
         assert g.do_action(FEED)
         g.update(1.0)
     assert g.student.event_counts[1] == 5
@@ -669,7 +671,18 @@ def test_auto_event_popups_shown(make_game, monkeypatch):
     assert g.do_action(FEED)
     assert popup_texts(g)[:1] == ["체력 +20"]                 # 행동 팝업
     assert texts_top_down(g.popups[1:]) == ["멘탈 +5", "지식 +15"]   # 이벤트 팝업
-    assert max(p["y"] for p in g.popups[1:]) < g.popups[0]["y"]    # 행동 팝업 위에 쌓임
+    # (D/E단위) 이벤트 팝업은 머리 위가 아니라 EVENT_POPUP_X 열, 알림 상자 아래에 쌓인다
+    action_pop, event_pops = g.popups[0], g.popups[1:]
+    assert action_pop["x"] == config.STUDENT_CENTER_X
+    assert all(p["x"] == config.EVENT_POPUP_X for p in event_pops)
+    notice_bottom = config.EVENT_NOTICE_Y + config.EVENT_NOTICE_HEIGHT
+    assert min(p["y"] for p in event_pops) == notice_bottom + config.EVENT_POPUP_TOP_MARGIN
+    # 행동 팝업과 글자 사각형이 겹치지 않는다
+    def rect(p):
+        surf = g.popup_font.render(p["text"], False, (0, 0, 0))
+        return surf.get_rect(center=(p["x"], p["y"]))
+    for p in event_pops:
+        assert not rect(p).colliderect(rect(action_pop)), (p["text"], action_pop["text"])
 
 
 def test_auto_notice_lasts_two_seconds(make_game, monkeypatch):
@@ -720,6 +733,7 @@ def test_auto_event_repeats(make_game, monkeypatch):
     force_event(monkeypatch, g, event_by_id("group_chat_praise"))
     g.student.mental = 10
     for _ in range(3):
+        g.student.last_event_time = None   # (E단위) 최소 간격을 빼고 자동형 반복 가능만 본다
         assert g.do_action(STUDY)
         g.update(1.0)
     assert g.student.event_counts[1] == 3
@@ -1048,7 +1062,7 @@ def test_all_three_graduation_endings_and_leave_reachable():
     endings = {}
     scenarios = [
         ("top", greedy, choose_knowledge, 1.0),
-        ("normal", make_steady(330), choose_safe, 1.0),
+        ("normal", make_steady(550), choose_safe, 1.0),   # E단위: 무사 450~699 사이에서 공부 중단
         ("barely", care_only, choose_safe, 1.0),
         ("leave", study_only, choose_first, 1.0),
     ]

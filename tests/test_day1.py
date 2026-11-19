@@ -117,7 +117,7 @@ def test_student_start_values():
         ("MENTAL_SMILE_MIN", 60), ("MENTAL_FLAT_MIN", 30),
         ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
         ("MAX_GRADE", 4),
-        ("TOP_GRADUATE_KNOWLEDGE", 500), ("NORMAL_GRADUATE_KNOWLEDGE", 300),
+        ("TOP_GRADUATE_KNOWLEDGE", 700), ("NORMAL_GRADUATE_KNOWLEDGE", 450),  # E단위: 사용자 승인으로 500/300 -> 700/450
         ("RECORD_FILENAME", "record.json"),
     ],
 )

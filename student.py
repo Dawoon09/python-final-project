@@ -14,7 +14,7 @@ def clamp(value, low, high):
 def judge_ending(knowledge):
     """240초를 버틴 제자의 누적 지식으로 졸업 엔딩 이름을 돌려준다.
 
-    지식 500 이상 "수석 졸업", 300~499 "무사 졸업", 300 미만 "아슬아슬 졸업".
+    지식 700 이상 "수석 졸업", 450~699 "무사 졸업", 450 미만 "아슬아슬 졸업".
     (휴학은 체력·멘탈로 정하므로 여기서 다루지 않는다.)
     """
     if knowledge >= config.TOP_GRADUATE_KNOWLEDGE:
@@ -47,6 +47,7 @@ class Student:
         self.flags = set()         # 연계 플래그 ("MT 참석" 등)
         self.seen_events = set()   # 이번 판에 이미 나온 선택지형 이벤트 id
         self.event_counts = {grade: config.EVENT_COUNT_START for grade in config.ALL_GRADES}  # 학년별 이벤트 수
+        self.last_event_time = None  # 직전 이벤트가 뜬 게임 시각(초). 이번 판에 아직 없으면 None
 
     # ------------------------------------------------------------
     # 게이지 값 바꾸기
@@ -270,8 +271,19 @@ class Student:
         return self.event_counts[self.get_grade()]
 
     def count_event(self):
-        """지금 학년의 이벤트 수를 하나 늘린다."""
+        """지금 학년의 이벤트 수를 하나 늘리고, 지금 게임 시각을 직전 이벤트 시각으로 적어 둔다."""
         self.event_counts[self.get_grade()] += config.EVENT_COUNT_STEP
+        self.last_event_time = self.elapsed
+
+    def is_event_gap_passed(self):
+        """직전 이벤트 이후 게임 시간이 최소 간격(EVENT_MIN_GAP, 8초) 이상 지났으면 True.
+
+        이번 판에 이벤트가 아직 없었으면 True. 학년이 바뀌어도 이어서 센다.
+        대화창이 떠 있는 동안은 경과 시간(elapsed)이 멈추므로 간격에 들어가지 않는다.
+        """
+        if self.last_event_time is None:
+            return True
+        return self.elapsed - self.last_event_time + config.TIME_EPSILON >= config.EVENT_MIN_GAP
 
     def can_have_event(self):
         """지금 학년 이벤트 수가 최대(5) 미만이면 True(아직 이벤트가 나올 수 있음)."""
