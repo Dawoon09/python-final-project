@@ -231,3 +231,32 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 - 자동형 알림: 무대 위쪽 배너, EVENT_NOTICE_TIME 동안 표시.
 - 외형 5종 도트 스프라이트(config 격자): 학년별 얼굴 크기에 맞춰 같이 커짐. 안경·다크서클·표정·점프/숨쉬기와 함께 그려짐.
 - 특성 배지: 상태 패널 안 아래쪽, 얻은 순서대로.
+
+## 15. 방치형 전환 (기획서 10절) — 앞 절과 다르면 이 절이 우선
+
+### 루프 단위
+| 단위 | 내용 |
+|---|---|
+| G | 자동 행동(2초) + 일과표 방침 3종, 쿨타임 제거, 방침 버튼·진행 막대 |
+| H | 연구비·업그레이드 10종·패널(U)·record.json 확장(예전 형식 호환) |
+| I | 졸업 후 환생(R, 명성+1)·대학원(C, 끝없이, 년차 배수)·엔딩 화면 분기·타이틀 표시 |
+| J | 배경 4겹(장소·하늘/계절·행동 소품·시설) |
+| K | 밸런스 시뮬레이션, README·기획서 정리 |
+
+### 수치 (config 상수, 이름은 예시)
+- AUTO_ACTION_INTERVAL 2.0, 첫 행동도 2초 뒤. 대화창(STATE_EVENT) 중 정지.
+- 방침: study_focus(키1, 기준 30, 지식×1.4, 소모×1.6) / balanced(키2, 50, ×1.0, ×1.0, 시작값) / rest_focus(키3, 70, ×0.8, ×0.7)
+- 행동 고르기: health < 기준 or mental < 기준 → (health <= mental ? feed : rest), 아니면 study.
+- 공부 계산: (기본 10 또는 시험 20) + 참고서 2×Lv + 도서관 3 → ×지식배수 → round. 소모: (기본 -5/-8 + 특성 카페인 +2 + 헬스장 +2(체력만)) → ×소모배수 → round.
+- 연구비 += floor(지식 증가량 × (1 + 0.1×명성) × 대학원배수), 대학원배수 = 1 + 0.25×n (학부는 1).
+- 졸업 보너스 200/100/50 × 명성 배수(floor). 휴학 0.
+- 업그레이드 가격 floor(기본가 × 1.6^레벨). 표는 기획서 10절.
+- 건강 관리: 자연 감소 ×(1 - 0.1×Lv). 대학원 n년차: ×(1 + 0.25n). 체력·멘탈은 소수 가능, 표시는 round, 휴학은 <= 0.
+- 행운 부적: 이벤트 확률 0.25 + 0.05×Lv.
+
+### 테스트가 쓰는 이름 (Game)
+- `policy`, `set_policy(name)`, `choose_auto_action()` → "feed"/"rest"/"study", `auto_timer`(다음 행동까지 남은 초), `do_action(name)`(쿨타임 없음, 게임 화면에서만)
+- `money`, `fame`, `upgrades`(dict id→레벨), `get_upgrade_cost(id)`, `can_buy_upgrade(id)`, `buy_upgrade(id)`→bool, `upgrade_panel_open`
+- `grad_year`(0이면 학부, n이면 대학원 n년차), `reincarnate()`, `enter_grad_school()`
+- `load_record()`/`save_record()`: record.json = {"best_knowledge", "money", "fame", "upgrades"}
+- 배경 계산은 화면 없이 확인 가능하게: `get_season()`("spring"/"summer"/"autumn"/"winter"), `get_time_of_day()`("day"/"evening"/"night"), `get_sky_color()`, `last_action`
