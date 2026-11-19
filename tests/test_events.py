@@ -70,6 +70,15 @@ def force_event(monkeypatch, g, event):
     monkeypatch.setattr(g, "pick_event", lambda: event)
 
 
+def pass_input_delay(g):
+    """(D 단위) 대화창 입력 대기(EVENT_INPUT_DELAY, 0.3초)를 지나게 한다.
+
+    대화 상태에서는 게임 시간·게이지·쿨타임이 멈춰 있으므로 대화창 시계만 흐른다.
+    """
+    g.update(config.EVENT_INPUT_DELAY)
+    assert g.is_dialog_ready()
+
+
 def gauges(g):
     s = g.student
     return (s.health, s.mental, s.knowledge)
@@ -486,6 +495,7 @@ def test_action_buttons_do_not_overlap_choice_buttons(in_dialog):
 
 def test_dialog_click_outside_does_nothing(in_dialog):
     g = in_dialog
+    pass_input_delay(g)
     click(g, (5, 5))
     assert g.state == config.STATE_EVENT
 
@@ -493,6 +503,7 @@ def test_dialog_click_outside_does_nothing(in_dialog):
 def test_choice_key_1_applies_option(in_dialog):
     g = in_dialog
     h, m, k = gauges(g)
+    pass_input_delay(g)
     press(g, pygame.K_1)   # 간다: 멘탈 +15, 체력 -10, MT 참석
     assert g.state == config.STATE_PLAYING and g.current_event is None
     assert gauges(g) == (h - 10, min(100, m + 15), k)
@@ -503,6 +514,7 @@ def test_choice_key_1_applies_option(in_dialog):
 def test_choice_key_2_applies_option(in_dialog):
     g = in_dialog
     h, m, k = gauges(g)
+    pass_input_delay(g)
     press(g, pygame.K_2)   # 공부한다: 지식 +10, 멘탈 -5
     assert gauges(g) == (h, m - 5, k + 10)
     assert g.student.flags == set()
@@ -511,6 +523,7 @@ def test_choice_key_2_applies_option(in_dialog):
 def test_choice_key_3_ignored(in_dialog):
     g = in_dialog
     snap = gauges(g)
+    pass_input_delay(g)
     press(g, pygame.K_3)
     assert g.state == config.STATE_EVENT and gauges(g) == snap
 
@@ -522,6 +535,7 @@ def test_choice_click(make_game, monkeypatch, index):
     assert g.do_action(FEED)
     assert g.choice_buttons[0].text == "[1] 밴드부"
     assert g.choice_buttons[1].text == "[2] 헬스부"
+    pass_input_delay(g)
     click(g, g.choice_buttons[index].rect.center)
     assert g.state == config.STATE_PLAYING
     if index == 0:
@@ -538,6 +552,7 @@ def test_choice_shows_popups(make_game, monkeypatch):
     g.student.elapsed = 61.0
     assert g.do_action(FEED)   # 체력 80 -> 100
     n_action = len(g.popups)
+    pass_input_delay(g)
     press(g, pygame.K_1)      # 지식 +20, 체력 -15, 멘탈 -10
     new = texts_top_down(g.popups[n_action:])
     assert new == ["체력 -15", "멘탈 -10", "지식 +20"]
@@ -552,6 +567,7 @@ def test_choice_popup_uses_clamped_change(make_game, monkeypatch):
     g.student.mental = 95
     assert g.do_action(FEED)
     n = len(g.popups)
+    pass_input_delay(g)
     press(g, pygame.K_1)
     assert g.student.mental == 100
     assert texts_top_down(g.popups[n:]) == ["체력 -10", "멘탈 +5"]
@@ -562,7 +578,9 @@ def test_choice_without_gauge_change_no_popup(make_game, monkeypatch):
     force_event(monkeypatch, g, event_by_id("club_fair"))
     assert g.do_action(FEED)
     n = len(g.popups)
+    pass_input_delay(g)
     press(g, pygame.K_2)
+    assert g.state == config.STATE_PLAYING   # (D 단위) 선택이 실제로 처리됐는지 확인
     assert len(g.popups) == n
 
 
@@ -573,6 +591,7 @@ def test_choice_result_zero_leaves(make_game, monkeypatch):
     g.student.health = 10   # 학식 +20 -> 30, 혼자 다 한다 -15 -> 15
     g.student.mental = 10   # -10 -> 0
     assert g.do_action(FEED)
+    pass_input_delay(g)
     press(g, pygame.K_1)
     assert g.state == config.STATE_ENDING and g.ending == config.ENDING_LEAVE
     assert g.student.mental == 0
@@ -584,7 +603,10 @@ def test_dialog_resume_after_choice(in_dialog):
     s = g.student
     t0 = s.elapsed
     cd = g.cooldown
+    pass_input_delay(g)
+    assert (s.elapsed, g.cooldown) == (t0, cd)   # 대기 동안에도 게임 시간·쿨타임 정지
     press(g, pygame.K_2)
+    assert g.state == config.STATE_PLAYING
     g.update(0.5)
     assert s.elapsed == pytest.approx(t0 + 0.5)
     assert g.cooldown == pytest.approx(cd - 0.5)
@@ -615,7 +637,9 @@ def test_quit_in_dialog(in_dialog):
 def test_draw_in_dialog_and_notice_no_crash(in_dialog, monkeypatch):
     g = in_dialog
     g.draw()
+    pass_input_delay(g)
     press(g, pygame.K_1)
+    assert g.state == config.STATE_PLAYING
     g.start_event(config.AUTO_EVENTS[0])
     assert g.notice is not None
     g.draw()
@@ -764,6 +788,7 @@ def test_trait_works_through_game_action(make_game, monkeypatch):
     force_event(monkeypatch, g, event_by_id("club_fair"))
     g.student.health = 50
     assert g.do_action(FEED)        # 70
+    pass_input_delay(g)
     press(g, pygame.K_2)            # 헬스부
     monkeypatch.setattr(config, "EVENT_CHANCE", 0.0)
     g.update(1.0)
@@ -781,7 +806,8 @@ def test_every_negative_option_clamps_to_zero(make_game, event_id, index, attr, 
     g = make_game(71)
     setattr(g.student, attr, value - 3)   # 효과보다 작게: 0에서 멈추고 휴학
     g.start_event(event_by_id(event_id))
-    g.choose_option(index)
+    pass_input_delay(g)
+    assert g.choose_option(index) is True
     assert getattr(g.student, attr) == 0
     assert g.ending == config.ENDING_LEAVE
 

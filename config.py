@@ -650,6 +650,7 @@ CHOICE_FIRST = 0                    # 첫 번째 선택지 번호(리스트 위�
 CHOICE_SECOND = 1                   # 두 번째 선택지 번호(리스트 위치)
 CHOICE_NUMBER_START = 1             # 화면에 보이는 선택지 번호는 1부터 센다: "[1] …", "[2] …"
 EVENT_COUNT_STEP = 1                # 이벤트가 한 번 나올 때 학년 이벤트 수가 늘어나는 양
+EVENT_COUNT_START = 0               # 학년별 이벤트 수의 시작값 (새 판에서는 0번)
 
 # 특성 (얻으면 그 판 끝까지 유지). 값은 화면 배지에 쓸 이름이다
 TRAIT_FITNESS = "체력 단련"          # 학식 먹이기 체력 +20 -> +25
@@ -663,6 +664,7 @@ BONUS_REST_MENTAL = "rest_mental"   # 쉬게 하기 멘탈
 BONUS_REST_HEALTH = "rest_health"   # 쉬게 하기 체력 (기본 0)
 BONUS_STUDY_HEALTH = "study_health"  # 공부시키기 체력
 REST_HEALTH = 0                     # 쉬게 하기의 기본 체력 변화 (특성 없으면 0)
+TRAIT_BONUS_START = 0               # 특성 보정 합계의 시작값 (특성이 없으면 0)
 
 # 특성 -> {보정 받는 효과: 기본 수치에 더하는 양}. 여러 특성이 있으면 각각 더한다
 TRAIT_BONUSES = {
@@ -805,16 +807,207 @@ CHOICE_EVENTS = [
 ]
 ALL_EVENTS = AUTO_EVENTS + CHOICE_EVENTS   # 이벤트 표 전체 (자동형 5 + 선택지형 10)
 
-# 임시 화면 (C단위 최소 표시. 대화창·알림 디자인은 D단위에서 다듬는다)
-EVENT_FONT_SIZE = 18                # 대화창 상황 글자 크기
+# ---------------------------------------------------------------
+# 18. 랜덤 이벤트 화면 (D단위, jeja-spec 14절 "화면"). 보기만 바꾸며 게임 결과에는 영향이 없다
+# ---------------------------------------------------------------
+EVENT_FONT_SIZE = 18                # 대화창 상황 글자·선택 버튼 글자 크기
+SMALL_FONT_SIZE = 14                # 작은 글자 크기: 효과 미리보기, 자동형 알림, 특성 배지
+TEXT_SEPARATOR = " "                # 상황 글자를 줄바꿈할 때 끊는 자리(띄어쓰기)
+TEXT_ELLIPSIS = "…"                 # 줄 수를 넘는 글자를 줄였다는 표시
+
+# 대화창 입력 대기: 대화창이 뜬 직후 이 시간 동안은 선택 입력(키·클릭)을 무시한다
+# (행동 키를 연타하다가 그 키가 선택으로 들어가는 것을 막는다. 대화창 시계로 잰다, 게임 시간은 정지)
+EVENT_INPUT_DELAY = 0.3
+
+# 대화창 뒤 "멈춤" 표시: 화면 전체에 2칸 간격 남색 점무늬를 덮는다 (Surface 알파 대신 도트)
+PAUSE_DOT_STEP = PIXEL_SIZE * 2     # 점 사이 간격(8픽셀 = 2칸). 한 줄 건너 반 칸씩 엇갈려 찍는다
+PAUSE_DOT_SHIFT = PIXEL_SIZE        # 홀수 줄의 점을 옆으로 밀어 찍는 거리(체크무늬 느낌)
+COLOR_PAUSE_DOT = COLOR_OUTLINE     # 점 색(진한 남색)
+
+# 대화창 등장 연출: 위에서 PIXEL_SIZE씩 계단처럼 내려오며 나타난다
+EVENT_DIALOG_SLIDE_TIME = 0.15      # 등장에 걸리는 시간(초)
+EVENT_DIALOG_SLIDE_DISTANCE = 16    # 처음에 원래 자리보다 위에 있는 거리(픽셀, 4칸)
+
+# 대화창 상자: 제자 무대 패널 위 가운데 (무대 x 284~788, y 116~460)
+EVENT_DIALOG_RECT = (300, 132, 472, 264)    # (x, y, 가로, 세로) -> 아래 끝 396 (+그림자 1칸)
+EVENT_DIALOG_CENTER_X = STUDENT_CENTER_X    # 대화창 글자 가운데 x (무대 가운데, 536)
+EVENT_TITLE_BAND_RECT = (316, 144, 440, 36)  # 제목 띠 (x, y, 가로, 세로): 상자 안쪽 위
+EVENT_TITLE_ICON_MARGIN = 16        # 제목 띠 양 끝에서 별 아이콘까지 거리
+EVENT_TEXT_TOP = 188                # 상황 글자 구역 위쪽 y (제목 띠 아래)
+EVENT_TEXT_LINE_HEIGHT = 24         # 상황 글자 한 줄 높이
+EVENT_TEXT_MAX_LINES = 2            # 상황 글자는 2줄까지 (넘치면 줄임표)
+EVENT_TEXT_MAX_WIDTH = 416          # 상황 글자 한 줄 최대 가로 길이 (상자 안쪽 좌우 여백 24씩)
+
+# 선택 버튼 2개 (버튼 아래에 작은 효과 미리보기 한 줄)
 CHOICE_BUTTON_TEXT = "[{}] {}"      # 선택 버튼 글자 틀: "[1] 간다"
-EVENT_NOTICE_TEXT = "{}"            # 자동형 알림 배너 글자 틀: 이벤트 제목
-EVENT_NOTICE_RECT = (300, 128, 472, 40)     # 자동형 알림 배너 (x, y, 가로, 세로): 무대 위쪽
-EVENT_DIALOG_RECT = (300, 156, 472, 264)    # 대화창 상자 (x, y, 가로, 세로): 무대 가운데
-EVENT_DIALOG_TITLE_Y = 196          # 대화창 제목 가운데 y
-EVENT_DIALOG_TEXT_Y = 240           # 대화창 상황 한 줄 가운데 y
-EVENT_DIALOG_CENTER_X = STUDENT_CENTER_X  # 대화창 글자 가운데 x (무대 가운데, 536)
 CHOICE_BUTTON_X = 324               # 선택 버튼 왼쪽 x
 CHOICE_BUTTON_WIDTH = 424           # 선택 버튼 가로 길이
-CHOICE_BUTTON_HEIGHT = 44           # 선택 버튼 세로 길이
-CHOICE_BUTTON_YS = [276, 340]       # 선택 버튼 1, 2의 위쪽 y
+CHOICE_BUTTON_HEIGHT = 40           # 선택 버튼 세로 길이 (아래 남색 받침 1칸은 별도)
+CHOICE_BUTTON_YS = [244, 316]       # 선택 버튼 1, 2의 위쪽 y
+CHOICE_PREVIEW_GAP = 16             # 버튼 아래 끝과 미리보기 글자 가운데 사이 거리
+PREVIEW_SEPARATOR = " · "           # 미리보기 항목 사이 구분 글자
+PREVIEW_TRAIT_TEXT = "특성: {}"      # 미리보기의 특성 항목
+PREVIEW_LOOK_TEXT = "외형: {}"       # 미리보기의 외형 항목
+PREVIEW_NONE_TEXT = "변화 없음"      # 미리보기에 보일 것이 없을 때
+COLOR_PREVIEW_UP = COLOR_GREEN_DARK     # 미리보기: 늘어나는 값 (크림 바탕에서 또렷한 초록)
+COLOR_PREVIEW_DOWN = COLOR_RED_DARK     # 미리보기: 줄어드는 값
+COLOR_PREVIEW_OTHER = COLOR_TEXT_SOFT   # 미리보기: 특성·외형·구분 글자
+
+# 외형 이름 (미리보기 글자)
+LOOK_NAMES = {
+    LOOK_GUITAR: "기타", LOOK_HEADBAND: "헬스 머리띠", LOOK_COFFEE: "커피잔",
+    LOOK_HEART_PIN: "하트 머리핀", LOOK_SUNGLASSES: "선글라스",
+}
+
+# 자동형 알림(토스트): 무대 위쪽 왼쪽 구석. 가운데 위(행동 팝업 자리)와 겹치지 않는다
+EVENT_NOTICE_TEXT = "{}"            # 자동형 알림 글자 틀: 이벤트 제목
+EVENT_NOTICE_X = STAGE_X + PIXEL_SIZE * 2   # 알림 상자 왼쪽 x (292)
+EVENT_NOTICE_Y = PANEL_Y + PIXEL_SIZE * 3   # 알림 상자 위쪽 y (128)
+EVENT_NOTICE_HEIGHT = 36            # 알림 상자 세로 길이 -> 아래 끝 164 (+그림자 1칸)
+EVENT_NOTICE_PAD = PIXEL_SIZE       # 상자 안쪽 왼쪽 여백(아이콘 앞)
+EVENT_NOTICE_ICON_GAP = PIXEL_SIZE  # 아이콘과 글자 사이 간격
+EVENT_NOTICE_PAD_RIGHT = PIXEL_SIZE * 2  # 글자 뒤 오른쪽 여백
+EVENT_NOTICE_SLIDE_TIME = 0.15      # 알림이 내려오며 나타나는 시간(초)
+EVENT_NOTICE_SLIDE_DISTANCE = 12    # 처음에 원래 자리보다 위에 있는 거리(픽셀, 3칸)
+NOTICE_GOOD_ICON = [                # 좋은 일 아이콘: 하트
+    "qq.qq",
+    "qpWpq",
+    "qpppq",
+    ".qpq.",
+    "..q..",
+]
+NOTICE_BAD_ICON = [                 # 나쁜 일 아이콘: 느낌표
+    ".qq.",
+    ".qq.",
+    ".qq.",
+    "....",
+    ".qq.",
+]
+NOTICE_GOOD_COLORS = {"q": COLOR_PINK_DARK, "p": COLOR_PINK, "W": COLOR_WHITE}
+NOTICE_BAD_COLORS = {"q": COLOR_RED_DARK}
+# 알림 색: (몸통, 위 하이라이트 줄, 아래 그림자 줄). 효과 합이 0 이상이면 좋은 일
+NOTICE_GOOD_BOX = (COLOR_MINT_LIGHT, COLOR_WHITE, COLOR_MINT)
+NOTICE_BAD_BOX = (COLOR_PINK_LIGHT, COLOR_WHITE, COLOR_PINK)
+
+# 이벤트 수치 팝업: 무대 왼쪽 위 칸에 위에서 아래로 쌓는다
+# (가운데 머리 위는 행동 팝업 자리, 얼굴 양옆은 파티클 자리라서 겹치지 않는 왼쪽 구석을 쓴다)
+EVENT_POPUP_X = 336                 # 이벤트 팝업 글자 가운데 x (글자 왼쪽 끝 ~299, 오른쪽 끝 ~374)
+EVENT_POPUP_TOP_MARGIN = 28         # 위 경계(무대 위 끝 또는 알림 아래 끝)와 첫 줄 가운데 사이 거리
+                                    # (글자 위 여백 + 0.8초 동안 떠오르는 12픽셀을 포함)
+
+# 특성 배지: 상태 패널 안 아래쪽(멘탈 막대 아래), 얻은 순서대로 2열
+TRAIT_BADGE_X = 24                  # 첫 열 왼쪽 x
+TRAIT_BADGE_Y = 392                 # 첫 줄 위쪽 y (멘탈 막대 테두리 아래 끝 380 + 여백)
+TRAIT_BADGE_WIDTH = 112             # 배지 가로 길이 -> 2열: 24~136, 144~256 (패널 안쪽 16~264)
+TRAIT_BADGE_HEIGHT = 24             # 배지 세로 길이 (+그림자 1칸)
+TRAIT_BADGE_GAP = 8                 # 배지 사이 간격(가로·세로)
+TRAIT_BADGE_COLUMNS = 2             # 한 줄에 놓는 배지 수
+# 특성 -> (몸통, 위 하이라이트 줄)
+TRAIT_COLORS = {
+    TRAIT_FITNESS: (COLOR_APRICOT, COLOR_WHITE),
+    TRAIT_MUSIC: (COLOR_SKY, COLOR_SKY_LIGHT),
+    TRAIT_CAFFEINE: (COLOR_YELLOW, COLOR_YELLOW_LIGHT),
+    TRAIT_LOVE: (COLOR_PINK, COLOR_PINK_LIGHT),
+}
+
+# 외형 5종 도트 스프라이트. 위치는 얼굴 격자(20 x 20칸) 기준 (열, 행)이고 칸 크기는 얼굴과 같다
+# (반지름 // 10) -> 학년마다 얼굴과 함께 커지고, 점프·숨쉬기 때 얼굴과 함께 움직인다.
+# 자리 나눔: 선글라스 = 머리 꼭대기(열 4~15, 행 -1~2), 하트 머리핀 = 머리 왼쪽 위(열 -2~2, 행 1~5),
+# 머리띠 = 이마 위 머리카락(행 5~6, 매듭 꼬리는 오른쪽 행 6~8), 커피잔 = 얼굴 오른쪽 아래 바깥(행 11~18),
+# 기타 = 얼굴 뒤(몸통은 왼쪽 아래, 넥은 오른쪽 위로 비스듬히). 서로 칸이 겹치지 않는다.
+COLOR_GUITAR_BODY = (120, 176, 228)       # 기타 몸통(하늘색, 피부색과 또렷이 구분)
+COLOR_GUITAR_SHADE = (92, 146, 206)       # 기타 몸통 아래 그림자
+COLOR_GUITAR_NECK = (150, 104, 76)        # 기타 넥(나무)
+COLOR_GUITAR_NECK_LIGHT = (196, 150, 108)  # 넥 밝은 쪽
+COLOR_GUITAR_HEAD = (110, 76, 64)         # 기타 헤드
+COLOR_HEADBAND = (232, 82, 90)            # 헬스 머리띠(빨강)
+COLOR_HEADBAND_LIGHT = (250, 150, 150)    # 머리띠 위 밝은 줄
+COLOR_MUG = COLOR_WHITE                   # 커피잔
+COLOR_COFFEE = (150, 100, 70)             # 커피
+COLOR_STEAM = (196, 192, 214)             # 김
+COLOR_SUNGLASS = (64, 60, 96)             # 선글라스 알(짙은 남보라)
+COLOR_SUNGLASS_SHINE = (150, 160, 220)    # 선글라스 알 반짝임
+
+GUITAR_SPRITE = [           # 35 x 33칸, 얼굴 격자 (-6, -6)부터. 얼굴보다 먼저(뒤에) 그린다
+    "..............................OOOO.",
+    ".............................OhhhhO",
+    "............................WhhhhW.",
+    "...........................OhhhhO..",
+    "..........................WhhhhW...",
+    "..........................OnmO.....",
+    ".........................OnmO......",
+    "........................OnmO.......",
+    ".......................OnmO........",
+    "......................OnmO.........",
+    ".....................OnmO..........",
+    "....................OnmO...........",
+    "...................OnmO............",
+    "..................OnmO.............",
+    ".................OnmO..............",
+    "................OnmO...............",
+    "...............OnmO................",
+    "........OOOOO.OnmO.................",
+    ".......ObbbbbOnmO..................",
+    "......ObbbbbOnmO...................",
+    "......ObbbbOnmO....................",
+    "......ObbbOnmOO....................",
+    "...OOObbbOnmObO....................",
+    "..ObbbbbbbbbbO.....................",
+    ".ObbbbbOObbbO......................",
+    "ObbbbbbOObbO.......................",
+    "ObbbbbbbbbbO.......................",
+    "ObbbbbbbbbbO.......................",
+    "OBbbbbbbbbBO.......................",
+    "OBbbddddbbBO.......................",
+    ".OBbbbbbbBO........................",
+    "..OBbbbbBO.........................",
+    "...OOOOOO..........................",
+]
+HEADBAND_SPRITE = [         # 22 x 4칸, 얼굴 격자 (0, 5)부터: 이마 위 띠 + 오른쪽 매듭 꼬리
+    "..RRRRRRRRRRRRRRRR....",  # (얼굴 외곽선 칸은 비워 두어 외곽선이 그대로 보인다)
+    ".rrrrrrrrrrrrrrrrrr.rr",
+    "....................r.",
+    ".....................r",
+]
+COFFEE_SPRITE = [           # 7 x 8칸, 얼굴 격자 (20, 11)부터: 김 + 손잡이 달린 잔
+    "..s.s..",
+    ".s.s...",
+    "OOOOO..",
+    "OcccO..",
+    "OwwwOOO",
+    "OwwwO.O",
+    "OwwwOOO",
+    ".OOO...",
+]
+HEART_PIN_SPRITE = [        # 5 x 5칸, 얼굴 격자 (-2, 1)부터: 머리 왼쪽 위 하트 핀
+    "qq.qq",
+    "qpWpq",
+    "qpppq",
+    ".qpq.",
+    "..q..",
+]
+SUNGLASSES_SPRITE = [       # 12 x 4칸, 얼굴 격자 (4, -1)부터: 머리 꼭대기에 걸친 선글라스
+    "OOOOOOOOOOOO",
+    "OkkgO..OkkgO",
+    "OkkkO..OkkkO",
+    ".OOO....OOO.",
+]
+LOOK_COLORS = {
+    "O": COLOR_OUTLINE, "W": COLOR_WHITE,
+    "b": COLOR_GUITAR_BODY, "B": COLOR_GUITAR_SHADE, "d": COLOR_GUITAR_HEAD,
+    "n": COLOR_GUITAR_NECK, "m": COLOR_GUITAR_NECK_LIGHT, "h": COLOR_GUITAR_HEAD,
+    "R": COLOR_HEADBAND_LIGHT, "r": COLOR_HEADBAND,
+    "s": COLOR_STEAM, "c": COLOR_COFFEE, "w": COLOR_MUG,
+    "q": COLOR_PINK_DARK, "p": COLOR_PINK,
+    "k": COLOR_SUNGLASS, "g": COLOR_SUNGLASS_SHINE,
+}
+# 외형 id -> ((열, 행), 격자). 그리는 차례: LOOKS_BEHIND는 얼굴보다 먼저, LOOKS_FRONT는 입 다음
+LOOK_SPRITES = {
+    LOOK_GUITAR: ((-6, -6), GUITAR_SPRITE),
+    LOOK_HEADBAND: ((0, 5), HEADBAND_SPRITE),
+    LOOK_COFFEE: ((20, 11), COFFEE_SPRITE),
+    LOOK_HEART_PIN: ((-2, 1), HEART_PIN_SPRITE),
+    LOOK_SUNGLASSES: ((4, -1), SUNGLASSES_SPRITE),
+}
+LOOKS_BEHIND = [LOOK_GUITAR]
+LOOKS_FRONT = [LOOK_HEADBAND, LOOK_HEART_PIN, LOOK_SUNGLASSES, LOOK_COFFEE]

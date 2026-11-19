@@ -209,7 +209,8 @@ EVENT_HOOKS = {
     "Student.__init__": {"remove": [
         "self.traits = []", "self.looks = []", "self.flags = set()",
         "self.seen_events = set()",
-        "self.event_counts = {grade: config.NO_CHANGE for grade in config.ALL_GRADES}"]},
+        # (D 단위) 시작값 상수를 NO_CHANGE -> EVENT_COUNT_START 로 바꿈(값 0 동일)
+        "self.event_counts = {grade: config.EVENT_COUNT_START for grade in config.ALL_GRADES}"]},
     "Student.feed": {"strip": [" + self.get_trait_bonus(config.BONUS_FEED_HEALTH)"]},
     "Student.rest": {"strip": [" + self.get_trait_bonus(config.BONUS_REST_MENTAL)",
                                " + self.get_trait_bonus(config.BONUS_REST_HEALTH)"],
@@ -327,6 +328,8 @@ def test_game_init_only_adds_backdrop():
         "self.popup_font = pygame.font.SysFont(config.FONT_NAME, config.POPUP_FONT_SIZE, "
         "bold=config.POPUP_FONT_BOLD)",
         "self.event_font = pygame.font.SysFont(config.FONT_NAME, config.EVENT_FONT_SIZE)",
+        # (D 단위) 미리보기·알림·특성 배지용 작은 글꼴
+        "self.small_font = pygame.font.SysFont(config.FONT_NAME, config.SMALL_FONT_SIZE)",
         "self.mouse_pos = None",
         "self.blink_time = config.ZERO_TIME",
         "self.choice_buttons = self.make_choice_buttons()",

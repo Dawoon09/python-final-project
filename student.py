@@ -46,7 +46,7 @@ class Student:
         self.looks = []            # 얻은 외형 id (얻은 순서대로)
         self.flags = set()         # 연계 플래그 ("MT 참석" 등)
         self.seen_events = set()   # 이번 판에 이미 나온 선택지형 이벤트 id
-        self.event_counts = {grade: config.NO_CHANGE for grade in config.ALL_GRADES}  # 학년별 이벤트 수
+        self.event_counts = {grade: config.EVENT_COUNT_START for grade in config.ALL_GRADES}  # 학년별 이벤트 수
 
     # ------------------------------------------------------------
     # 게이지 값 바꾸기
@@ -214,7 +214,7 @@ class Student:
     # ------------------------------------------------------------
     def get_trait_bonus(self, bonus_name):
         """가진 특성들이 행동 효과 bonus_name에 더해 주는 양의 합을 돌려준다(없으면 0)."""
-        total = config.NO_CHANGE
+        total = config.TRAIT_BONUS_START
         for trait in self.traits:
             total += config.TRAIT_BONUSES[trait].get(bonus_name, config.NO_CHANGE)
         return total
@@ -404,10 +404,12 @@ class Student:
     def draw(self, screen, lift=config.NO_OFFSET):
         """오른쪽 제자 무대에 제자를 도트 스프라이트로 그린다.
 
-        발밑 그림자 -> 얼굴(머리카락 포함) -> 볼 홍조 -> 눈 -> (체력 30 미만) 다크서클
-        -> (3학년부터) 안경 -> 입 순서로 찍는다. 모든 부품은 얼굴 격자 칸 단위로 놓이고,
-        칸 크기가 학년마다 커지므로 얼굴과 부품이 함께 커진다.
-        lift는 점프·숨쉬기로 제자가 위로 뜬 높이(픽셀)다. 얼굴만 그만큼 올라가고
+        발밑 그림자 -> (얼굴 뒤 외형: 기타) -> 얼굴(머리카락 포함) -> 볼 홍조 -> 눈
+        -> (체력 30 미만) 다크서클 -> (3학년부터) 안경 -> 입
+        -> (얼굴 앞 외형: 머리띠·하트 머리핀·선글라스·커피잔) 순서로 찍는다.
+        모든 부품은 얼굴 격자 칸 단위로 놓이고, 칸 크기가 학년마다 커지므로
+        얼굴과 부품(외형 포함)이 함께 커진다. 외형은 눈·안경·다크서클·입 칸과 겹치지 않는 자리에 있다.
+        lift는 점프·숨쉬기로 제자가 위로 뜬 높이(픽셀)다. 얼굴과 외형이 그만큼 올라가고
         발밑 그림자는 제자리에서 조금 작아진다. 크기(반지름)는 바뀌지 않는다.
         """
         radius = self.get_radius()
@@ -416,6 +418,7 @@ class Student:
         top = config.STUDENT_CENTER_Y - radius - lift
 
         self.draw_shadow(screen, radius, lift)
+        self.draw_looks(screen, left, top, cell, config.LOOKS_BEHIND)
         draw_sprite(screen, config.FACE_SPRITE, left, top, cell, config.FACE_COLORS)
         self.draw_parts(screen, left, top, cell, config.BLUSH_SPRITE, config.BLUSH_POSITIONS)
         self.draw_parts(screen, left, top, cell, config.EYE_SPRITE, config.EYE_POSITIONS)
@@ -425,6 +428,39 @@ class Student:
         if self.has_glasses():
             self.draw_glasses(screen, left, top, cell)
         self.draw_mouth(screen, left, top, cell)
+        self.draw_looks(screen, left, top, cell, config.LOOKS_FRONT)
+
+    def draw_looks(self, screen, left, top, cell, order):
+        """얻은 외형 중 order 목록에 있는 것을 order 차례대로 얼굴 격자 위치에 찍는다.
+
+        order는 config.LOOKS_BEHIND(얼굴보다 먼저) 또는 config.LOOKS_FRONT(입 다음)다.
+        얻지 않은 외형은 건너뛴다. 위치는 얼굴 격자 (열, 행)이라 얼굴 밖(음수 칸)도 될 수 있다.
+        """
+        for look in order:
+            if look not in self.looks:
+                continue
+            (col, row), grid = config.LOOK_SPRITES[look]
+            draw_sprite(screen, grid, left + col * cell, top + row * cell,
+                        cell, config.LOOK_COLORS)
+
+    def draw_traits(self, screen, font):
+        """상태 패널 안 아래쪽(멘탈 막대 아래)에 얻은 특성을 작은 도트 배지로 그린다.
+
+        얻은 순서대로 왼쪽 위부터 한 줄에 TRAIT_BADGE_COLUMNS(2)개씩 채운다.
+        특성 4개가 모두 있어도 2 x 2로 패널 안에 들어간다. 배지 색은 특성마다 다르다.
+        """
+        for index, trait in enumerate(self.traits):
+            row, col = divmod(index, config.TRAIT_BADGE_COLUMNS)
+            box = pygame.Rect(
+                config.TRAIT_BADGE_X + col * (config.TRAIT_BADGE_WIDTH + config.TRAIT_BADGE_GAP),
+                config.TRAIT_BADGE_Y + row * (config.TRAIT_BADGE_HEIGHT + config.TRAIT_BADGE_GAP),
+                config.TRAIT_BADGE_WIDTH, config.TRAIT_BADGE_HEIGHT)
+            fill, light = config.TRAIT_COLORS[trait]
+            inner = draw_pixel_box(screen, box, fill, light, drop=config.COLOR_DROP)
+            text = render_text(font, trait)
+            text_rect = text.get_rect()
+            text_rect.center = inner.center
+            screen.blit(text, text_rect)
 
     def draw_shadow(self, screen, radius, lift):
         """얼굴 아래에 납작한 도트 그림자(모서리 깎은 사각형)를 그린다.
