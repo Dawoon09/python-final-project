@@ -16,7 +16,7 @@ from student import Student  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME_FILES = ["main.py", "config.py", "student.py", "button.py", "game.py"]
-ALLOWED_IMPORTS = {"pygame", "json", "sys", "os", "config", "student", "button", "game"}
+ALLOWED_IMPORTS = {"pygame", "json", "sys", "os", "random", "config", "student", "button", "game"}
 
 
 @pytest.fixture

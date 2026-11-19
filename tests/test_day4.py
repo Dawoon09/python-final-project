@@ -453,7 +453,7 @@ def test_numpad_no_action(game, k):
 # ======================= 정적 검사: 도형·import·매직 넘버·docstring =======================
 
 ALLOWED_DRAW = {"circle", "rect", "line", "arc"}
-ALLOWED_IMPORTS = {"pygame", "json", "sys", "os", "config", "button", "student", "game"}
+ALLOWED_IMPORTS = {"pygame", "json", "sys", "os", "random", "config", "button", "student", "game"}
 
 
 def parse(name):

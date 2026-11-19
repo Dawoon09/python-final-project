@@ -24,6 +24,7 @@ MS_PER_SECOND = 1000        # 밀리초 -> 초 변환에 쓰는 값
 STATE_TITLE = "title"       # 타이틀 화면
 STATE_PLAYING = "playing"   # 게임 화면
 STATE_ENDING = "ending"     # 엔딩 화면
+STATE_EVENT = "event"       # 선택지형 이벤트 대화창 (게임 진행이 멈춘 상태)
 
 # 게임을 켰을 때 처음 보여 줄 화면: 타이틀 화면
 START_STATE = STATE_TITLE
@@ -626,3 +627,194 @@ SHADOW_SHRINK_PER_LIFT = 1  # 제자가 1픽셀 뜰 때마다 발밑 그림자 �
 # E6 안내 문구 깜빡임: 화살표가 보였다 숨었다 하고, 숨을 때 글자 색이 살짝 옅어진다
 BLINK_INTERVAL = 0.5        # 깜빡임 간격(초)
 COLOR_HINT_DIM = COLOR_TEXT_SOFT   # 화살표가 숨었을 때의 안내 글자 색
+
+# ---------------------------------------------------------------
+# 17. 랜덤 이벤트와 성장 (기획서 9절, jeja-spec 14절)
+# ---------------------------------------------------------------
+# 발생 규칙 수치
+EVENT_CHANCE = 0.25                 # 행동이 실제로 실행된 직후 이벤트가 뜰 확률
+EVENT_GUARANTEE_INTERVAL = 11.25    # 최소 보장 구간 길이(초): 학년 안 0~45초를 4구간으로 나눈다
+EVENT_MIN_PER_GRADE = 4             # 학년당 최소 보장 이벤트 수 (보장 구간 개수)
+EVENT_MAX_PER_GRADE = 5             # 학년당 최대 이벤트 수
+EVENT_CHOICE_RATIO = 0.5            # 선택지형 후보가 있을 때 선택지형을 고를 확률
+EVENT_NOTICE_TIME = 2.0             # 자동형 알림 배너가 보이는 시간(초)
+
+# 이벤트 종류
+EVENT_KIND_AUTO = "auto"            # 자동형(작은 사건): 게임이 멈추지 않고 효과가 바로 적용된다
+EVENT_KIND_CHOICE = "choice"        # 선택지형(큰 사건): 게임이 멈추고 대화창에서 둘 중 하나를 고른다
+
+ALL_GRADES = [1, 2, 3, 4]           # 모든 학년 (자동형 이벤트가 나오는 학년)
+
+# 선택지 번호 (대화창의 선택 1 / 선택 2). 키 1 -> 첫 번째, 키 2 -> 두 번째
+CHOICE_FIRST = 0                    # 첫 번째 선택지 번호(리스트 위치)
+CHOICE_SECOND = 1                   # 두 번째 선택지 번호(리스트 위치)
+CHOICE_NUMBER_START = 1             # 화면에 보이는 선택지 번호는 1부터 센다: "[1] …", "[2] …"
+EVENT_COUNT_STEP = 1                # 이벤트가 한 번 나올 때 학년 이벤트 수가 늘어나는 양
+
+# 특성 (얻으면 그 판 끝까지 유지). 값은 화면 배지에 쓸 이름이다
+TRAIT_FITNESS = "체력 단련"          # 학식 먹이기 체력 +20 -> +25
+TRAIT_MUSIC = "음악 힐링"            # 쉬게 하기 멘탈 +20 -> +25
+TRAIT_CAFFEINE = "카페인"            # 공부시키기 체력 -5 -> -3
+TRAIT_LOVE = "연애 중"               # 쉬게 하기에 체력 +5가 함께 붙음
+
+# 특성 보정을 받는 행동 효과 이름
+BONUS_FEED_HEALTH = "feed_health"   # 학식 먹이기 체력
+BONUS_REST_MENTAL = "rest_mental"   # 쉬게 하기 멘탈
+BONUS_REST_HEALTH = "rest_health"   # 쉬게 하기 체력 (기본 0)
+BONUS_STUDY_HEALTH = "study_health"  # 공부시키기 체력
+REST_HEALTH = 0                     # 쉬게 하기의 기본 체력 변화 (특성 없으면 0)
+
+# 특성 -> {보정 받는 효과: 기본 수치에 더하는 양}. 여러 특성이 있으면 각각 더한다
+TRAIT_BONUSES = {
+    TRAIT_FITNESS: {BONUS_FEED_HEALTH: 5},     # +20 -> +25
+    TRAIT_MUSIC: {BONUS_REST_MENTAL: 5},       # +20 -> +25
+    TRAIT_CAFFEINE: {BONUS_STUDY_HEALTH: 2},   # -5 -> -3
+    TRAIT_LOVE: {BONUS_REST_HEALTH: 5},        # 0 -> +5
+}
+
+# 외형 5종 (얻으면 그 판 끝까지 제자에게 붙어 있다. 그리기는 D단위)
+LOOK_GUITAR = "guitar"              # 기타(등 뒤)
+LOOK_HEADBAND = "headband"          # 헬스 머리띠
+LOOK_COFFEE = "coffee"              # 커피잔(손)
+LOOK_HEART_PIN = "heart_pin"        # 하트 머리핀
+LOOK_SUNGLASSES = "sunglasses"      # 선글라스(머리 위)
+LOOK_IDS = [LOOK_GUITAR, LOOK_HEADBAND, LOOK_COFFEE, LOOK_HEART_PIN, LOOK_SUNGLASSES]
+
+# 연계 플래그 (연계 이벤트가 나오기 위한 조건)
+FLAG_MT = "MT 참석"
+FLAG_BAND = "밴드부"
+FLAG_LOVE = "연애 중"
+
+# 이벤트 dict 키
+EVENT_ID = "id"                     # 이벤트 이름표 (선택지형 한 판 1회 기록용)
+EVENT_KIND = "kind"                 # 종류: EVENT_KIND_AUTO / EVENT_KIND_CHOICE
+EVENT_GRADES = "grades"             # 나올 수 있는 학년 목록 (표에 적힌 학년에서만)
+EVENT_REQUIRES = "requires"         # 필요한 연계 플래그 (없으면 None)
+EVENT_TITLE = "title"               # 제목 (이벤트 이름)
+EVENT_TEXT = "text"                 # 상황 한 줄 (선택지형)
+EVENT_EFFECTS = "effects"           # 게이지 효과 {게이지 속성 이름: 변화량}
+EVENT_OPTIONS = "options"           # 선택지 2개 (선택지형)
+OPTION_TEXT = "text"                # 선택지 글자
+OPTION_EFFECTS = "effects"          # 선택지 게이지 효과
+OPTION_TRAIT = "trait"              # 얻는 특성 (없으면 None)
+OPTION_LOOK = "look"                # 얻는 외형 (없으면 None)
+OPTION_FLAG = "flag"                # 얻는 연계 플래그 (없으면 None)
+
+
+def make_option(text, effects, trait=None, look=None, flag=None):
+    """선택지 하나를 dict로 만들어 돌려준다(이벤트 표를 짧게 쓰기 위한 도우미)."""
+    return {OPTION_TEXT: text, OPTION_EFFECTS: effects, OPTION_TRAIT: trait,
+            OPTION_LOOK: look, OPTION_FLAG: flag}
+
+
+# 자동형 이벤트 5개 (모든 학년, 반복 가능)
+AUTO_EVENTS = [
+    {EVENT_ID: "side_dish", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+     EVENT_REQUIRES: None, EVENT_TITLE: "엄마가 반찬을 보내셨다",
+     EVENT_EFFECTS: {GAUGE_HEALTH: 15}},
+    {EVENT_ID: "group_chat_praise", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+     EVENT_REQUIRES: None, EVENT_TITLE: "단톡방에서 칭찬받았다",
+     EVENT_EFFECTS: {GAUGE_MENTAL: 10}},
+    {EVENT_ID: "deadline_alarm", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+     EVENT_REQUIRES: None, EVENT_TITLE: "과제 마감 알림이 울렸다",
+     EVENT_EFFECTS: {GAUGE_MENTAL: -10}},
+    {EVENT_ID: "cold", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+     EVENT_REQUIRES: None, EVENT_TITLE: "감기 기운이 돈다",
+     EVENT_EFFECTS: {GAUGE_HEALTH: -10}},
+    {EVENT_ID: "professor_praise", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+     EVENT_REQUIRES: None, EVENT_TITLE: "교수님께 칭찬받았다",
+     EVENT_EFFECTS: {GAUGE_KNOWLEDGE: 15, GAUGE_MENTAL: 5}},
+]
+
+# 선택지형 이벤트 10개 (연계 3개 포함, 한 판에 한 번씩)
+CHOICE_EVENTS = [
+    {EVENT_ID: "mt_invite", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [1],
+     EVENT_REQUIRES: None, EVENT_TITLE: "MT 초대",
+     EVENT_TEXT: "과 선배가 이번 주말 MT에 같이 가자고 한다.",
+     EVENT_OPTIONS: [
+         make_option("간다", {GAUGE_MENTAL: 15, GAUGE_HEALTH: -10}, flag=FLAG_MT),
+         make_option("공부한다", {GAUGE_KNOWLEDGE: 10, GAUGE_MENTAL: -5}),
+     ]},
+    {EVENT_ID: "club_fair", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [1],
+     EVENT_REQUIRES: None, EVENT_TITLE: "동아리 박람회",
+     EVENT_TEXT: "동아리 박람회가 열렸다. 어디에 들어갈까?",
+     EVENT_OPTIONS: [
+         make_option("밴드부", {}, trait=TRAIT_MUSIC, look=LOOK_GUITAR, flag=FLAG_BAND),
+         make_option("헬스부", {}, trait=TRAIT_FITNESS, look=LOOK_HEADBAND),
+     ]},
+    {EVENT_ID: "free_rider", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [2],
+     EVENT_REQUIRES: None, EVENT_TITLE: "조별과제 무임승차자",
+     EVENT_TEXT: "조원 한 명이 연락도 없이 사라졌다.",
+     EVENT_OPTIONS: [
+         make_option("혼자 다 한다",
+                     {GAUGE_KNOWLEDGE: 20, GAUGE_HEALTH: -15, GAUGE_MENTAL: -10}),
+         make_option("교수님께 말한다", {GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "all_nighter", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [2],
+     EVENT_REQUIRES: None, EVENT_TITLE: "밤샘의 유혹",
+     EVENT_TEXT: "내일 마감인 과제가 아직 반이나 남았다.",
+     EVENT_OPTIONS: [
+         make_option("커피로 버틴다", {GAUGE_KNOWLEDGE: 10},
+                     trait=TRAIT_CAFFEINE, look=LOOK_COFFEE),
+         make_option("그냥 잔다", {GAUGE_HEALTH: 10}),
+     ]},
+    {EVENT_ID: "confession", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [3],
+     EVENT_REQUIRES: None, EVENT_TITLE: "고백을 받았다",
+     EVENT_TEXT: "같은 과 친구가 좋아한다고 고백했다.",
+     EVENT_OPTIONS: [
+         make_option("사귄다", {GAUGE_MENTAL: 15},
+                     trait=TRAIT_LOVE, look=LOOK_HEART_PIN, flag=FLAG_LOVE),
+         make_option("공부에 집중", {GAUGE_KNOWLEDGE: 20, GAUGE_MENTAL: -10}),
+     ]},
+    {EVENT_ID: "exchange_student", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [3],
+     EVENT_REQUIRES: None, EVENT_TITLE: "교환학생 공고",
+     EVENT_TEXT: "해외 교환학생 모집 공고가 올라왔다.",
+     EVENT_OPTIONS: [
+         make_option("지원한다", {GAUGE_KNOWLEDGE: 25, GAUGE_HEALTH: -10}),
+         make_option("다음에", {GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "job_fair", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [4],
+     EVENT_REQUIRES: None, EVENT_TITLE: "취업 박람회",
+     EVENT_TEXT: "학교에서 취업 박람회가 열렸다.",
+     EVENT_OPTIONS: [
+         make_option("대기업 지원", {GAUGE_KNOWLEDGE: 20, GAUGE_MENTAL: -15}),
+         make_option("대학원 상담", {GAUGE_KNOWLEDGE: 10, GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "senior_notes", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [2, 3, 4],
+     EVENT_REQUIRES: FLAG_MT, EVENT_TITLE: "선배가 족보를 준다",
+     EVENT_TEXT: "MT에서 친해진 선배가 족보를 건넨다.",
+     EVENT_OPTIONS: [
+         make_option("받는다", {GAUGE_KNOWLEDGE: 15}),
+         make_option("거절한다", {GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "festival_stage", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [3, 4],
+     EVENT_REQUIRES: FLAG_BAND, EVENT_TITLE: "축제 무대 제안",
+     EVENT_TEXT: "밴드부에서 축제 무대에 서 보자고 한다.",
+     EVENT_OPTIONS: [
+         make_option("무대에 선다", {GAUGE_MENTAL: 25, GAUGE_HEALTH: -10},
+                     look=LOOK_SUNGLASSES),
+         make_option("연습만 한다", {GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "graduation_date", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [4],
+     EVENT_REQUIRES: FLAG_LOVE, EVENT_TITLE: "졸업 전 데이트",
+     EVENT_TEXT: "졸업하기 전에 둘이서 데이트하자고 한다.",
+     EVENT_OPTIONS: [
+         make_option("데이트한다", {GAUGE_MENTAL: 20, GAUGE_HEALTH: -5}),
+         make_option("도서관에 간다", {GAUGE_KNOWLEDGE: 15}),
+     ]},
+]
+ALL_EVENTS = AUTO_EVENTS + CHOICE_EVENTS   # 이벤트 표 전체 (자동형 5 + 선택지형 10)
+
+# 임시 화면 (C단위 최소 표시. 대화창·알림 디자인은 D단위에서 다듬는다)
+EVENT_FONT_SIZE = 18                # 대화창 상황 글자 크기
+CHOICE_BUTTON_TEXT = "[{}] {}"      # 선택 버튼 글자 틀: "[1] 간다"
+EVENT_NOTICE_TEXT = "{}"            # 자동형 알림 배너 글자 틀: 이벤트 제목
+EVENT_NOTICE_RECT = (300, 128, 472, 40)     # 자동형 알림 배너 (x, y, 가로, 세로): 무대 위쪽
+EVENT_DIALOG_RECT = (300, 156, 472, 264)    # 대화창 상자 (x, y, 가로, 세로): 무대 가운데
+EVENT_DIALOG_TITLE_Y = 196          # 대화창 제목 가운데 y
+EVENT_DIALOG_TEXT_Y = 240           # 대화창 상황 한 줄 가운데 y
+EVENT_DIALOG_CENTER_X = STUDENT_CENTER_X  # 대화창 글자 가운데 x (무대 가운데, 536)
+CHOICE_BUTTON_X = 324               # 선택 버튼 왼쪽 x
+CHOICE_BUTTON_WIDTH = 424           # 선택 버튼 가로 길이
+CHOICE_BUTTON_HEIGHT = 44           # 선택 버튼 세로 길이
+CHOICE_BUTTON_YS = [276, 340]       # 선택 버튼 1, 2의 위쪽 y

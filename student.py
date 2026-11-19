@@ -32,12 +32,21 @@ class Student:
     """
 
     def __init__(self):
-        """게이지를 시작값으로 정하고 경과 시간을 0으로 둔다."""
+        """게이지를 시작값으로 정하고 경과 시간을 0으로 둔다.
+
+        랜덤 이벤트로 생기는 성장 기록(특성·외형·연계 플래그·나온 선택지형 이벤트·
+        학년별 이벤트 수)도 여기서 비운다. 새 판에서 Student를 새로 만들면 모두 초기화된다.
+        """
         self.health = config.HEALTH_START
         self.mental = config.MENTAL_START
         self.knowledge = config.KNOWLEDGE_START
         self.elapsed = config.ZERO_TIME      # 게임 시작 후 흐른 시간(초)
         self.decay_timer = config.ZERO_TIME  # 다음 자연 감소까지 모아 둔 시간(초)
+        self.traits = []           # 얻은 특성 이름 (얻은 순서대로, 화면 배지용)
+        self.looks = []            # 얻은 외형 id (얻은 순서대로)
+        self.flags = set()         # 연계 플래그 ("MT 참석" 등)
+        self.seen_events = set()   # 이번 판에 이미 나온 선택지형 이벤트 id
+        self.event_counts = {grade: config.NO_CHANGE for grade in config.ALL_GRADES}  # 학년별 이벤트 수
 
     # ------------------------------------------------------------
     # 게이지 값 바꾸기
@@ -142,18 +151,25 @@ class Student:
     # 행동 (3일차)
     # ------------------------------------------------------------
     def feed(self):
-        """학식 먹이기: 체력 +20 (100을 넘지 않음)."""
-        self.change_health(config.FEED_HEALTH)
+        """학식 먹이기: 체력 +20 (체력 단련 특성이면 +25). 100을 넘지 않음."""
+        self.change_health(config.FEED_HEALTH + self.get_trait_bonus(config.BONUS_FEED_HEALTH))
 
     def rest(self):
-        """쉬게 하기: 멘탈 +20 (100을 넘지 않음), 지식 -2 (0 아래로 내려가지 않음)."""
-        self.change_mental(config.REST_MENTAL)
+        """쉬게 하기: 멘탈 +20 (음악 힐링 +25), 지식 -2, (연애 중이면) 체력 +5.
+
+        멘탈·체력은 0~100, 지식은 0 아래로 내려가지 않는다.
+        """
+        self.change_mental(config.REST_MENTAL + self.get_trait_bonus(config.BONUS_REST_MENTAL))
         self.change_knowledge(config.REST_KNOWLEDGE)
+        self.change_health(config.REST_HEALTH + self.get_trait_bonus(config.BONUS_REST_HEALTH))
 
     def study(self):
-        """공부시키기: 지식 +(공부 지식량), 체력 -5, 멘탈 -8 (0 아래로 내려가지 않음)."""
+        """공부시키기: 지식 +(공부 지식량), 체력 -5 (카페인 특성이면 -3), 멘탈 -8.
+
+        0 아래로 내려가지 않는다. 시험 기간 지식 +20 규칙은 특성과 상관없이 그대로다.
+        """
         self.change_knowledge(self.get_study_knowledge())
-        self.change_health(config.STUDY_HEALTH)
+        self.change_health(config.STUDY_HEALTH + self.get_trait_bonus(config.BONUS_STUDY_HEALTH))
         self.change_mental(config.STUDY_MENTAL)
 
     def get_study_knowledge(self):
@@ -192,6 +208,104 @@ class Student:
         """캐릭터 반지름을 돌려준다: 40 + (학년-1) x 10 -> 40/50/60/70."""
         return (config.BASE_RADIUS
                 + (self.get_grade() - config.FIRST_GRADE) * config.RADIUS_PER_GRADE)
+
+    # ------------------------------------------------------------
+    # 랜덤 이벤트와 성장 (기획서 9절)
+    # ------------------------------------------------------------
+    def get_trait_bonus(self, bonus_name):
+        """가진 특성들이 행동 효과 bonus_name에 더해 주는 양의 합을 돌려준다(없으면 0)."""
+        total = config.NO_CHANGE
+        for trait in self.traits:
+            total += config.TRAIT_BONUSES[trait].get(bonus_name, config.NO_CHANGE)
+        return total
+
+    def has_trait(self, trait):
+        """특성 trait을 가지고 있으면 True."""
+        return trait in self.traits
+
+    def add_trait(self, trait):
+        """특성 trait을 얻는다. 이미 있으면 다시 넣지 않는다(얻은 순서 유지)."""
+        if trait not in self.traits:
+            self.traits.append(trait)
+
+    def add_look(self, look):
+        """외형 look을 얻는다. 이미 있으면 다시 넣지 않는다(얻은 순서 유지)."""
+        if look not in self.looks:
+            self.looks.append(look)
+
+    def add_flag(self, flag):
+        """연계 플래그 flag를 켠다(연계 이벤트가 나올 수 있게 된다)."""
+        self.flags.add(flag)
+
+    def apply_effects(self, effects):
+        """이벤트 효과 {게이지 속성 이름: 변화량}을 적용한다.
+
+        체력·멘탈은 0~100, 지식은 0 이상으로 맞춘다(기존 change_ 메서드 사용).
+        """
+        for name, amount in effects.items():
+            if name == config.GAUGE_HEALTH:
+                self.change_health(amount)
+            elif name == config.GAUGE_MENTAL:
+                self.change_mental(amount)
+            elif name == config.GAUGE_KNOWLEDGE:
+                self.change_knowledge(amount)
+
+    def apply_option(self, option):
+        """선택지형 이벤트에서 고른 선택지 option의 효과·특성·외형·연계 플래그를 모두 적용한다."""
+        self.apply_effects(option[config.OPTION_EFFECTS])
+        if option[config.OPTION_TRAIT] is not None:
+            self.add_trait(option[config.OPTION_TRAIT])
+        if option[config.OPTION_LOOK] is not None:
+            self.add_look(option[config.OPTION_LOOK])
+        if option[config.OPTION_FLAG] is not None:
+            self.add_flag(option[config.OPTION_FLAG])
+
+    def get_time_in_grade(self):
+        """지금 학년 안에서 흐른 시간(초)을 돌려준다(학년 시작 = 0)."""
+        grade_start = (self.get_grade() - config.FIRST_GRADE) * config.SECONDS_PER_GRADE
+        return self.elapsed - grade_start
+
+    def get_grade_event_count(self):
+        """지금 학년에 나온 이벤트 수를 돌려준다."""
+        return self.event_counts[self.get_grade()]
+
+    def count_event(self):
+        """지금 학년의 이벤트 수를 하나 늘린다."""
+        self.event_counts[self.get_grade()] += config.EVENT_COUNT_STEP
+
+    def can_have_event(self):
+        """지금 학년 이벤트 수가 최대(5) 미만이면 True(아직 이벤트가 나올 수 있음)."""
+        return self.get_grade_event_count() < config.EVENT_MAX_PER_GRADE
+
+    def needs_guaranteed_event(self):
+        """최소 보장 조건이면 True(다음 행동 때 확률과 상관없이 이벤트가 뜬다).
+
+        학년 안 0~45초를 11.25초씩 4구간으로 나눈다. 지금까지 끝난 구간 수
+        k = min(4, 학년 안 경과 // 11.25) 보다 그 학년 이벤트 수가 적으면 보장한다.
+        """
+        passed = int((self.get_time_in_grade() + config.TIME_EPSILON)
+                     // config.EVENT_GUARANTEE_INTERVAL)
+        finished_sections = min(config.EVENT_MIN_PER_GRADE, passed)
+        return self.get_grade_event_count() < finished_sections
+
+    def can_see_event(self, event):
+        """이벤트 event가 지금 후보가 될 수 있으면 True.
+
+        학년 조건(표에 적힌 학년에서만), 연계 조건(필요한 플래그가 켜져 있음),
+        선택지형은 이번 판에 아직 안 나왔어야 한다(자동형은 반복 가능).
+        """
+        if self.get_grade() not in event[config.EVENT_GRADES]:
+            return False
+        required = event[config.EVENT_REQUIRES]
+        if required is not None and required not in self.flags:
+            return False
+        if event[config.EVENT_KIND] == config.EVENT_KIND_CHOICE:
+            return event[config.EVENT_ID] not in self.seen_events
+        return True
+
+    def mark_event_seen(self, event_id):
+        """선택지형 이벤트 event_id가 나왔다고 기록한다(한 판에 한 번만 나오게)."""
+        self.seen_events.add(event_id)
 
     # ------------------------------------------------------------
     # 표정 (4일차)

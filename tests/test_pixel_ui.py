@@ -184,8 +184,65 @@ MOUSEMOTION_BODY = ["self.mouse_pos = event.pos"]
 # (연출 다듬기) 창 밖으로 나가면 호버를 끄는 분기도 허용. 조건·본문이 정확히 이것이어야 한다.
 WINDOWLEAVE_TEST = "event.type == pygame.WINDOWLEAVE"
 WINDOWLEAVE_BODY = ["self.mouse_pos = None"]
+# (C단위 랜덤 이벤트) 대화창 상태 분기도 허용. 조건·본문이 정확히 이것이어야 한다.
+EVENT_STATE_TEST = "self.state == config.STATE_EVENT"
+NL = chr(10)  # 줄바꿈 문자
+EVENT_STATE_BODY = [ast.unparse(ast.parse(NL.join([
+    "if event.type == pygame.KEYDOWN and event.key in CHOICE_KEYS:",
+    "    self.choose_option(CHOICE_KEYS[event.key])",
+    "elif event.type == pygame.MOUSEBUTTONDOWN and event.button == pygame.BUTTON_LEFT:",
+    "    for index, button in enumerate(self.choice_buttons):",
+    "        if button.is_clicked(event.pos):",
+    "            self.choose_option(index)",
+    "            break",
+])))]
+ROLL_AFTER_ENDING = NL.join(["if not self.check_ending():", "    self.roll_event()"])
 ALLOWED_ELIF_BRANCHES = [(MOUSEMOTION_TEST, MOUSEMOTION_BODY),
-                         (WINDOWLEAVE_TEST, WINDOWLEAVE_BODY)]
+                         (WINDOWLEAVE_TEST, WINDOWLEAVE_BODY),
+                         (EVENT_STATE_TEST, EVENT_STATE_BODY)]
+
+# (C단위 랜덤 이벤트) 로직 함수에 허용되는 이벤트 연결. 이것만 되돌리면 기준 커밋과 같아야 한다.
+# - strip: 함수 소스에서 정확히 한 번씩 지울 글자(특성 보정 덧셈)
+# - remove: 정확히 한 번씩 있는 문장을 지운다
+# - replace: (새 문장, 기준 문장) — 새 문장이 정확히 한 번 있어야 하고 기준 문장으로 되돌린다
+EVENT_HOOKS = {
+    "Student.__init__": {"remove": [
+        "self.traits = []", "self.looks = []", "self.flags = set()",
+        "self.seen_events = set()",
+        "self.event_counts = {grade: config.NO_CHANGE for grade in config.ALL_GRADES}"]},
+    "Student.feed": {"strip": [" + self.get_trait_bonus(config.BONUS_FEED_HEALTH)"]},
+    "Student.rest": {"strip": [" + self.get_trait_bonus(config.BONUS_REST_MENTAL)",
+                               " + self.get_trait_bonus(config.BONUS_REST_HEALTH)"],
+                     "remove": ["self.change_health(config.REST_HEALTH)"]},
+    "Student.study": {"strip": [" + self.get_trait_bonus(config.BONUS_STUDY_HEALTH)"]},
+    "Game.reset_round": {"remove": ["self.current_event = None"]},
+    "Game.end_game": {"remove": ["self.current_event = None"]},
+    "Game.do_action": {"replace": [(ROLL_AFTER_ENDING, "self.check_ending()")]},
+}
+
+
+def _remove_event_hooks(fname, node):
+    """node(함수)에서 허용된 이벤트 연결(EVENT_HOOKS)을 되돌린 사본을 돌려준다.
+
+    되돌릴 것이 정확히 한 번 있지 않으면 AssertionError(빠뜨렸거나 다른 곳에 또 넣음).
+    """
+    spec = EVENT_HOOKS.get(fname)
+    if spec is None:
+        return node
+    src = ast.unparse(node)
+    for text in spec.get("strip", []):
+        assert src.count(text) == 1, f"{fname}: '{text}' 가 정확히 한 번 있어야 함"
+        src = src.replace(text, "")
+    node = ast.parse(src).body[0]
+    for stmt in spec.get("remove", []):
+        lines = [ast.unparse(s) for s in node.body]
+        assert lines.count(stmt) == 1, f"{fname}: '{stmt}' 가 정확히 한 번 있어야 함"
+        node.body.pop(lines.index(stmt))
+    for new_stmt, old_stmt in spec.get("replace", []):
+        lines = [ast.unparse(s) for s in node.body]
+        assert lines.count(new_stmt) == 1, f"{fname}: '{new_stmt}' 가 정확히 한 번 있어야 함"
+        node.body[lines.index(new_stmt)] = ast.parse(old_stmt).body[0]
+    return node
 
 
 def _remove_effect_hooks(fname, node):
@@ -223,6 +280,8 @@ def test_logic_functions_unchanged_from_main(name):
 
     (B 단위) 단, reset_round/end_game 의 clear_effects, do_action 의 before 저장과
     start_action_effects, handle_event 의 MOUSEMOTION·WINDOWLEAVE 분기, update 끝 update_effects 는 허용.
+    (C 단위) EVENT_HOOKS 의 이벤트 연결(특성 보정 덧셈, REST_HEALTH, Student 성장 속성,
+    current_event=None, do_action 끝 roll_event)과 handle_event 의 STATE_EVENT 분기도 허용.
     """
     old =_functions(git_show(name))
     new = _functions((ROOT / name).read_text(encoding="utf-8"))
@@ -231,7 +290,7 @@ def test_logic_functions_unchanged_from_main(name):
         if _is_drawing(fname) or fname == "Game.__init__":
             continue
         assert fname in new, f"{name}: {fname} 이 사라짐"
-        new_node = new[fname]
+        new_node = _remove_event_hooks(fname, new[fname])
         if name == "game.py":
             new_node = _remove_effect_hooks(fname, new_node)
         if _strip_docstrings(node) != _strip_docstrings(new_node):
@@ -247,8 +306,11 @@ def test_do_action_effects_start_after_action_before_ending_check():
     i_if = next(i for i, s in enumerate(lines) if s.startswith("if name == config.ACTION_FEED"))
     i_cool = lines.index("self.cooldown = config.ACTION_COOLDOWN")
     i_fx = lines.index("self.start_action_effects(name, before)")
-    i_end = lines.index("self.check_ending()")
+    # (C 단위) 휴학 판정 뒤, 휴학이 아닐 때만 이벤트 판정. 그다음 return True 로 끝난다
+    i_end = lines.index(ROLL_AFTER_ENDING)
     assert i_before < i_if < i_cool < i_fx < i_end
+    assert lines[i_end + 1:] == ["return True"]
+    assert "self.check_ending()" not in lines
 
 
 def test_game_init_only_adds_backdrop():
@@ -260,12 +322,18 @@ def test_game_init_only_adds_backdrop():
     extra = [line for line in new_lines if line not in old_lines]
     assert [line for line in new_lines if line in old_lines] == old_lines
     assert extra == [
+        "self.rng = random.Random(seed)",   # (C 단위) 이벤트 전용 난수 생성기
         "self.backdrop = self.make_backdrop()",
         "self.popup_font = pygame.font.SysFont(config.FONT_NAME, config.POPUP_FONT_SIZE, "
         "bold=config.POPUP_FONT_BOLD)",
+        "self.event_font = pygame.font.SysFont(config.FONT_NAME, config.EVENT_FONT_SIZE)",
         "self.mouse_pos = None",
         "self.blink_time = config.ZERO_TIME",
+        "self.choice_buttons = self.make_choice_buttons()",
     ]
+    # (C 단위) 인자는 record_path=None, seed=None 둘
+    assert [a.arg for a in new.args.args] == ["self", "record_path", "seed"]
+    assert [ast.unparse(d) for d in new.args.defaults] == ["None", "None"]
 
 
 def test_action_keys_unchanged():

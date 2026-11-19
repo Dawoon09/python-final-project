@@ -500,7 +500,7 @@ def test_balance_human_like_interval(rec, interval, allowed):
 # ======================= 정적 검사 =======================
 
 GAME_FILES = ["main.py", "config.py", "game.py", "student.py", "button.py"]
-ALLOWED_IMPORTS = {"pygame", "json", "sys", "os", "config", "game", "student", "button"}
+ALLOWED_IMPORTS = {"pygame", "json", "sys", "os", "random", "config", "game", "student", "button"}
 
 
 @pytest.mark.parametrize("name", GAME_FILES)
