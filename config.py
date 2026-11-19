@@ -1186,3 +1186,23 @@ COLOR_UPGRADE_ROW_OFF = COLOR_GRAY
 COLOR_UPGRADE_ROW_OFF_LIGHT = COLOR_GRAY_LIGHT
 COLOR_UPGRADE_TEXT_OFF = COLOR_BUTTON_TEXT_COOL
 COLOR_UPGRADE_CURSOR = COLOR_PINK_DARK  # 고른 줄 화살표 색
+
+# ---------------------------------------------------------------
+# 21. 졸업 후: 환생과 대학원 (기획서 10절, I단위)
+# ---------------------------------------------------------------
+GRAD_YEAR_UNDERGRAD = 0     # 대학원 년차 값: 0이면 학부(1~4학년)
+GRAD_FIRST_YEAR = 1         # 대학원에 들어가면 1년차부터
+GRAD_YEAR_STEP = 1          # 60초마다 대학원 년차가 오르는 양 (끝없이)
+GRAD_DECAY_BONUS = 0.25     # n년차 체력·멘탈 자연 감소 배수 = 1 + 0.25 x n
+GRAD_MONEY_BONUS = 0.25     # n년차 연구비 획득 배수 = 1 + 0.25 x n
+FAME_STEP = 1               # 졸업한 판에서 환생하면 오르는 명성
+
+GRAD_YEAR_TEXT = "대학원 {}년차"        # 정보바 왼쪽 글자 (학부는 GRADE_TEXT)
+ENDING_GRAD_TEXT = "대학원 {}년차 수료"  # 대학원에서 체력·멘탈 0이 되면 엔딩 이름
+REINCARNATE_HINT_TEXT = "R: 환생 (명성 +1)"   # 졸업·수료 엔딩 안내 첫 줄
+GRAD_SCHOOL_HINT_TEXT = "C: 대학원 진학"      # 졸업 엔딩 안내 둘째 줄
+GRAD_SCHOOL_HINT_Y = 460    # 둘째 줄 가운데 y (첫 줄 RESTART_HINT_Y 428 아래, 패널 아래 끝 496 안)
+
+# 엔딩 이름이 길면(예: "대학원 12년차 수료") 큰 글씨 대신 조금 작은 글씨로 그린다
+ENDING_NAME_MAX_WIDTH = 520     # 큰 글씨 엔딩 이름이 넘으면 안 되는 가로 길이 (패널 608 안)
+ENDING_LONG_FONT_SIZE = 44      # 긴 엔딩 이름 글자 크기

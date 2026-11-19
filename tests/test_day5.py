@@ -521,7 +521,13 @@ def test_ending_texts(playing_game, ending):
     all_texts = rec_small.texts + rec_big.texts
     assert ending in all_texts
     assert "누적 지식 456" in all_texts
-    assert "R을 눌러 다시 하기" in all_texts
+    if ending == config.ENDING_LEAVE:
+        assert "R을 눌러 다시 하기" in all_texts
+    else:
+        # (I단위, 기획서 10절) 졸업 엔딩의 R은 환생, C는 대학원 진학 안내로 바뀌었다
+        assert config.REINCARNATE_HINT_TEXT in all_texts
+        assert config.GRAD_SCHOOL_HINT_TEXT in all_texts
+        assert "R을 눌러 다시 하기" not in all_texts
     # 게임 화면 요소(버튼·배너)는 엔딩 화면에 없다
     for policy in config.POLICY_ORDER:   # (G단위) 방침 버튼 글자
         assert config.POLICIES[policy][config.POLICY_TEXT] not in all_texts

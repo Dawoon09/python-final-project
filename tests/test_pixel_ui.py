@@ -306,6 +306,16 @@ H_CHANGED = {"Student.__init__", "Student.change_health", "Student.change_mental
              "Student.decay_once", "Student.get_mental_decay", "Game.end_game",
              "Game.load_best_record", "Game.save_best_record"}
 
+# (I단위) 기획서 10절(졸업 후 대학원)이 규칙 자체를 바꾼 함수.
+# 새 규칙은 test_idle_i.py 에서 확인한다(학부 240초 규칙이 그대로인지도 거기서 다시 본다).
+# - Student.update: 대학원에서는 240초에서 멈추지 않고 흐르며 60초마다 년차가 오른다
+# - Student.is_time_over: 대학원에서는 언제나 False(체력·멘탈 0으로만 끝남)
+# - Student.is_exam_period: 대학원 년차마다 마지막 15초(학년 안 시간을 get_time_in_grade로 계산)
+# - Student.get_ending: 대학원에서 0이 되면 "대학원 n년차 수료"
+# - Student.get_grade_time_left: 대학원이면 지금 년차의 남은 시간(get_time_in_grade 사용)
+I_CHANGED = {"Student.update", "Student.is_time_over", "Student.is_exam_period",
+             "Student.get_ending", "Student.get_grade_time_left"}
+
 
 @pytest.mark.parametrize("name", ["student.py", "game.py", "button.py"])
 def test_logic_functions_unchanged_from_main(name):
@@ -321,7 +331,7 @@ def test_logic_functions_unchanged_from_main(name):
     changed = []
     for fname, node in old.items():
         if (_is_drawing(fname) or fname == "Game.__init__" or fname in G_CHANGED
-                or fname in H_CHANGED):
+                or fname in H_CHANGED or fname in I_CHANGED):
             continue
         assert fname in new, f"{name}: {fname} 이 사라짐"
         new_node = _remove_event_hooks(fname, new[fname])
@@ -363,6 +373,8 @@ def test_game_init_only_adds_backdrop():
     assert [line for line in new_lines if line in old_lines] == old_lines
     assert extra == [
         "self.rng = random.Random(seed)",   # (C 단위) 이벤트 전용 난수 생성기
+        # (I 단위) 긴 엔딩 이름("대학원 12년차 수료")용 44px 글꼴
+        "self.ending_font = pygame.font.SysFont(config.FONT_NAME, config.ENDING_LONG_FONT_SIZE)",
         "self.backdrop = self.make_backdrop()",
         "self.popup_font = pygame.font.SysFont(config.FONT_NAME, config.POPUP_FONT_SIZE, "
         "bold=config.POPUP_FONT_BOLD)",

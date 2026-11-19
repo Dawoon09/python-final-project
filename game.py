@@ -70,6 +70,8 @@ class Game:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(config.FONT_NAME, config.FONT_SIZE)
         self.title_font = pygame.font.SysFont(config.FONT_NAME, config.TITLE_FONT_SIZE)
+        # 긴 엔딩 이름("대학원 12년차 수료")용 조금 작은 큰 글씨
+        self.ending_font = pygame.font.SysFont(config.FONT_NAME, config.ENDING_LONG_FONT_SIZE)
         self.backdrop = self.make_backdrop()  # 도트 무늬 배경(한 번만 그려 둔다)
         self.popup_font = pygame.font.SysFont(config.FONT_NAME, config.POPUP_FONT_SIZE,
                                               bold=config.POPUP_FONT_BOLD)
@@ -122,11 +124,71 @@ class Game:
         self.reset_round()
         self.state = config.STATE_PLAYING
 
+    # ------------------------------------------------------------
+    # 졸업 후: 환생과 대학원 (기획서 10절, I단위)
+    # ------------------------------------------------------------
+    @property
+    def grad_year(self):
+        """대학원 년차(0이면 학부, n이면 대학원 n년차). 값은 제자(Student)가 가지고 있다.
+
+        제자 한 명이 학부 -> 대학원으로 이어지므로 년차도 제자에게 두고,
+        Game에서는 game.grad_year로 읽고 쓸 수 있게 이어 준다.
+        """
+        return self.student.grad_year
+
+    @grad_year.setter
+    def grad_year(self, value):
+        """대학원 년차를 value로 바꾼다(제자의 grad_year를 바꾼다)."""
+        self.student.grad_year = value
+
+    def is_graduation_ending(self):
+        """지금 엔딩이 학부 졸업(수석·무사·아슬아슬)이면 True. 이때만 C로 대학원에 갈 수 있다."""
+        return (self.state == config.STATE_ENDING and self.grad_year == config.GRAD_YEAR_UNDERGRAD
+                and self.ending in config.GRADUATION_BONUS)
+
+    def is_grad_school_ending(self):
+        """지금 엔딩이 "대학원 n년차 수료"면 True."""
+        return self.state == config.STATE_ENDING and self.grad_year > config.GRAD_YEAR_UNDERGRAD
+
+    def can_reincarnate(self):
+        """지금 엔딩에서 환생(명성 +1)할 수 있으면 True: 학부 졸업 또는 대학원 수료 엔딩.
+
+        휴학 엔딩은 졸업하지 않았으므로 False(R은 그냥 다시 하기).
+        """
+        return self.is_graduation_ending() or self.is_grad_school_ending()
+
+    def reincarnate(self):
+        """환생: 명성 +1 하고 record.json에 저장한 뒤, 새 신입생으로 처음부터 시작한다.
+
+        업그레이드 레벨과 연구비는 그대로 남는다(새 판에도 효과 유지).
+        엔딩 화면에서 R을 눌렀을 때 졸업·대학원 수료 엔딩이면 이 메서드가 불린다.
+        """
+        self.fame += config.FAME_STEP
+        self.save_record()
+        self.start_new_game()
+
+    def enter_grad_school(self):
+        """대학원 진학: 졸업한 같은 제자로 "대학원 1년차"를 이어서 시작한다.
+
+        게이지·특성·외형·지식·연계 플래그는 그대로 두고, 게임 화면으로 돌아간다.
+        자동 행동 시계는 2초(간격)부터 다시 잰다. 학부 졸업 엔딩이 아니면 아무것도 하지 않는다.
+        들어갔으면 True, 아니면 False를 돌려준다.
+        """
+        if not self.student.enter_grad_school():
+            return False
+        self.ending = None
+        self.graduation_bonus = config.MONEY_START
+        self.current_event = None
+        self.auto_timer = self.get_auto_interval()
+        self.clear_effects()
+        self.state = config.STATE_PLAYING
+        return True
+
     def end_game(self, ending):
         """엔딩 이름 ending을 저장하고 엔딩 화면으로 바꾼다.
 
-        휴학·졸업 모두 여기를 지나간다. 졸업이면 졸업 보너스(수석 200 / 무사 100 /
-        아슬아슬 50 x 명성 배수, 내림)를 연구비에 더한다. 휴학이면 보너스는 없다.
+        휴학·졸업·대학원 수료 모두 여기를 지나간다. 졸업이면 졸업 보너스(수석 200 / 무사 100 /
+        아슬아슬 50 x 명성 배수, 내림)를 연구비에 더한다. 휴학·대학원 수료면 보너스는 없다.
         이번 판 누적 지식이 최고 기록보다 크면 최고 기록을 바꾸고, 판이 끝났으므로
         연구비·명성·업그레이드와 함께 record.json에 저장한다.
         게임 화면에 남아 있던 파티클·팝업·눌림·점프 연출과 이벤트 알림·대화창은 비운다.
@@ -345,8 +407,8 @@ class Game:
         return int(value + config.MONEY_EPSILON)
 
     def get_grad_money_multiplier(self):
-        """대학원 연구비 배수를 돌려준다. 대학원은 I단위에서 만들므로 지금은 언제나 1이다."""
-        return config.NO_RATIO
+        """대학원 연구비 배수 = 1 + 0.25 x 대학원 년차 를 돌려준다(학부는 1)."""
+        return config.NO_RATIO + config.GRAD_MONEY_BONUS * self.grad_year
 
     def get_money_multiplier(self):
         """연구비 획득 배수 = (1 + 0.1 x 명성) x 대학원 배수 를 돌려준다."""
@@ -576,7 +638,9 @@ class Game:
 
         - 창 닫기(QUIT) 또는 ESC: 모든 화면에서 running을 False로 바꾼다.
         - 타이틀 화면에서 Enter: 새 판 시작.
-        - 엔딩 화면에서 R: 새 판 시작.
+        - 엔딩 화면에서 R: 졸업·대학원 수료 엔딩이면 환생(reincarnate, 명성 +1),
+          휴학 엔딩이면 그냥 새 판 시작(명성 그대로).
+        - 졸업 엔딩 화면에서 C: 대학원 진학(enter_grad_school).
         - 게임 화면에서 1/2/3 키 또는 방침 버튼 클릭: 일과표 방침을 바꾼다
           (1 공부 위주, 2 균형, 3 휴식 위주). 행동은 제자가 스스로 한다.
         - 마우스 이동(MOUSEMOTION): 버튼 호버 표시에 쓸 마우스 위치를 기억한다.
@@ -603,7 +667,13 @@ class Game:
             if self.handle_upgrade_input(event):
                 return
             if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
-                self.start_new_game()
+                if self.can_reincarnate():
+                    self.reincarnate()
+                else:
+                    self.start_new_game()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+                if self.is_graduation_ending():
+                    self.enter_grad_school()
         elif self.state == config.STATE_PLAYING:
             if self.handle_upgrade_input(event):
                 return
@@ -636,6 +706,7 @@ class Game:
         엔딩 확인: 자연 감소로 체력·멘탈이 0이 되었으면 휴학,
         아니면 240초가 되었을 때 졸업. 그래서 240초 시점에 0이 겹치면 휴학이 먼저이고,
         엔딩이 나면 그 시각의 자동 행동은 하지 않는다.
+        대학원에서는 240초에 멈추지 않고 끝없이 흐르며, 체력·멘탈 0이면 "대학원 n년차 수료"다.
         타이틀·엔딩 화면과 대화창(선택지형 이벤트)이 떠 있는 동안에는
         시간·게이지·자동 행동 시계가 흐르지 않는다(게임 정지). 자동 행동 직후
         대화창이 뜨면 이번 dt의 남은 시간도 흘리지 않는다.
@@ -1183,13 +1254,21 @@ class Game:
         return rect
 
     def draw_big_text(self, text, center_y):
-        """큰 제목 글자를 살구색 그림자 글자와 겹쳐 화면 가운데에 그린다(레트로 느낌)."""
-        shadow = render_text(self.title_font, text, config.COLOR_TITLE_SHADOW)
+        """큰 제목 글자를 살구색 그림자 글자와 겹쳐 화면 가운데에 그린다(레트로 느낌).
+
+        글자가 길어 큰 글씨로 ENDING_NAME_MAX_WIDTH를 넘으면(예: "대학원 12년차 수료")
+        조금 작은 글씨(ending_font)로 그려서 가운데 패널 밖으로 나가지 않게 한다.
+        """
+        font = self.title_font
+        shadow = render_text(font, text, config.COLOR_TITLE_SHADOW)
+        if shadow.get_width() > config.ENDING_NAME_MAX_WIDTH:
+            font = self.ending_font
+            shadow = render_text(font, text, config.COLOR_TITLE_SHADOW)
         rect = shadow.get_rect()
         rect.center = (config.SCREEN_CENTER_X + config.TITLE_SHADOW_OFFSET,
                        center_y + config.TITLE_SHADOW_OFFSET)
         self.screen.blit(shadow, rect)
-        self.draw_text_center(self.title_font, text, center_y)
+        self.draw_text_center(font, text, center_y)
 
     def draw_badge(self, text, center_y, fill, light):
         """글자 하나를 감싸는 작은 도트 배지(상자)를 화면 가운데에 그린다."""
@@ -1317,7 +1396,12 @@ class Game:
         self.screen.blit(render_text(self.popup_font, popup["text"], popup["color"]), rect)
 
     def draw_ending(self):
-        """엔딩 화면: 패널, 엔딩 이름, (졸업) 학사모와 별 / (휴학) 비구름, 누적 지식 배지, "R을 눌러 다시 하기"."""
+        """엔딩 화면: 패널, 엔딩 이름, (졸업·수료) 학사모와 별 / (휴학) 비구름, 누적 지식 배지, 키 안내.
+
+        - 학부 졸업: 등급(수석/무사/아슬아슬 졸업), 졸업 보너스, "R: 환생 (명성 +1)" / "C: 대학원 진학"
+        - 대학원 수료: "대학원 n년차 수료", "R: 환생 (명성 +1)" (졸업 보너스 없음)
+        - 휴학: "R을 눌러 다시 하기"
+        """
         self.draw_panel(config.MENU_PANEL_RECT)
         self.draw_big_text(self.ending, config.ENDING_NAME_Y)
         if self.ending == config.ENDING_LEAVE:
@@ -1332,7 +1416,12 @@ class Game:
             self.draw_text_center(self.event_font,
                                   config.GRADUATION_BONUS_TEXT.format(self.graduation_bonus),
                                   config.GRADUATION_BONUS_Y, config.COLOR_TEXT_SOFT)
-        self.draw_key_hint(config.RESTART_HINT_TEXT, config.RESTART_HINT_Y)
+        if self.can_reincarnate():
+            self.draw_key_hint(config.REINCARNATE_HINT_TEXT, config.RESTART_HINT_Y)
+            if self.is_graduation_ending():
+                self.draw_key_hint(config.GRAD_SCHOOL_HINT_TEXT, config.GRAD_SCHOOL_HINT_Y)
+        else:
+            self.draw_key_hint(config.RESTART_HINT_TEXT, config.RESTART_HINT_Y)
 
     def draw_center_sprite(self, grid, top, cell, colors):
         """스프라이트 grid를 화면 가운데(가로)에, 위쪽 y가 top이 되게 칸 크기 cell로 찍는다."""
@@ -1369,8 +1458,8 @@ class Game:
     def draw_info_bar(self):
         """상단 정보바를 그린다.
 
-        민트색 도트 상자 위에 왼쪽 "N학년", 가운데 "남은 시간 N초"(현재 학년 남은 시간),
-        오른쪽 "지식 N"을 쓴다.
+        민트색 도트 상자 위에 왼쪽 "N학년"(대학원이면 "대학원 n년차"),
+        가운데 "남은 시간 N초"(현재 학년·년차 남은 시간), 오른쪽 "연구비 N  지식 N"을 쓴다.
         """
         box = pygame.Rect(config.INFO_BOX_X, config.INFO_BOX_Y,
                           config.INFO_BOX_WIDTH, config.INFO_BOX_HEIGHT)
@@ -1378,7 +1467,11 @@ class Game:
                        config.COLOR_MINT_LIGHT, config.COLOR_MINT_DARK,
                        drop=config.COLOR_DROP)
 
-        grade = render_text(self.font, config.GRADE_TEXT.format(self.student.get_grade()))
+        if self.grad_year > config.GRAD_YEAR_UNDERGRAD:
+            grade_text = config.GRAD_YEAR_TEXT.format(self.grad_year)
+        else:
+            grade_text = config.GRADE_TEXT.format(self.student.get_grade())
+        grade = render_text(self.font, grade_text)
         grade_rect = grade.get_rect()
         grade_rect.midleft = (config.INFO_BAR_MARGIN, config.INFO_TEXT_CENTER_Y)
         self.screen.blit(grade, grade_rect)
