@@ -356,18 +356,47 @@ def test_particles_same_every_time_in_same_grade(game):
     assert _particle_layout(game) == first     # 첫 번째 것은 이미 사라졌고 같은 자리에 다시 나옴
 
 
+RANDOM_METHODS = ("random", "randint", "uniform", "choice", "choices", "shuffle",
+                  "sample", "randrange", "gauss")
+
+
+def _is_self_rng(node):
+    """node가 self.rng 이면 True."""
+    return (isinstance(node, ast.Attribute) and node.attr == "rng"
+            and isinstance(node.value, ast.Name) and node.value.id == "self")
+
+
 def test_no_random_module_anywhere():
+    """(C단위 갱신) random은 랜덤 이벤트 전용: game.py만 import random 하고,
+    random 모듈은 random.Random( 한 곳에서만 쓰며 난수 호출은 모두 self.rng.~ 이다.
+    다른 파일은 random·secrets·math·time을 import하지 않는다(파티클 결정성 유지)."""
+    banned = ("random", "secrets", "math", "time")
     for name in GAME_FILES:
         tree = ast.parse((ROOT / name).read_text(encoding="utf-8"))
+        random_uses = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                assert all(a.name.split(".")[0] not in ("random", "secrets", "math", "time")
-                           for a in node.names), name
+                for a in node.names:
+                    mod = a.name.split(".")[0]
+                    if name == "game.py" and mod == "random":
+                        assert a.name == "random" and a.asname is None, name
+                        continue
+                    assert mod not in banned, (name, mod)
             elif isinstance(node, ast.ImportFrom):
-                assert (node.module or "").split(".")[0] not in ("random", "secrets", "math",
-                                                                 "time"), name
+                assert (node.module or "").split(".")[0] not in banned, name
             elif isinstance(node, ast.Attribute):
-                assert node.attr not in ("randint", "uniform", "choice", "shuffle"), name
+                if isinstance(node.value, ast.Name) and node.value.id == "random":
+                    random_uses.append(node.attr)
+                elif node.attr in RANDOM_METHODS:
+                    assert name == "game.py" and _is_self_rng(node.value), (
+                        f"{name}: {node.attr}는 self.rng에서만 호출해야 함")
+            elif isinstance(node, ast.Name) and node.id == "rng":
+                raise AssertionError(f"{name}: 지역 rng 변수 금지(self.rng만)")
+        if name == "game.py":
+            assert random_uses == ["Random"], random_uses
+        else:
+            assert random_uses == [], (name, random_uses)
+            assert "rng" not in (ROOT / name).read_text(encoding="utf-8"), name
 
 
 # ======================= E3 수치 팝업 =======================

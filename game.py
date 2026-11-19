@@ -1,6 +1,7 @@
 """게임 전체(Game) 클래스가 들어 있는 파일."""
 
 import json
+import random
 import sys
 
 import pygame
@@ -16,20 +17,29 @@ ACTION_KEYS = {
     pygame.K_3: config.ACTION_STUDY,
 }
 
+# 대화창(선택지형 이벤트)에서 키 -> 선택지 번호 (키 1: 첫 번째, 키 2: 두 번째)
+CHOICE_KEYS = {
+    pygame.K_1: config.CHOICE_FIRST,
+    pygame.K_2: config.CHOICE_SECOND,
+}
+
 
 class Game:
     """메인 루프와 화면 전환(타이틀/게임/엔딩), 시간 관리(행동 쿨타임 포함), 기록 저장을 맡는 클래스."""
 
-    def __init__(self, record_path=None):
+    def __init__(self, record_path=None, seed=None):
         """pygame을 켜고 800x600 창과 시계, 글꼴, 버튼 3개, 첫 화면(타이틀)을 준비한다.
 
         record_path는 최고 기록 파일 경로다. 주지 않으면 config.RECORD_PATH
         (exe 옆 또는 main.py 옆의 record.json)를 쓴다. 테스트에서는 임시 폴더 경로를 넘긴다.
         시작할 때 이 파일에서 최고 기록을 불러온다.
+        seed는 랜덤 이벤트용 난수 생성기의 시드다. 같은 시드면 같은 이벤트가 나온다
+        (테스트에서 고정). None이면 매번 다르게 나온다.
         """
         if record_path is None:
             record_path = config.RECORD_PATH
         self.record_path = record_path   # 최고 기록 파일(record.json) 경로
+        self.rng = random.Random(seed)   # 랜덤 이벤트 전용 난수 생성기 (다른 곳에는 쓰지 않는다)
         pygame.init()
         self.screen = pygame.display.set_mode(
             (config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
@@ -41,20 +51,29 @@ class Game:
         self.backdrop = self.make_backdrop()  # 도트 무늬 배경(한 번만 그려 둔다)
         self.popup_font = pygame.font.SysFont(config.FONT_NAME, config.POPUP_FONT_SIZE,
                                               bold=config.POPUP_FONT_BOLD)
-        self.mouse_pos = None             # 마지막 마우스 위치(MOUSEMOTION). None이면 아직 모름
+        self.event_font = pygame.font.SysFont(config.FONT_NAME, config.EVENT_FONT_SIZE)
+        self.small_font = pygame.font.SysFont(config.FONT_NAME, config.SMALL_FONT_SIZE)
+        self.notice_font = pygame.font.SysFont(config.FONT_NAME, config.EVENT_NOTICE_FONT_SIZE)
+        self.mouse_pos = None            # 마지막 마우스 위치(MOUSEMOTION). None이면 아직 모름
         self.blink_time = config.ZERO_TIME  # 안내 문구 깜빡임 시계(모든 화면에서 흐른다)
 
         self.running = True             # False가 되면 메인 루프가 끝난다
         self.best_record = self.load_best_record()  # 최고 기록(지식). 타이틀에 표시
         self.buttons = self.make_buttons()
+        self.choice_buttons = self.make_choice_buttons()  # 대화창 선택 버튼 2개
         self.reset_round()
         self.state = config.START_STATE  # 처음 보여 줄 화면(타이틀)
 
     def reset_round(self):
-        """한 판에 쓰는 값을 모두 처음으로 되돌린다: 새 제자, 쿨타임 0, 엔딩 없음, 연출 비움."""
+        """한 판에 쓰는 값을 모두 처음으로 되돌린다: 새 제자, 쿨타임 0, 엔딩 없음, 연출 비움.
+
+        제자를 새로 만들므로 특성·외형·연계 플래그·이벤트 기록도 함께 초기화된다.
+        떠 있던 대화창(current_event)과 자동형 알림도 비운다.
+        """
         self.student = Student()
         self.cooldown = config.ZERO_TIME  # 남은 쿨타임(초). 0이면 행동할 수 있다
         self.ending = None                # 엔딩 이름. 엔딩 전에는 None
+        self.current_event = None         # 대화창에 떠 있는 선택지형 이벤트. 없으면 None
         self.clear_effects()
 
     def start_new_game(self):
@@ -70,10 +89,11 @@ class Game:
 
         휴학·졸업 모두 여기를 지나간다. 이번 판 누적 지식이 최고 기록보다 크면
         최고 기록을 바꾸고 record.json에 저장한다.
-        게임 화면에 남아 있던 파티클·팝업·눌림·점프 연출은 비운다.
+        게임 화면에 남아 있던 파티클·팝업·눌림·점프 연출과 이벤트 알림·대화창은 비운다.
         """
         self.ending = ending
         self.state = config.STATE_ENDING
+        self.current_event = None
         self.update_best_record(self.student.knowledge)
         self.clear_effects()
 
@@ -153,6 +173,12 @@ class Game:
                                    config.BUTTON_WIDTH, config.BUTTON_HEIGHT, text)
         return buttons
 
+    def make_choice_buttons(self):
+        """대화창의 선택 버튼 2개를 리스트로 만든다. 글자는 이벤트가 뜰 때 채운다."""
+        return [Button(config.CHOICE_BUTTON_X, y, config.CHOICE_BUTTON_WIDTH,
+                       config.CHOICE_BUTTON_HEIGHT, "")
+                for y in config.CHOICE_BUTTON_YS]
+
     def is_cooling_down(self):
         """쿨타임 중이면 True를 돌려준다(소수 오차는 TIME_EPSILON 만큼 허용)."""
         return self.cooldown > config.TIME_EPSILON
@@ -165,6 +191,8 @@ class Game:
         행동으로 체력이나 멘탈이 0이 되면 그 즉시 휴학 엔딩으로 바꾼다.
         실제로 실행됐을 때만 연출(눌림·파티클·팝업·점프·게이지 애니메이션)을 시작한다.
         휴학으로 끝나면 end_game이 연출을 다시 비운다.
+        휴학이 아니면 랜덤 이벤트를 판정한다(roll_event). 대화창이 떠 있는 동안에는
+        상태가 게임 화면이 아니므로 행동이 무시된다.
         """
         if self.state != config.STATE_PLAYING or self.is_cooling_down():
             return False
@@ -179,6 +207,105 @@ class Game:
             return False
         self.cooldown = config.ACTION_COOLDOWN
         self.start_action_effects(name, before)
+        if not self.check_ending():
+            self.roll_event()
+        return True
+
+    # ------------------------------------------------------------
+    # 랜덤 이벤트 (기획서 9절, jeja-spec 14절)
+    # ------------------------------------------------------------
+    def roll_event(self):
+        """행동 직후 이벤트가 뜰지 정하고, 뜨면 시작한다. 뜬 이벤트(dict) 또는 None을 돌려준다.
+
+        그 학년 이벤트 수가 최대(5)면 뜨지 않는다. 최소 보장 조건이면 반드시 뜬다(간격 예외).
+        아니면 직전 이벤트 이후 게임 시간이 최소 간격(8초) 이상 지났고
+        rng.random() < EVENT_CHANCE(25%)일 때 뜬다. 간격이 안 찼으면 난수를 뽑지 않는다.
+        """
+        if not self.student.can_have_event():
+            return None
+        if not self.student.needs_guaranteed_event():
+            if not self.student.is_event_gap_passed():
+                return None
+            if self.rng.random() >= config.EVENT_CHANCE:
+                return None
+        event = self.pick_event()
+        self.start_event(event)
+        return event
+
+    def get_event_candidates(self):
+        """지금 나올 수 있는 (선택지형 후보 목록, 자동형 후보 목록)을 돌려준다.
+
+        학년 조건·연계 조건을 만족하고, 선택지형은 이번 판에 아직 안 나온 것만 모은다.
+        """
+        choices = [event for event in config.CHOICE_EVENTS if self.student.can_see_event(event)]
+        autos = [event for event in config.AUTO_EVENTS if self.student.can_see_event(event)]
+        return choices, autos
+
+    def pick_event(self):
+        """후보 중 이벤트 하나를 골라 돌려준다.
+
+        선택지형 후보가 있으면 EVENT_CHOICE_RATIO(50%) 확률로 선택지형, 아니면 자동형에서 고른다.
+        같은 종류 안에서는 rng.choice로 하나를 고른다.
+        """
+        choices, autos = self.get_event_candidates()
+        if choices and self.rng.random() < config.EVENT_CHOICE_RATIO:
+            return self.rng.choice(choices)
+        return self.rng.choice(autos)
+
+    def start_event(self, event):
+        """이벤트 event를 시작하고 그 학년 이벤트 수를 하나 늘린다.
+
+        - 자동형: 효과를 바로 적용하고 알림(2초)과 수치 팝업을 띄운 뒤 휴학을 판정한다.
+          알림 색은 효과 합의 부호로 정한다(0 이상이면 좋은 일, 음수면 나쁜 일).
+        - 선택지형: 한 판 1회로 기록하고, 선택 버튼 글자를 채운 뒤 대화 상태로 바꾼다(게임 정지).
+          대화창 시계(dialog_time)를 0부터 다시 잰다(입력 대기·등장 연출용).
+        """
+        self.student.count_event()
+        if event[config.EVENT_KIND] == config.EVENT_KIND_AUTO:
+            before = self.get_gauge_values()
+            effects = event[config.EVENT_EFFECTS]
+            self.student.apply_effects(effects)
+            self.notice = {"text": config.EVENT_NOTICE_TEXT.format(event[config.EVENT_TITLE]),
+                           "timer": config.EVENT_NOTICE_TIME,
+                           "good": sum(effects.values()) >= config.NO_CHANGE}
+            self.start_gauge_effects(before, for_event=True)
+            self.check_ending()
+            return
+        self.student.mark_event_seen(event[config.EVENT_ID])
+        self.current_event = event
+        self.dialog_time = config.ZERO_TIME
+        options = event[config.EVENT_OPTIONS]
+        for number, (button, option) in enumerate(zip(self.choice_buttons, options),
+                                                  config.CHOICE_NUMBER_START):
+            button.text = config.CHOICE_BUTTON_TEXT.format(number, option[config.OPTION_TEXT])
+        self.state = config.STATE_EVENT
+
+    def is_dialog_ready(self):
+        """대화창이 뜬 뒤 입력 대기 시간(EVENT_INPUT_DELAY, 0.3초)이 지났으면 True.
+
+        그 전에는 선택 입력(키·클릭)을 무시한다. 행동 키를 연타하다가
+        같은 키가 그대로 선택으로 들어가는 것을 막기 위해서다.
+        """
+        return self.dialog_time + config.TIME_EPSILON >= config.EVENT_INPUT_DELAY
+
+    def choose_option(self, index):
+        """대화창에서 index번째(0 또는 1) 선택지를 고른다.
+
+        효과·특성·외형·연계 플래그를 적용하고 수치 팝업을 띄운 뒤 게임을 다시 흐르게 한다.
+        그 결과 체력·멘탈이 0이면 바로 휴학 엔딩이다.
+        대화창이 떠 있지 않거나, 뜬 지 아직 입력 대기 시간(0.3초)이 안 지났으면
+        아무것도 하지 않는다. 골랐으면 True, 아니면 False를 돌려준다.
+        """
+        if self.state != config.STATE_EVENT or self.current_event is None:
+            return False
+        if not self.is_dialog_ready():
+            return False
+        option = self.current_event[config.EVENT_OPTIONS][index]
+        before = self.get_gauge_values()
+        self.student.apply_option(option)
+        self.current_event = None
+        self.state = config.STATE_PLAYING
+        self.start_gauge_effects(before, for_event=True)
         self.check_ending()
         return True
 
@@ -191,6 +318,8 @@ class Game:
         - 게임 화면에서 마우스 왼쪽 클릭이 버튼 위면, 또는 1/2/3 키면 그 행동을 한다.
         - 마우스 이동(MOUSEMOTION): 버튼 호버 표시에 쓸 마우스 위치를 기억한다.
         - 마우스가 창 밖으로 나감(WINDOWLEAVE): 마우스 위치를 잊어 호버 표시를 끈다.
+        - 대화창(선택지형 이벤트)이 떠 있으면 키 1/2 또는 선택 버튼 클릭으로 선택지를 고른다.
+          이때 행동 키(3 포함)·행동 버튼은 무시한다.
         다른 화면의 Enter/R, 다른 키는 무시한다. 쿨타임 중이면 do_action이 입력을 무시한다.
         """
         if event.type == pygame.QUIT:
@@ -216,6 +345,15 @@ class Game:
                     if button.is_clicked(event.pos):
                         self.do_action(name)
                         break
+        elif self.state == config.STATE_EVENT:
+            if event.type == pygame.KEYDOWN and event.key in CHOICE_KEYS:
+                self.choose_option(CHOICE_KEYS[event.key])
+            elif (event.type == pygame.MOUSEBUTTONDOWN
+                  and event.button == pygame.BUTTON_LEFT):
+                for index, button in enumerate(self.choice_buttons):
+                    if button.is_clicked(event.pos):
+                        self.choose_option(index)
+                        break
 
     def update(self, dt):
         """dt초만큼 게임 상태를 진행한다.
@@ -224,7 +362,8 @@ class Game:
         남은 쿨타임도 dt만큼 줄인다(0 아래로는 내려가지 않음).
         그다음 엔딩을 확인한다: 자연 감소로 체력·멘탈이 0이 되었으면 휴학,
         아니면 240초가 되었을 때 졸업. 그래서 240초 시점에 0이 겹치면 휴학이 먼저다.
-        타이틀·엔딩 화면에서는 시간·게이지·쿨타임이 흐르지 않는다.
+        타이틀·엔딩 화면과 대화창(선택지형 이벤트)이 떠 있는 동안에는
+        시간·게이지·쿨타임이 흐르지 않는다(게임 정지).
         마지막으로 화면 연출 시계를 진행한다(update_effects, 게임 결과에는 영향 없음).
         """
         if self.state == config.STATE_PLAYING:
@@ -237,10 +376,13 @@ class Game:
     # 화면 연출 E1~E6 (보기만 바꾸며 게이지·쿨타임·학년·엔딩에는 영향이 없다)
     # ------------------------------------------------------------
     def clear_effects(self):
-        """파티클·팝업·버튼 눌림·점프·숨쉬기·게이지 애니메이션을 모두 처음 상태로 비운다.
+        """파티클·팝업·버튼 눌림·점프·숨쉬기·게이지 애니메이션·이벤트 알림을 모두 처음 상태로 비운다.
 
         새 판 시작(reset_round)과 엔딩 진입(end_game)에서 부른다.
         """
+        # 자동형 이벤트 알림 {"text": 글자, "timer": 남은 시간, "good": 좋은 일이면 True}. 없으면 None
+        self.notice = None
+        self.dialog_time = config.ZERO_TIME  # 대화창이 뜬 뒤 흐른 시간(초): 입력 대기·등장 연출용
         self.particles = []        # 파티클 dict 리스트 (E2)
         self.popups = []           # 수치 팝업 dict 리스트 (E3)
         self.press_timers = {}     # {행동 이름: 버튼이 눌린 채 남은 시간(초)} (E1)
@@ -271,10 +413,23 @@ class Game:
         self.press_timers[name] = config.BUTTON_PRESS_TIME
         self.jump_timer = config.JUMP_TIME
         self.spawn_particles(name)
+        self.start_gauge_effects(before)
+
+    def start_gauge_effects(self, before, for_event=False):
+        """게이지가 before에서 지금 값으로 바뀐 만큼 수치 팝업(E3)과 게이지 애니메이션(E4)을 시작한다.
+
+        행동과 이벤트(자동형 효과, 선택지 결과)가 함께 쓴다. 변화가 0인 게이지는 팝업을 띄우지 않는다.
+        for_event가 True(이벤트)면 팝업을 머리 위가 아니라 무대 왼쪽 위 칸에 쌓는다
+        (spawn_event_popups). 그래서 4학년(얼굴이 큼)에 행동 팝업 3줄과 이벤트 팝업이
+        함께 떠도 무대 밖으로 잘리거나 서로 겹치지 않는다.
+        """
         after = self.get_gauge_values()
         changes = [(label, after[key] - before[key]) for key, label in config.POPUP_GAUGES
                    if after[key] != before[key]]
-        self.spawn_popups(changes)
+        if for_event:
+            self.spawn_event_popups(changes)
+        else:
+            self.spawn_popups(changes)
         for key in config.GAUGE_NAMES:
             # 막대는 바뀌기 전 길이에서 출발해 GAUGE_ANIM_TIME 동안 새 길이로 간다
             self.gauge_lag[key] += before[key] - after[key]
@@ -304,37 +459,67 @@ class Game:
                 "colors": colors,
             })
 
-    def spawn_popups(self, changes):
+    def spawn_popups(self, changes, skip_rows=config.NO_OFFSET):
         """(라벨, 변화량) 목록으로 수치 팝업을 만든다. 변화가 0인 게이지는 이미 빠져 있다.
 
         팝업은 제자 머리 위(점프·숨쉬기 최고점보다 위)에 세로로 겹치지 않게 쌓는다.
         목록 순서(체력, 멘탈, 지식)대로 위에서 아래로 놓인다.
+        skip_rows는 머리 위에서 비워 둘 줄 수다(이미 떠 있는 팝업 위에 쌓을 때 쓴다).
         """
         head_top = (config.STUDENT_CENTER_Y - self.student.get_radius()
                     - config.JUMP_HEIGHT - config.BREATH_HEIGHT)
         lowest_y = head_top - config.POPUP_HEAD_GAP - config.POPUP_LINE_HEIGHT // config.HALF
         # 아래 줄부터 거꾸로 놓는다: 목록의 마지막 항목이 머리 바로 위(rows_below = 0)
         for rows_below, (label, amount) in enumerate(reversed(changes)):
-            if amount > config.NO_CHANGE:
-                color = config.COLOR_POPUP_UP
-            else:
-                color = config.COLOR_POPUP_DOWN
-            self.popups.append({
-                "text": config.POPUP_TEXT.format(label, amount),
-                "color": color,
-                "y": lowest_y - rows_below * config.POPUP_LINE_HEIGHT,
-                "age": config.ZERO_TIME,
-            })
+            self.add_popup(label, amount, config.STUDENT_CENTER_X,
+                           lowest_y - (rows_below + skip_rows) * config.POPUP_LINE_HEIGHT)
+
+    def spawn_event_popups(self, changes):
+        """이벤트 결과 (라벨, 변화량) 목록으로 수치 팝업을 무대 왼쪽 위 칸에 위에서 아래로 쌓는다.
+
+        머리 위 가운데는 행동 팝업 자리, 얼굴 양옆은 파티클 자리라서 비어 있는 왼쪽 위를 쓴다.
+        자동형 알림이 떠 있으면 알림 상자 바로 아래부터, 없으면 무대 위쪽부터 쌓는다.
+        목록 순서(체력, 멘탈, 지식)대로 위에서 아래로 놓인다.
+        """
+        top = config.PANEL_Y
+        if self.notice is not None:
+            top = config.EVENT_NOTICE_Y + config.EVENT_NOTICE_HEIGHT
+        first_y = top + config.EVENT_POPUP_TOP_MARGIN
+        for row, (label, amount) in enumerate(changes):
+            self.add_popup(label, amount, config.EVENT_POPUP_X,
+                           first_y + row * config.POPUP_LINE_HEIGHT)
+
+    def add_popup(self, label, amount, x, y):
+        """수치 팝업 하나("체력 +20")를 글자 가운데 (x, y)에 만든다. 늘면 초록, 줄면 빨강."""
+        if amount > config.NO_CHANGE:
+            color = config.COLOR_POPUP_UP
+        else:
+            color = config.COLOR_POPUP_DOWN
+        self.popups.append({
+            "text": config.POPUP_TEXT.format(label, amount),
+            "color": color,
+            "x": x,
+            "y": y,
+            "age": config.ZERO_TIME,
+        })
 
     def update_effects(self, dt):
         """연출용 시계를 dt초만큼 진행한다.
 
         깜빡임 시계는 모든 화면에서 흐른다. 나머지(눌림·점프·숨쉬기·파티클·팝업·
-        게이지 애니메이션)는 게임 화면에서만 흐른다. 게임 결과 값은 건드리지 않는다.
+        게이지 애니메이션·자동형 알림)는 게임 화면과 대화창 화면에서만 흐른다.
+        (대화창 중에도 연출만 마저 흐르고, 게임 시간·게이지·쿨타임은 update에서 멈춘다.)
+        게임 결과 값은 건드리지 않는다.
         """
         self.blink_time += dt
-        if self.state != config.STATE_PLAYING:
+        if self.state not in (config.STATE_PLAYING, config.STATE_EVENT):
             return
+        if self.state == config.STATE_EVENT:
+            self.dialog_time += dt   # 대화창 시계: 게임 시간은 멈춰도 이 시계는 흐른다
+        if self.notice is not None:
+            self.notice["timer"] -= dt
+            if self.notice["timer"] <= config.TIME_EPSILON:
+                self.notice = None
         self.breath_time += dt
         self.jump_timer = max(config.ZERO_TIME, self.jump_timer - dt)
         for name in self.press_timers:
@@ -404,9 +589,217 @@ class Game:
             self.draw_title()
         elif self.state == config.STATE_PLAYING:
             self.draw_playing()
+        elif self.state == config.STATE_EVENT:
+            self.draw_playing()
+            self.draw_pause_dots()
+            self.draw_event_dialog()
         elif self.state == config.STATE_ENDING:
             self.draw_ending()
         pygame.display.flip()
+
+    # ------------------------------------------------------------
+    # 랜덤 이벤트 화면 (D단위): 자동형 알림, 대화창, 멈춤 점무늬
+    # ------------------------------------------------------------
+    def get_slide_offset(self, age, duration, distance):
+        """등장 연출로 원래 자리보다 위에 있을 거리(픽셀)를 돌려준다.
+
+        age(나타난 뒤 흐른 시간)가 0이면 distance만큼 위, duration이 지나면 0(제자리)이다.
+        PIXEL_SIZE 단위로 끊어서 한 칸씩 계단처럼 내려온다.
+        """
+        if age >= duration:
+            return config.NO_OFFSET
+        return self.snap_to_pixel(distance * (config.FULL_RATIO - age / duration))
+
+    def draw_event_notice(self):
+        """자동형 이벤트 알림(도트 상자: 아이콘 + 제목)을 무대 왼쪽 위 구석에 그린다.
+
+        좋은 일(효과 합 0 이상)은 민트 바탕 + 하트, 나쁜 일은 연분홍 바탕 + 느낌표.
+        나타날 때 EVENT_NOTICE_SLIDE_TIME 동안 위에서 한 칸씩 내려온다(무대 안쪽으로 잘라 그림).
+        가운데 머리 위(행동 팝업 자리)와 겹치지 않도록 왼쪽 구석에 두고, 제목이 길면
+        EVENT_NOTICE_TEXT_MAX_WIDTH에서 2줄로 나눠 상자가 오른쪽으로 너무 길어지지 않게 한다.
+        상자 높이는 2줄 자리로 늘 같고, 글자 줄들은 상자 세로 가운데에 놓는다.
+        """
+        if self.notice["good"]:
+            icon, icon_colors = config.NOTICE_GOOD_ICON, config.NOTICE_GOOD_COLORS
+            fill, light, shadow = config.NOTICE_GOOD_BOX
+        else:
+            icon, icon_colors = config.NOTICE_BAD_ICON, config.NOTICE_BAD_COLORS
+            fill, light, shadow = config.NOTICE_BAD_BOX
+        age = config.EVENT_NOTICE_TIME - self.notice["timer"]
+        slide = self.get_slide_offset(age, config.EVENT_NOTICE_SLIDE_TIME,
+                                      config.EVENT_NOTICE_SLIDE_DISTANCE)
+        lines = self.wrap_text(self.notice_font, self.notice["text"],
+                               config.EVENT_NOTICE_TEXT_MAX_WIDTH)
+        surfaces = [render_text(self.notice_font, line) for line in lines]
+        text_width = max(surface.get_width() for surface in surfaces)
+        icon_width, icon_height = sprite_size(icon, config.PIXEL_SIZE)
+        width = (config.BOX_INSET + config.EVENT_NOTICE_PAD + icon_width
+                 + config.EVENT_NOTICE_ICON_GAP + text_width + config.EVENT_NOTICE_PAD_RIGHT)
+        box = pygame.Rect(config.EVENT_NOTICE_X, config.EVENT_NOTICE_Y - slide,
+                          width, config.EVENT_NOTICE_HEIGHT)
+        self.screen.set_clip(self.get_stage_inner())
+        inner = draw_pixel_box(self.screen, box, fill, light, shadow, drop=config.COLOR_DROP)
+        icon_x = inner.left + config.EVENT_NOTICE_PAD
+        draw_sprite(self.screen, icon, icon_x, inner.centery - icon_height // config.HALF,
+                    config.PIXEL_SIZE, icon_colors)
+        text_x = icon_x + icon_width + config.EVENT_NOTICE_ICON_GAP
+        # 첫 줄 가운데 y: 줄들 전체가 상자 세로 가운데에 오도록
+        first_y = (inner.centery
+                   - (len(surfaces) - config.FULL_LINE) * config.EVENT_NOTICE_LINE_HEIGHT
+                   // config.HALF)
+        for index, surface in enumerate(surfaces):
+            text_rect = surface.get_rect()
+            text_rect.midleft = (text_x, first_y + index * config.EVENT_NOTICE_LINE_HEIGHT)
+            self.screen.blit(surface, text_rect)
+        self.screen.set_clip(None)
+
+    def draw_pause_dots(self):
+        """대화창 뒤 화면 전체에 3칸(PAUSE_DOT_STEP) 간격 남색 점무늬를 덮어 "게임이 멈췄다"는 느낌을 준다.
+
+        Surface 알파(반투명)로 어둡게 하지 않고 도트를 찍는다. 점을 듬성듬성 찍어
+        뒤 화면 글자가 읽히도록 한다. 대화창은 이 위에 그려지므로 점이 덮이지 않는다.
+        """
+        rows = range(config.FIRST_ROW, config.SCREEN_HEIGHT, config.PAUSE_DOT_STEP)
+        for row, y in enumerate(rows):
+            shift = (row % config.HALF) * config.PAUSE_DOT_SHIFT
+            for x in range(shift, config.SCREEN_WIDTH, config.PAUSE_DOT_STEP):
+                pygame.draw.rect(self.screen, config.COLOR_PAUSE_DOT,
+                                 (x, y, config.PIXEL_SIZE, config.PIXEL_SIZE))
+
+    def wrap_text(self, font, text, max_width):
+        """글자 text를 띄어쓰기 자리에서 끊어 한 줄이 max_width를 넘지 않는 줄 목록으로 돌려준다.
+
+        EVENT_TEXT_MAX_LINES(2)줄을 넘으면 마지막 줄 끝에 줄임표를 붙여 자른다.
+        """
+        lines = []
+        current = ""
+        for word in text.split(config.TEXT_SEPARATOR):
+            candidate = word if not current else current + config.TEXT_SEPARATOR + word
+            width, _ = font.size(candidate)
+            if current and width > max_width:
+                lines.append(current)
+                current = word
+            else:
+                current = candidate
+        lines.append(current)
+        if len(lines) > config.EVENT_TEXT_MAX_LINES:
+            lines = lines[:config.EVENT_TEXT_MAX_LINES]
+            lines.append(lines.pop() + config.TEXT_ELLIPSIS)
+        return lines
+
+    def draw_event_dialog(self):
+        """선택지형 이벤트 대화창을 무대 위 가운데에 그린다.
+
+        도트 상자 -> 제목 띠(연분홍, 양끝 별) -> 상황 글자(2줄까지) -> 선택 버튼 2개와
+        각 버튼 아래 효과 미리보기 한 줄. 뜬 직후 EVENT_DIALOG_SLIDE_TIME 동안 위에서
+        한 칸씩 내려온다. 입력 대기(0.3초) 동안은 선택 버튼이 회색이고 진행 막대가 차오르며(E1 쿨타임 방식),
+        그 뒤에는 마우스를 올린 버튼이 밝아진다(E1 호버).
+        """
+        if self.current_event is None:
+            return
+        slide = self.get_slide_offset(self.dialog_time, config.EVENT_DIALOG_SLIDE_TIME,
+                                      config.EVENT_DIALOG_SLIDE_DISTANCE)
+        box = pygame.Rect(config.EVENT_DIALOG_RECT).move(config.NO_OFFSET, -slide)
+        draw_pixel_box(self.screen, box, config.COLOR_BG, config.COLOR_PANEL_LIGHT,
+                       config.COLOR_PANEL_SHADOW, drop=config.COLOR_DROP)
+        self.draw_dialog_title(slide)
+
+        lines = self.wrap_text(self.event_font, self.current_event[config.EVENT_TEXT],
+                               config.EVENT_TEXT_MAX_WIDTH)
+        area_height = config.EVENT_TEXT_MAX_LINES * config.EVENT_TEXT_LINE_HEIGHT
+        first_y = (config.EVENT_TEXT_TOP - slide
+                   + (area_height - len(lines) * config.EVENT_TEXT_LINE_HEIGHT) // config.HALF
+                   + config.EVENT_TEXT_LINE_HEIGHT // config.HALF)
+        for index, line in enumerate(lines):
+            surface = render_text(self.event_font, line)
+            rect = surface.get_rect()
+            rect.center = (config.EVENT_DIALOG_CENTER_X,
+                           first_y + index * config.EVENT_TEXT_LINE_HEIGHT)
+            self.screen.blit(surface, rect)
+
+        waiting = not self.is_dialog_ready()
+        progress = None
+        if waiting:
+            progress = self.dialog_time / config.EVENT_INPUT_DELAY
+        options = self.current_event[config.EVENT_OPTIONS]
+        for button, option in zip(self.choice_buttons, options):
+            hovered = self.mouse_pos is not None and button.is_clicked(self.mouse_pos)
+            shown = button
+            if slide != config.NO_OFFSET:
+                # 등장 중에는 내려오는 자리에 그린다(클릭 판정 자리는 그대로, 이때는 입력 대기 중)
+                shown = Button(button.rect.x, button.rect.y - slide, button.rect.width,
+                               button.rect.height, button.text)
+            shown.draw(self.screen, self.event_font, waiting, hovered,
+                       config.NO_OFFSET, progress)
+            self.draw_choice_preview(option, shown.rect.centerx,
+                                     shown.rect.bottom + config.CHOICE_PREVIEW_GAP)
+
+    def draw_dialog_title(self, slide):
+        """대화창 맨 위 제목 띠(연분홍 도트 상자 + 양끝 별 + 이벤트 이름)를 그린다."""
+        band = pygame.Rect(config.EVENT_TITLE_BAND_RECT).move(config.NO_OFFSET, -slide)
+        inner = draw_pixel_box(self.screen, band, config.COLOR_PINK_LIGHT, config.COLOR_WHITE,
+                               config.COLOR_PINK)
+        title = render_text(self.font, self.current_event[config.EVENT_TITLE])
+        rect = title.get_rect()
+        rect.center = inner.center
+        self.screen.blit(title, rect)
+        star_width, star_height = sprite_size(config.STAR_SPRITE, config.PIXEL_SIZE)
+        star_y = inner.centery - star_height // config.HALF
+        ink = {config.SPRITE_INK: config.COLOR_PINK_DARK}
+        draw_sprite(self.screen, config.STAR_SPRITE, band.left + config.EVENT_TITLE_ICON_MARGIN,
+                    star_y, config.PIXEL_SIZE, ink)
+        draw_sprite(self.screen, config.STAR_SPRITE,
+                    band.right - config.EVENT_TITLE_ICON_MARGIN - star_width,
+                    star_y, config.PIXEL_SIZE, ink)
+
+    def get_option_preview(self, option):
+        """선택지 option의 효과 미리보기 항목 [(글자, 색), ...]을 돌려준다.
+
+        게이지 효과는 "멘탈 +15"(늘면 초록, 줄면 빨강), 특성·외형은 "특성: 음악 힐링",
+        "외형: 기타"(옅은 남색). 연계 플래그는 숨긴다(나중에 생기는 이벤트의 깜짝 요소).
+        보일 것이 하나도 없으면 "변화 없음".
+        """
+        labels = dict(config.POPUP_GAUGES)
+        parts = []
+        for key, amount in option[config.OPTION_EFFECTS].items():
+            color = config.COLOR_PREVIEW_UP
+            if amount < config.NO_CHANGE:
+                color = config.COLOR_PREVIEW_DOWN
+            parts.append((config.POPUP_TEXT.format(labels[key], amount), color))
+        if option[config.OPTION_TRAIT] is not None:
+            parts.append((config.PREVIEW_TRAIT_TEXT.format(option[config.OPTION_TRAIT]),
+                          config.COLOR_PREVIEW_OTHER))
+        if option[config.OPTION_LOOK] is not None:
+            parts.append((config.PREVIEW_LOOK_TEXT.format(
+                config.LOOK_NAMES[option[config.OPTION_LOOK]]), config.COLOR_PREVIEW_OTHER))
+        if not parts:
+            parts.append((config.PREVIEW_NONE_TEXT, config.COLOR_PREVIEW_OTHER))
+        return parts
+
+    def draw_choice_preview(self, option, center_x, center_y):
+        """선택 버튼 아래에 효과 미리보기 한 줄을 (center_x, center_y) 가운데에 작은 글씨로 그린다.
+
+        항목마다 색이 달라서 글자를 따로 그린 뒤 " · "로 이어 붙여 가운데 정렬한다.
+        """
+        surfaces = []
+        for text, color in self.get_option_preview(option):
+            if surfaces:   # 두 번째 항목부터 앞에 구분 글자를 붙인다
+                surfaces.append(render_text(self.small_font, config.PREVIEW_SEPARATOR,
+                                            config.COLOR_PREVIEW_OTHER))
+            surfaces.append(render_text(self.small_font, text, color))
+        total = sum(surface.get_width() for surface in surfaces)
+        x = center_x - total // config.HALF
+        for surface in surfaces:
+            rect = surface.get_rect()
+            rect.midleft = (x, center_y)
+            self.screen.blit(surface, rect)
+            x += surface.get_width()
+
+    def get_stage_inner(self):
+        """제자 무대 패널의 안쪽 사각형(외곽선 1칸 안)을 돌려준다. 무대 연출을 잘라 그릴 때 쓴다."""
+        stage = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH,
+                            config.PANEL_HEIGHT)
+        return stage.inflate(-config.BOX_INSET, -config.BOX_INSET)
 
     def draw_panel(self, rect):
         """크림색 도트 패널(계단 모서리, 남색 외곽선, 아래 그림자)을 그리고 안쪽 사각형을 돌려준다."""
@@ -495,8 +888,11 @@ class Game:
         self.student.draw_gauges(self.screen, self.font,
                                  self.get_shown_gauge(config.GAUGE_HEALTH),
                                  self.get_shown_gauge(config.GAUGE_MENTAL))
+        self.student.draw_traits(self.screen, self.small_font)
         self.student.draw(self.screen, self.get_student_lift())
         self.draw_stage_effects()
+        if self.notice is not None:
+            self.draw_event_notice()
         self.draw_buttons()
 
     def draw_stage_effects(self):
@@ -505,9 +901,7 @@ class Game:
         무대 패널 안쪽으로 그리기 영역을 잘라(set_clip) 두어서 파티클·팝업이
         패널 밖(버튼·상태 패널 쪽)으로 넘쳐 보이지 않게 한다.
         """
-        stage = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH,
-                            config.PANEL_HEIGHT)
-        self.screen.set_clip(stage.inflate(-config.BOX_INSET, -config.BOX_INSET))
+        self.screen.set_clip(self.get_stage_inner())
         for particle in self.particles:
             self.draw_particle(particle)
         for popup in self.popups:
@@ -535,13 +929,16 @@ class Game:
         """수치 팝업 하나("체력 +20")를 떠오른 높이에 굵은 글씨 + 남색 1px 그림자로 그린다.
 
         POPUP_BLINK_START가 지나면 POPUP_BLINK_STEP마다 보였다 숨었다 하며 사라진다.
+        글자 가운데 x는 popup["x"](행동 팝업 = 무대 가운데, 이벤트 팝업 = 왼쪽 위 칸)이고,
+        x가 없는 팝업은 무대 가운데에 그린다.
         """
         age = popup["age"]
         if age >= config.POPUP_BLINK_START:
             step = int((age - config.POPUP_BLINK_START) / config.POPUP_BLINK_STEP)
             if step % config.HALF == config.BLINK_HIDE:
                 return
-        center = (config.STUDENT_CENTER_X, round(popup["y"] - config.POPUP_RISE_SPEED * age))
+        center = (popup.get("x", config.STUDENT_CENTER_X),
+                  round(popup["y"] - config.POPUP_RISE_SPEED * age))
         outline = render_text(self.popup_font, popup["text"], config.COLOR_OUTLINE)
         rect = outline.get_rect()
         rect.center = center

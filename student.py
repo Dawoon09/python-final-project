@@ -14,7 +14,7 @@ def clamp(value, low, high):
 def judge_ending(knowledge):
     """240초를 버틴 제자의 누적 지식으로 졸업 엔딩 이름을 돌려준다.
 
-    지식 500 이상 "수석 졸업", 300~499 "무사 졸업", 300 미만 "아슬아슬 졸업".
+    지식 700 이상 "수석 졸업", 450~699 "무사 졸업", 450 미만 "아슬아슬 졸업".
     (휴학은 체력·멘탈로 정하므로 여기서 다루지 않는다.)
     """
     if knowledge >= config.TOP_GRADUATE_KNOWLEDGE:
@@ -32,12 +32,22 @@ class Student:
     """
 
     def __init__(self):
-        """게이지를 시작값으로 정하고 경과 시간을 0으로 둔다."""
+        """게이지를 시작값으로 정하고 경과 시간을 0으로 둔다.
+
+        랜덤 이벤트로 생기는 성장 기록(특성·외형·연계 플래그·나온 선택지형 이벤트·
+        학년별 이벤트 수)도 여기서 비운다. 새 판에서 Student를 새로 만들면 모두 초기화된다.
+        """
         self.health = config.HEALTH_START
         self.mental = config.MENTAL_START
         self.knowledge = config.KNOWLEDGE_START
         self.elapsed = config.ZERO_TIME      # 게임 시작 후 흐른 시간(초)
         self.decay_timer = config.ZERO_TIME  # 다음 자연 감소까지 모아 둔 시간(초)
+        self.traits = []           # 얻은 특성 이름 (얻은 순서대로, 화면 배지용)
+        self.looks = []            # 얻은 외형 id (얻은 순서대로)
+        self.flags = set()         # 연계 플래그 ("MT 참석" 등)
+        self.seen_events = set()   # 이번 판에 이미 나온 선택지형 이벤트 id
+        self.event_counts = {grade: config.EVENT_COUNT_START for grade in config.ALL_GRADES}  # 학년별 이벤트 수
+        self.last_event_time = None  # 직전 이벤트가 뜬 게임 시각(초). 이번 판에 아직 없으면 None
 
     # ------------------------------------------------------------
     # 게이지 값 바꾸기
@@ -142,18 +152,25 @@ class Student:
     # 행동 (3일차)
     # ------------------------------------------------------------
     def feed(self):
-        """학식 먹이기: 체력 +20 (100을 넘지 않음)."""
-        self.change_health(config.FEED_HEALTH)
+        """학식 먹이기: 체력 +20 (체력 단련 특성이면 +25). 100을 넘지 않음."""
+        self.change_health(config.FEED_HEALTH + self.get_trait_bonus(config.BONUS_FEED_HEALTH))
 
     def rest(self):
-        """쉬게 하기: 멘탈 +20 (100을 넘지 않음), 지식 -2 (0 아래로 내려가지 않음)."""
-        self.change_mental(config.REST_MENTAL)
+        """쉬게 하기: 멘탈 +20 (음악 힐링 +25), 지식 -2, (연애 중이면) 체력 +5.
+
+        멘탈·체력은 0~100, 지식은 0 아래로 내려가지 않는다.
+        """
+        self.change_mental(config.REST_MENTAL + self.get_trait_bonus(config.BONUS_REST_MENTAL))
         self.change_knowledge(config.REST_KNOWLEDGE)
+        self.change_health(config.REST_HEALTH + self.get_trait_bonus(config.BONUS_REST_HEALTH))
 
     def study(self):
-        """공부시키기: 지식 +(공부 지식량), 체력 -5, 멘탈 -8 (0 아래로 내려가지 않음)."""
+        """공부시키기: 지식 +(공부 지식량), 체력 -5 (카페인 특성이면 -3), 멘탈 -8.
+
+        0 아래로 내려가지 않는다. 시험 기간 지식 +20 규칙은 특성과 상관없이 그대로다.
+        """
         self.change_knowledge(self.get_study_knowledge())
-        self.change_health(config.STUDY_HEALTH)
+        self.change_health(config.STUDY_HEALTH + self.get_trait_bonus(config.BONUS_STUDY_HEALTH))
         self.change_mental(config.STUDY_MENTAL)
 
     def get_study_knowledge(self):
@@ -192,6 +209,115 @@ class Student:
         """캐릭터 반지름을 돌려준다: 40 + (학년-1) x 10 -> 40/50/60/70."""
         return (config.BASE_RADIUS
                 + (self.get_grade() - config.FIRST_GRADE) * config.RADIUS_PER_GRADE)
+
+    # ------------------------------------------------------------
+    # 랜덤 이벤트와 성장 (기획서 9절)
+    # ------------------------------------------------------------
+    def get_trait_bonus(self, bonus_name):
+        """가진 특성들이 행동 효과 bonus_name에 더해 주는 양의 합을 돌려준다(없으면 0)."""
+        total = config.TRAIT_BONUS_START
+        for trait in self.traits:
+            total += config.TRAIT_BONUSES[trait].get(bonus_name, config.NO_CHANGE)
+        return total
+
+    def has_trait(self, trait):
+        """특성 trait을 가지고 있으면 True."""
+        return trait in self.traits
+
+    def add_trait(self, trait):
+        """특성 trait을 얻는다. 이미 있으면 다시 넣지 않는다(얻은 순서 유지)."""
+        if trait not in self.traits:
+            self.traits.append(trait)
+
+    def add_look(self, look):
+        """외형 look을 얻는다. 이미 있으면 다시 넣지 않는다(얻은 순서 유지)."""
+        if look not in self.looks:
+            self.looks.append(look)
+
+    def add_flag(self, flag):
+        """연계 플래그 flag를 켠다(연계 이벤트가 나올 수 있게 된다)."""
+        self.flags.add(flag)
+
+    def apply_effects(self, effects):
+        """이벤트 효과 {게이지 속성 이름: 변화량}을 적용한다.
+
+        체력·멘탈은 0~100, 지식은 0 이상으로 맞춘다(기존 change_ 메서드 사용).
+        """
+        for name, amount in effects.items():
+            if name == config.GAUGE_HEALTH:
+                self.change_health(amount)
+            elif name == config.GAUGE_MENTAL:
+                self.change_mental(amount)
+            elif name == config.GAUGE_KNOWLEDGE:
+                self.change_knowledge(amount)
+
+    def apply_option(self, option):
+        """선택지형 이벤트에서 고른 선택지 option의 효과·특성·외형·연계 플래그를 모두 적용한다."""
+        self.apply_effects(option[config.OPTION_EFFECTS])
+        if option[config.OPTION_TRAIT] is not None:
+            self.add_trait(option[config.OPTION_TRAIT])
+        if option[config.OPTION_LOOK] is not None:
+            self.add_look(option[config.OPTION_LOOK])
+        if option[config.OPTION_FLAG] is not None:
+            self.add_flag(option[config.OPTION_FLAG])
+
+    def get_time_in_grade(self):
+        """지금 학년 안에서 흐른 시간(초)을 돌려준다(학년 시작 = 0)."""
+        grade_start = (self.get_grade() - config.FIRST_GRADE) * config.SECONDS_PER_GRADE
+        return self.elapsed - grade_start
+
+    def get_grade_event_count(self):
+        """지금 학년에 나온 이벤트 수를 돌려준다."""
+        return self.event_counts[self.get_grade()]
+
+    def count_event(self):
+        """지금 학년의 이벤트 수를 하나 늘리고, 지금 게임 시각을 직전 이벤트 시각으로 적어 둔다."""
+        self.event_counts[self.get_grade()] += config.EVENT_COUNT_STEP
+        self.last_event_time = self.elapsed
+
+    def is_event_gap_passed(self):
+        """직전 이벤트 이후 게임 시간이 최소 간격(EVENT_MIN_GAP, 8초) 이상 지났으면 True.
+
+        이번 판에 이벤트가 아직 없었으면 True. 학년이 바뀌어도 이어서 센다.
+        대화창이 떠 있는 동안은 경과 시간(elapsed)이 멈추므로 간격에 들어가지 않는다.
+        """
+        if self.last_event_time is None:
+            return True
+        return self.elapsed - self.last_event_time + config.TIME_EPSILON >= config.EVENT_MIN_GAP
+
+    def can_have_event(self):
+        """지금 학년 이벤트 수가 최대(5) 미만이면 True(아직 이벤트가 나올 수 있음)."""
+        return self.get_grade_event_count() < config.EVENT_MAX_PER_GRADE
+
+    def needs_guaranteed_event(self):
+        """최소 보장 조건이면 True(다음 행동 때 확률과 상관없이 이벤트가 뜬다).
+
+        학년 안 0~45초를 11.25초씩 4구간으로 나눈다. 지금까지 끝난 구간 수
+        k = min(4, 학년 안 경과 // 11.25) 보다 그 학년 이벤트 수가 적으면 보장한다.
+        """
+        passed = int((self.get_time_in_grade() + config.TIME_EPSILON)
+                     // config.EVENT_GUARANTEE_INTERVAL)
+        finished_sections = min(config.EVENT_MIN_PER_GRADE, passed)
+        return self.get_grade_event_count() < finished_sections
+
+    def can_see_event(self, event):
+        """이벤트 event가 지금 후보가 될 수 있으면 True.
+
+        학년 조건(표에 적힌 학년에서만), 연계 조건(필요한 플래그가 켜져 있음),
+        선택지형은 이번 판에 아직 안 나왔어야 한다(자동형은 반복 가능).
+        """
+        if self.get_grade() not in event[config.EVENT_GRADES]:
+            return False
+        required = event[config.EVENT_REQUIRES]
+        if required is not None and required not in self.flags:
+            return False
+        if event[config.EVENT_KIND] == config.EVENT_KIND_CHOICE:
+            return event[config.EVENT_ID] not in self.seen_events
+        return True
+
+    def mark_event_seen(self, event_id):
+        """선택지형 이벤트 event_id가 나왔다고 기록한다(한 판에 한 번만 나오게)."""
+        self.seen_events.add(event_id)
 
     # ------------------------------------------------------------
     # 표정 (4일차)
@@ -290,10 +416,12 @@ class Student:
     def draw(self, screen, lift=config.NO_OFFSET):
         """오른쪽 제자 무대에 제자를 도트 스프라이트로 그린다.
 
-        발밑 그림자 -> 얼굴(머리카락 포함) -> 볼 홍조 -> 눈 -> (체력 30 미만) 다크서클
-        -> (3학년부터) 안경 -> 입 순서로 찍는다. 모든 부품은 얼굴 격자 칸 단위로 놓이고,
-        칸 크기가 학년마다 커지므로 얼굴과 부품이 함께 커진다.
-        lift는 점프·숨쉬기로 제자가 위로 뜬 높이(픽셀)다. 얼굴만 그만큼 올라가고
+        발밑 그림자 -> (얼굴 뒤 외형: 기타) -> 얼굴(머리카락 포함) -> 볼 홍조 -> 눈
+        -> (체력 30 미만) 다크서클 -> (3학년부터) 안경 -> 입
+        -> (얼굴 앞 외형: 머리띠·하트 머리핀·선글라스·커피잔) 순서로 찍는다.
+        모든 부품은 얼굴 격자 칸 단위로 놓이고, 칸 크기가 학년마다 커지므로
+        얼굴과 부품(외형 포함)이 함께 커진다. 외형은 눈·안경·다크서클·입 칸과 겹치지 않는 자리에 있다.
+        lift는 점프·숨쉬기로 제자가 위로 뜬 높이(픽셀)다. 얼굴과 외형이 그만큼 올라가고
         발밑 그림자는 제자리에서 조금 작아진다. 크기(반지름)는 바뀌지 않는다.
         """
         radius = self.get_radius()
@@ -302,6 +430,7 @@ class Student:
         top = config.STUDENT_CENTER_Y - radius - lift
 
         self.draw_shadow(screen, radius, lift)
+        self.draw_looks(screen, left, top, cell, config.LOOKS_BEHIND)
         draw_sprite(screen, config.FACE_SPRITE, left, top, cell, config.FACE_COLORS)
         self.draw_parts(screen, left, top, cell, config.BLUSH_SPRITE, config.BLUSH_POSITIONS)
         self.draw_parts(screen, left, top, cell, config.EYE_SPRITE, config.EYE_POSITIONS)
@@ -311,6 +440,39 @@ class Student:
         if self.has_glasses():
             self.draw_glasses(screen, left, top, cell)
         self.draw_mouth(screen, left, top, cell)
+        self.draw_looks(screen, left, top, cell, config.LOOKS_FRONT)
+
+    def draw_looks(self, screen, left, top, cell, order):
+        """얻은 외형 중 order 목록에 있는 것을 order 차례대로 얼굴 격자 위치에 찍는다.
+
+        order는 config.LOOKS_BEHIND(얼굴보다 먼저) 또는 config.LOOKS_FRONT(입 다음)다.
+        얻지 않은 외형은 건너뛴다. 위치는 얼굴 격자 (열, 행)이라 얼굴 밖(음수 칸)도 될 수 있다.
+        """
+        for look in order:
+            if look not in self.looks:
+                continue
+            (col, row), grid = config.LOOK_SPRITES[look]
+            draw_sprite(screen, grid, left + col * cell, top + row * cell,
+                        cell, config.LOOK_COLORS)
+
+    def draw_traits(self, screen, font):
+        """상태 패널 안 아래쪽(멘탈 막대 아래)에 얻은 특성을 작은 도트 배지로 그린다.
+
+        얻은 순서대로 왼쪽 위부터 한 줄에 TRAIT_BADGE_COLUMNS(2)개씩 채운다.
+        특성 4개가 모두 있어도 2 x 2로 패널 안에 들어간다. 배지 색은 특성마다 다르다.
+        """
+        for index, trait in enumerate(self.traits):
+            row, col = divmod(index, config.TRAIT_BADGE_COLUMNS)
+            box = pygame.Rect(
+                config.TRAIT_BADGE_X + col * (config.TRAIT_BADGE_WIDTH + config.TRAIT_BADGE_GAP),
+                config.TRAIT_BADGE_Y + row * (config.TRAIT_BADGE_HEIGHT + config.TRAIT_BADGE_GAP),
+                config.TRAIT_BADGE_WIDTH, config.TRAIT_BADGE_HEIGHT)
+            fill, light = config.TRAIT_COLORS[trait]
+            inner = draw_pixel_box(screen, box, fill, light, drop=config.COLOR_DROP)
+            text = render_text(font, trait)
+            text_rect = text.get_rect()
+            text_rect.center = inner.center
+            screen.blit(text, text_rect)
 
     def draw_shadow(self, screen, radius, lift):
         """얼굴 아래에 납작한 도트 그림자(모서리 깎은 사각형)를 그린다.

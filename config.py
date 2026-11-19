@@ -24,6 +24,7 @@ MS_PER_SECOND = 1000        # 밀리초 -> 초 변환에 쓰는 값
 STATE_TITLE = "title"       # 타이틀 화면
 STATE_PLAYING = "playing"   # 게임 화면
 STATE_ENDING = "ending"     # 엔딩 화면
+STATE_EVENT = "event"       # 선택지형 이벤트 대화창 (게임 진행이 멈춘 상태)
 
 # 게임을 켰을 때 처음 보여 줄 화면: 타이틀 화면
 START_STATE = STATE_TITLE
@@ -92,8 +93,8 @@ MOUTH_CRY = "cry"           # 우는 입 (입꼬리가 내려간 ∩자)
 # ---------------------------------------------------------------
 # 8. 엔딩 기준
 # ---------------------------------------------------------------
-TOP_GRADUATE_KNOWLEDGE = 500    # 지식 500 이상: 수석 졸업
-NORMAL_GRADUATE_KNOWLEDGE = 300  # 지식 300 이상 499 이하: 무사 졸업, 미만: 아슬아슬 졸업
+TOP_GRADUATE_KNOWLEDGE = 700    # 지식 700 이상: 수석 졸업 (랜덤 이벤트 반영, 기획서 2절)
+NORMAL_GRADUATE_KNOWLEDGE = 450  # 지식 450 이상 699 이하: 무사 졸업, 미만: 아슬아슬 졸업
 
 ENDING_LEAVE = "휴학"
 ENDING_TOP = "수석 졸업"
@@ -626,3 +627,399 @@ SHADOW_SHRINK_PER_LIFT = 1  # 제자가 1픽셀 뜰 때마다 발밑 그림자 �
 # E6 안내 문구 깜빡임: 화살표가 보였다 숨었다 하고, 숨을 때 글자 색이 살짝 옅어진다
 BLINK_INTERVAL = 0.5        # 깜빡임 간격(초)
 COLOR_HINT_DIM = COLOR_TEXT_SOFT   # 화살표가 숨었을 때의 안내 글자 색
+
+# ---------------------------------------------------------------
+# 17. 랜덤 이벤트와 성장 (기획서 9절, jeja-spec 14절)
+# ---------------------------------------------------------------
+# 발생 규칙 수치
+EVENT_CHANCE = 0.25                 # 행동이 실제로 실행된 직후 이벤트가 뜰 확률
+EVENT_GUARANTEE_INTERVAL = 11.25    # 최소 보장 구간 길이(초): 학년 안 0~45초를 4구간으로 나눈다
+EVENT_MIN_PER_GRADE = 4             # 학년당 최소 보장 이벤트 수 (보장 구간 개수)
+EVENT_MAX_PER_GRADE = 5             # 학년당 최대 이벤트 수
+EVENT_CHOICE_RATIO = 0.5            # 선택지형 후보가 있을 때 선택지형을 고를 확률
+EVENT_NOTICE_TIME = 2.0             # 자동형 알림 배너가 보이는 시간(초)
+# 최소 간격: 확률로 뜨는 이벤트는 직전 이벤트(같은 판, 학년이 바뀌어도 이어서 셈) 이후
+# 게임 시간이 이만큼 지나야 뜰 수 있다. 최소 보장으로 뜨는 이벤트는 예외.
+# 대화창이 떠 있는 동안은 게임 시간이 멈추므로 간격에 들어가지 않는다.
+EVENT_MIN_GAP = 8.0
+
+# 이벤트 종류
+EVENT_KIND_AUTO = "auto"            # 자동형(작은 사건): 게임이 멈추지 않고 효과가 바로 적용된다
+EVENT_KIND_CHOICE = "choice"        # 선택지형(큰 사건): 게임이 멈추고 대화창에서 둘 중 하나를 고른다
+
+ALL_GRADES = [1, 2, 3, 4]           # 모든 학년 (자동형 이벤트가 나오는 학년)
+
+# 선택지 번호 (대화창의 선택 1 / 선택 2). 키 1 -> 첫 번째, 키 2 -> 두 번째
+CHOICE_FIRST = 0                    # 첫 번째 선택지 번호(리스트 위치)
+CHOICE_SECOND = 1                   # 두 번째 선택지 번호(리스트 위치)
+CHOICE_NUMBER_START = 1             # 화면에 보이는 선택지 번호는 1부터 센다: "[1] …", "[2] …"
+EVENT_COUNT_STEP = 1                # 이벤트가 한 번 나올 때 학년 이벤트 수가 늘어나는 양
+EVENT_COUNT_START = 0               # 학년별 이벤트 수의 시작값 (새 판에서는 0번)
+
+# 특성 (얻으면 그 판 끝까지 유지). 값은 화면 배지에 쓸 이름이다
+TRAIT_FITNESS = "체력 단련"          # 학식 먹이기 체력 +20 -> +25
+TRAIT_MUSIC = "음악 힐링"            # 쉬게 하기 멘탈 +20 -> +25
+TRAIT_CAFFEINE = "카페인"            # 공부시키기 체력 -5 -> -3
+TRAIT_LOVE = "연애 중"               # 쉬게 하기에 체력 +5가 함께 붙음
+
+# 특성 보정을 받는 행동 효과 이름
+BONUS_FEED_HEALTH = "feed_health"   # 학식 먹이기 체력
+BONUS_REST_MENTAL = "rest_mental"   # 쉬게 하기 멘탈
+BONUS_REST_HEALTH = "rest_health"   # 쉬게 하기 체력 (기본 0)
+BONUS_STUDY_HEALTH = "study_health"  # 공부시키기 체력
+REST_HEALTH = 0                     # 쉬게 하기의 기본 체력 변화 (특성 없으면 0)
+TRAIT_BONUS_START = 0               # 특성 보정 합계의 시작값 (특성이 없으면 0)
+
+# 특성 -> {보정 받는 효과: 기본 수치에 더하는 양}. 여러 특성이 있으면 각각 더한다
+TRAIT_BONUSES = {
+    TRAIT_FITNESS: {BONUS_FEED_HEALTH: 5},     # +20 -> +25
+    TRAIT_MUSIC: {BONUS_REST_MENTAL: 5},       # +20 -> +25
+    TRAIT_CAFFEINE: {BONUS_STUDY_HEALTH: 2},   # -5 -> -3
+    TRAIT_LOVE: {BONUS_REST_HEALTH: 5},        # 0 -> +5
+}
+
+# 외형 5종 (얻으면 그 판 끝까지 제자에게 붙어 있다. 그리기는 D단위)
+LOOK_GUITAR = "guitar"              # 기타(등 뒤)
+LOOK_HEADBAND = "headband"          # 헬스 머리띠
+LOOK_COFFEE = "coffee"              # 커피잔(손)
+LOOK_HEART_PIN = "heart_pin"        # 하트 머리핀
+LOOK_SUNGLASSES = "sunglasses"      # 선글라스(머리 위)
+LOOK_IDS = [LOOK_GUITAR, LOOK_HEADBAND, LOOK_COFFEE, LOOK_HEART_PIN, LOOK_SUNGLASSES]
+
+# 연계 플래그 (연계 이벤트가 나오기 위한 조건)
+FLAG_MT = "MT 참석"
+FLAG_BAND = "밴드부"
+FLAG_LOVE = "연애 중"
+
+# 이벤트 dict 키
+EVENT_ID = "id"                     # 이벤트 이름표 (선택지형 한 판 1회 기록용)
+EVENT_KIND = "kind"                 # 종류: EVENT_KIND_AUTO / EVENT_KIND_CHOICE
+EVENT_GRADES = "grades"             # 나올 수 있는 학년 목록 (표에 적힌 학년에서만)
+EVENT_REQUIRES = "requires"         # 필요한 연계 플래그 (없으면 None)
+EVENT_TITLE = "title"               # 제목 (이벤트 이름)
+EVENT_TEXT = "text"                 # 상황 한 줄 (선택지형)
+EVENT_EFFECTS = "effects"           # 게이지 효과 {게이지 속성 이름: 변화량}
+EVENT_OPTIONS = "options"           # 선택지 2개 (선택지형)
+OPTION_TEXT = "text"                # 선택지 글자
+OPTION_EFFECTS = "effects"          # 선택지 게이지 효과
+OPTION_TRAIT = "trait"              # 얻는 특성 (없으면 None)
+OPTION_LOOK = "look"                # 얻는 외형 (없으면 None)
+OPTION_FLAG = "flag"                # 얻는 연계 플래그 (없으면 None)
+
+
+def make_option(text, effects, trait=None, look=None, flag=None):
+    """선택지 하나를 dict로 만들어 돌려준다(이벤트 표를 짧게 쓰기 위한 도우미)."""
+    return {OPTION_TEXT: text, OPTION_EFFECTS: effects, OPTION_TRAIT: trait,
+            OPTION_LOOK: look, OPTION_FLAG: flag}
+
+
+# 자동형 이벤트 5개 (모든 학년, 반복 가능)
+AUTO_EVENTS = [
+    {EVENT_ID: "side_dish", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+     EVENT_REQUIRES: None, EVENT_TITLE: "엄마가 반찬을 보내셨다",
+     EVENT_EFFECTS: {GAUGE_HEALTH: 15}},
+    {EVENT_ID: "group_chat_praise", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+     EVENT_REQUIRES: None, EVENT_TITLE: "단톡방에서 칭찬받았다",
+     EVENT_EFFECTS: {GAUGE_MENTAL: 10}},
+    {EVENT_ID: "deadline_alarm", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+     EVENT_REQUIRES: None, EVENT_TITLE: "과제 마감 알림이 울렸다",
+     EVENT_EFFECTS: {GAUGE_MENTAL: -10}},
+    {EVENT_ID: "cold", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+     EVENT_REQUIRES: None, EVENT_TITLE: "감기 기운이 돈다",
+     EVENT_EFFECTS: {GAUGE_HEALTH: -10}},
+    {EVENT_ID: "professor_praise", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+     EVENT_REQUIRES: None, EVENT_TITLE: "교수님께 칭찬받았다",
+     EVENT_EFFECTS: {GAUGE_KNOWLEDGE: 15, GAUGE_MENTAL: 5}},
+]
+
+# 선택지형 이벤트 10개 (연계 3개 포함, 한 판에 한 번씩)
+CHOICE_EVENTS = [
+    {EVENT_ID: "mt_invite", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [1],
+     EVENT_REQUIRES: None, EVENT_TITLE: "MT 초대",
+     EVENT_TEXT: "과 선배가 이번 주말 MT에 같이 가자고 한다.",
+     EVENT_OPTIONS: [
+         make_option("간다", {GAUGE_MENTAL: 15, GAUGE_HEALTH: -10}, flag=FLAG_MT),
+         make_option("공부한다", {GAUGE_KNOWLEDGE: 10, GAUGE_MENTAL: -5}),
+     ]},
+    {EVENT_ID: "club_fair", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [1],
+     EVENT_REQUIRES: None, EVENT_TITLE: "동아리 박람회",
+     EVENT_TEXT: "동아리 박람회가 열렸다. 어디에 들어갈까?",
+     EVENT_OPTIONS: [
+         make_option("밴드부", {}, trait=TRAIT_MUSIC, look=LOOK_GUITAR, flag=FLAG_BAND),
+         make_option("헬스부", {}, trait=TRAIT_FITNESS, look=LOOK_HEADBAND),
+     ]},
+    {EVENT_ID: "free_rider", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [2],
+     EVENT_REQUIRES: None, EVENT_TITLE: "조별과제 무임승차자",
+     EVENT_TEXT: "조원 한 명이 연락도 없이 사라졌다.",
+     EVENT_OPTIONS: [
+         make_option("혼자 다 한다",
+                     {GAUGE_KNOWLEDGE: 20, GAUGE_HEALTH: -15, GAUGE_MENTAL: -10}),
+         make_option("교수님께 말한다", {GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "all_nighter", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [2],
+     EVENT_REQUIRES: None, EVENT_TITLE: "밤샘의 유혹",
+     EVENT_TEXT: "내일 마감인 과제가 아직 반이나 남았다.",
+     EVENT_OPTIONS: [
+         make_option("커피로 버틴다", {GAUGE_KNOWLEDGE: 10},
+                     trait=TRAIT_CAFFEINE, look=LOOK_COFFEE),
+         make_option("그냥 잔다", {GAUGE_HEALTH: 10}),
+     ]},
+    {EVENT_ID: "confession", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [3],
+     EVENT_REQUIRES: None, EVENT_TITLE: "고백을 받았다",
+     EVENT_TEXT: "같은 과 친구가 좋아한다고 고백했다.",
+     EVENT_OPTIONS: [
+         make_option("사귄다", {GAUGE_MENTAL: 15},
+                     trait=TRAIT_LOVE, look=LOOK_HEART_PIN, flag=FLAG_LOVE),
+         make_option("공부에 집중", {GAUGE_KNOWLEDGE: 20, GAUGE_MENTAL: -10}),
+     ]},
+    {EVENT_ID: "exchange_student", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [3],
+     EVENT_REQUIRES: None, EVENT_TITLE: "교환학생 공고",
+     EVENT_TEXT: "해외 교환학생 모집 공고가 올라왔다.",
+     EVENT_OPTIONS: [
+         make_option("지원한다", {GAUGE_KNOWLEDGE: 25, GAUGE_HEALTH: -10}),
+         make_option("다음에", {GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "job_fair", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [4],
+     EVENT_REQUIRES: None, EVENT_TITLE: "취업 박람회",
+     EVENT_TEXT: "학교에서 취업 박람회가 열렸다.",
+     EVENT_OPTIONS: [
+         make_option("대기업 지원", {GAUGE_KNOWLEDGE: 20, GAUGE_MENTAL: -15}),
+         make_option("대학원 상담", {GAUGE_KNOWLEDGE: 10, GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "senior_notes", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [2, 3, 4],
+     EVENT_REQUIRES: FLAG_MT, EVENT_TITLE: "선배가 족보를 준다",
+     EVENT_TEXT: "MT에서 친해진 선배가 족보를 건넨다.",
+     EVENT_OPTIONS: [
+         make_option("받는다", {GAUGE_KNOWLEDGE: 15}),
+         make_option("거절한다", {GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "festival_stage", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [3, 4],
+     EVENT_REQUIRES: FLAG_BAND, EVENT_TITLE: "축제 무대 제안",
+     EVENT_TEXT: "밴드부에서 축제 무대에 서 보자고 한다.",
+     EVENT_OPTIONS: [
+         make_option("무대에 선다", {GAUGE_MENTAL: 25, GAUGE_HEALTH: -10},
+                     look=LOOK_SUNGLASSES),
+         make_option("연습만 한다", {GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "graduation_date", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [4],
+     EVENT_REQUIRES: FLAG_LOVE, EVENT_TITLE: "졸업 전 데이트",
+     EVENT_TEXT: "졸업하기 전에 둘이서 데이트하자고 한다.",
+     EVENT_OPTIONS: [
+         make_option("데이트한다", {GAUGE_MENTAL: 20, GAUGE_HEALTH: -5}),
+         make_option("도서관에 간다", {GAUGE_KNOWLEDGE: 15}),
+     ]},
+]
+ALL_EVENTS = AUTO_EVENTS + CHOICE_EVENTS   # 이벤트 표 전체 (자동형 5 + 선택지형 10)
+
+# ---------------------------------------------------------------
+# 18. 랜덤 이벤트 화면 (D단위, jeja-spec 14절 "화면"). 보기만 바꾸며 게임 결과에는 영향이 없다
+# ---------------------------------------------------------------
+EVENT_FONT_SIZE = 18                # 대화창 상황 글자·선택 버튼 글자 크기
+SMALL_FONT_SIZE = 14                # 작은 글자 크기: 효과 미리보기, 특성 배지 (자동형 알림은 EVENT_NOTICE_FONT_SIZE)
+TEXT_SEPARATOR = " "                # 상황 글자를 줄바꿈할 때 끊는 자리(띄어쓰기)
+TEXT_ELLIPSIS = "…"                 # 줄 수를 넘는 글자를 줄였다는 표시
+
+# 대화창 입력 대기: 대화창이 뜬 직후 이 시간 동안은 선택 입력(키·클릭)을 무시한다
+# (행동 키를 연타하다가 그 키가 선택으로 들어가는 것을 막는다. 대화창 시계로 잰다, 게임 시간은 정지)
+EVENT_INPUT_DELAY = 0.3
+
+# 대화창 뒤 "멈춤" 표시: 화면 전체에 3칸 간격 남색 점무늬를 덮는다 (Surface 알파 대신 도트)
+# 점 1칸(4픽셀) + 빈칸 2칸이라 뒤의 정보바·버튼 글자가 읽힐 만큼 옅다
+PAUSE_DOT_STEP = PIXEL_SIZE * 3     # 점 사이 간격(12픽셀 = 3칸). 한 줄 건너 한 칸씩 엇갈려 찍는다
+PAUSE_DOT_SHIFT = PIXEL_SIZE        # 홀수 줄의 점을 옆으로 밀어 찍는 거리(체크무늬 느낌)
+COLOR_PAUSE_DOT = COLOR_OUTLINE     # 점 색(진한 남색)
+
+# 대화창 등장 연출: 위에서 PIXEL_SIZE씩 계단처럼 내려오며 나타난다
+EVENT_DIALOG_SLIDE_TIME = 0.15      # 등장에 걸리는 시간(초)
+EVENT_DIALOG_SLIDE_DISTANCE = 16    # 처음에 원래 자리보다 위에 있는 거리(픽셀, 4칸)
+
+# 대화창 상자: 제자 무대 패널 위 가운데 (무대 x 284~788, y 116~460)
+EVENT_DIALOG_RECT = (300, 132, 472, 264)    # (x, y, 가로, 세로) -> 아래 끝 396 (+그림자 1칸)
+EVENT_DIALOG_CENTER_X = STUDENT_CENTER_X    # 대화창 글자 가운데 x (무대 가운데, 536)
+EVENT_TITLE_BAND_RECT = (316, 144, 440, 36)  # 제목 띠 (x, y, 가로, 세로): 상자 안쪽 위
+EVENT_TITLE_ICON_MARGIN = 16        # 제목 띠 양 끝에서 별 아이콘까지 거리
+EVENT_TEXT_TOP = 188                # 상황 글자 구역 위쪽 y (제목 띠 아래)
+EVENT_TEXT_LINE_HEIGHT = 24         # 상황 글자 한 줄 높이
+EVENT_TEXT_MAX_LINES = 2            # 상황 글자는 2줄까지 (넘치면 줄임표)
+EVENT_TEXT_MAX_WIDTH = 416          # 상황 글자 한 줄 최대 가로 길이 (상자 안쪽 좌우 여백 24씩)
+
+# 선택 버튼 2개 (버튼 아래에 작은 효과 미리보기 한 줄)
+CHOICE_BUTTON_TEXT = "[{}] {}"      # 선택 버튼 글자 틀: "[1] 간다"
+CHOICE_BUTTON_X = 324               # 선택 버튼 왼쪽 x
+CHOICE_BUTTON_WIDTH = 424           # 선택 버튼 가로 길이
+CHOICE_BUTTON_HEIGHT = 40           # 선택 버튼 세로 길이 (아래 남색 받침 1칸은 별도)
+CHOICE_BUTTON_YS = [244, 316]       # 선택 버튼 1, 2의 위쪽 y
+CHOICE_PREVIEW_GAP = 16             # 버튼 아래 끝과 미리보기 글자 가운데 사이 거리
+PREVIEW_SEPARATOR = " · "           # 미리보기 항목 사이 구분 글자
+PREVIEW_TRAIT_TEXT = "특성: {}"      # 미리보기의 특성 항목
+PREVIEW_LOOK_TEXT = "외형: {}"       # 미리보기의 외형 항목
+PREVIEW_NONE_TEXT = "변화 없음"      # 미리보기에 보일 것이 없을 때
+COLOR_PREVIEW_UP = COLOR_GREEN_DARK     # 미리보기: 늘어나는 값 (크림 바탕에서 또렷한 초록)
+COLOR_PREVIEW_DOWN = COLOR_RED_DARK     # 미리보기: 줄어드는 값
+COLOR_PREVIEW_OTHER = (72, 64, 112)     # 미리보기: 특성·외형·구분 글자 (크림 바탕에서 또렷한 진한 보라회색)
+
+# 외형 이름 (미리보기 글자)
+LOOK_NAMES = {
+    LOOK_GUITAR: "기타", LOOK_HEADBAND: "헬스 머리띠", LOOK_COFFEE: "커피잔",
+    LOOK_HEART_PIN: "하트 머리핀", LOOK_SUNGLASSES: "선글라스",
+}
+
+# 자동형 알림(토스트): 무대 위쪽 왼쪽 구석. 가운데 위(행동 팝업 자리)와 겹치지 않는다
+EVENT_NOTICE_TEXT = "{}"            # 자동형 알림 글자 틀: 이벤트 제목
+EVENT_NOTICE_X = STAGE_X + PIXEL_SIZE * 2   # 알림 상자 왼쪽 x (292)
+EVENT_NOTICE_Y = PANEL_Y + PIXEL_SIZE * 3   # 알림 상자 위쪽 y (128)
+EVENT_NOTICE_HEIGHT = 56            # 알림 상자 세로 길이(글자 2줄 자리) -> 아래 끝 184 (+그림자 1칸)
+EVENT_NOTICE_FONT_SIZE = 16         # 알림 글자 크기 (작은 글자 14보다 크게, 잘 읽히게)
+EVENT_NOTICE_LINE_HEIGHT = 20       # 알림 글자 한 줄 높이 (2줄까지)
+FULL_LINE = 1                       # 줄 사이 간격 수 = 줄 수 - FULL_LINE (줄들을 세로 가운데에 놓을 때)
+# 알림 글자 한 줄 최대 가로 길이. 넘으면 띄어쓰기 자리에서 2줄로 나눈다.
+# 상자 오른쪽 끝 = 292 + 44 + 160 = 496 -> 머리 위 행동 팝업(왼쪽 끝 약 500)과 겹치지 않는다
+EVENT_NOTICE_TEXT_MAX_WIDTH = 160
+EVENT_NOTICE_PAD = PIXEL_SIZE       # 상자 안쪽 왼쪽 여백(아이콘 앞)
+EVENT_NOTICE_ICON_GAP = PIXEL_SIZE  # 아이콘과 글자 사이 간격
+EVENT_NOTICE_PAD_RIGHT = PIXEL_SIZE * 2  # 글자 뒤 오른쪽 여백
+EVENT_NOTICE_SLIDE_TIME = 0.15      # 알림이 내려오며 나타나는 시간(초)
+EVENT_NOTICE_SLIDE_DISTANCE = 12    # 처음에 원래 자리보다 위에 있는 거리(픽셀, 3칸)
+NOTICE_GOOD_ICON = [                # 좋은 일 아이콘: 하트
+    "qq.qq",
+    "qpWpq",
+    "qpppq",
+    ".qpq.",
+    "..q..",
+]
+NOTICE_BAD_ICON = [                 # 나쁜 일 아이콘: 느낌표
+    ".qq.",
+    ".qq.",
+    ".qq.",
+    "....",
+    ".qq.",
+]
+NOTICE_GOOD_COLORS = {"q": COLOR_PINK_DARK, "p": COLOR_PINK, "W": COLOR_WHITE}
+NOTICE_BAD_COLORS = {"q": COLOR_RED_DARK}
+# 알림 색: (몸통, 위 하이라이트 줄, 아래 그림자 줄). 효과 합이 0 이상이면 좋은 일
+NOTICE_GOOD_BOX = (COLOR_MINT_LIGHT, COLOR_WHITE, COLOR_MINT)
+NOTICE_BAD_BOX = (COLOR_PINK_LIGHT, COLOR_WHITE, COLOR_PINK)
+
+# 이벤트 수치 팝업: 무대 왼쪽 위 칸에 위에서 아래로 쌓는다
+# (가운데 머리 위는 행동 팝업 자리, 얼굴 양옆은 파티클 자리라서 겹치지 않는 왼쪽 구석을 쓴다)
+EVENT_POPUP_X = 336                 # 이벤트 팝업 글자 가운데 x (글자 왼쪽 끝 ~299, 오른쪽 끝 ~374)
+                                    # 알림이 있으면 첫 줄 가운데 y = 184 + 28 = 212 (3줄째 256, 무대 안)
+EVENT_POPUP_TOP_MARGIN = 28         # 위 경계(무대 위 끝 또는 알림 아래 끝)와 첫 줄 가운데 사이 거리
+                                    # (글자 위 여백 + 0.8초 동안 떠오르는 12픽셀을 포함)
+
+# 특성 배지: 상태 패널 안 아래쪽(멘탈 막대 아래), 얻은 순서대로 2열
+TRAIT_BADGE_X = 24                  # 첫 열 왼쪽 x
+TRAIT_BADGE_Y = 392                 # 첫 줄 위쪽 y (멘탈 막대 테두리 아래 끝 380 + 여백)
+TRAIT_BADGE_WIDTH = 112             # 배지 가로 길이 -> 2열: 24~136, 144~256 (패널 안쪽 16~264)
+TRAIT_BADGE_HEIGHT = 24             # 배지 세로 길이 (+그림자 1칸)
+TRAIT_BADGE_GAP = 8                 # 배지 사이 간격(가로·세로)
+TRAIT_BADGE_COLUMNS = 2             # 한 줄에 놓는 배지 수
+# 특성 -> (몸통, 위 하이라이트 줄)
+TRAIT_COLORS = {
+    TRAIT_FITNESS: (COLOR_APRICOT, COLOR_WHITE),
+    TRAIT_MUSIC: (COLOR_SKY, COLOR_SKY_LIGHT),
+    TRAIT_CAFFEINE: (COLOR_YELLOW, COLOR_YELLOW_LIGHT),
+    TRAIT_LOVE: (COLOR_PINK, COLOR_PINK_LIGHT),
+}
+
+# 외형 5종 도트 스프라이트. 위치는 얼굴 격자(20 x 20칸) 기준 (열, 행)이고 칸 크기는 얼굴과 같다
+# (반지름 // 10) -> 학년마다 얼굴과 함께 커지고, 점프·숨쉬기 때 얼굴과 함께 움직인다.
+# 자리 나눔: 선글라스 = 머리 꼭대기(열 4~15, 행 -1~2), 하트 머리핀 = 머리 왼쪽 옆(열 -3~1, 행 2~6),
+# 머리띠 = 이마 위 머리카락(행 5~6, 매듭 꼬리는 오른쪽 행 6~8), 커피잔 = 얼굴 오른쪽 아래 바깥(행 11~18),
+# 기타 = 얼굴 뒤(몸통은 왼쪽 아래, 넥은 오른쪽 위로 비스듬히). 서로 칸이 겹치지 않는다.
+COLOR_GUITAR_BODY = (120, 176, 228)       # 기타 몸통(하늘색, 피부색과 또렷이 구분)
+COLOR_GUITAR_SHADE = (92, 146, 206)       # 기타 몸통 아래 그림자
+COLOR_GUITAR_NECK = (150, 104, 76)        # 기타 넥(나무)
+COLOR_GUITAR_NECK_LIGHT = (196, 150, 108)  # 넥 밝은 쪽
+COLOR_GUITAR_HEAD = (110, 76, 64)         # 기타 헤드
+COLOR_HEADBAND = (232, 82, 90)            # 헬스 머리띠(빨강)
+COLOR_HEADBAND_LIGHT = (250, 150, 150)    # 머리띠 위 밝은 줄
+COLOR_MUG = COLOR_WHITE                   # 커피잔
+COLOR_COFFEE = (150, 100, 70)             # 커피
+COLOR_STEAM = (196, 192, 214)             # 김
+COLOR_SUNGLASS = (64, 60, 96)             # 선글라스 알(짙은 남보라)
+COLOR_SUNGLASS_SHINE = (150, 160, 220)    # 선글라스 알 반짝임
+
+GUITAR_SPRITE = [           # 35 x 33칸, 얼굴 격자 (-6, -6)부터. 얼굴보다 먼저(뒤에) 그린다
+    "..............................OOOO.",
+    ".............................OhhhhO",
+    "............................WhhhhW.",
+    "...........................OhhhhO..",
+    "..........................WhhhhW...",
+    "..........................OnmO.....",
+    ".........................OnmO......",
+    "........................OnmO.......",
+    ".......................OnmO........",
+    "......................OnmO.........",
+    ".....................OnmO..........",
+    "....................OnmO...........",
+    "...................OnmO............",
+    "..................OnmO.............",
+    ".................OnmO..............",
+    "................OnmO...............",
+    "...............OnmO................",
+    "........OOOOO.OnmO.................",
+    ".......ObbbbbOnmO..................",
+    "......ObbbbbOnmO...................",
+    "......ObbbbOnmO....................",
+    "......ObbbOnmOO....................",
+    "...OOObbbOnmObO....................",
+    "..ObbbbbbbbbbO.....................",
+    ".ObbbbbOObbbO......................",
+    "ObbbbbbOObbO.......................",
+    "ObbbbbbbbbbO.......................",
+    "ObbbbbbbbbbO.......................",
+    "OBbbbbbbbbBO.......................",
+    "OBbbddddbbBO.......................",
+    ".OBbbbbbbBO........................",
+    "..OBbbbbBO.........................",
+    "...OOOOOO..........................",
+]
+HEADBAND_SPRITE = [         # 22 x 4칸, 얼굴 격자 (0, 5)부터: 이마 위 띠 + 오른쪽 매듭 꼬리
+    "..RRRRRRRRRRRRRRRR....",  # (얼굴 외곽선 칸은 비워 두어 외곽선이 그대로 보인다)
+    ".rrrrrrrrrrrrrrrrrr.rr",
+    "....................r.",
+    ".....................r",
+]
+COFFEE_SPRITE = [           # 7 x 8칸, 얼굴 격자 (20, 11)부터: 김 + 손잡이 달린 잔
+    "..s.s..",
+    ".s.s...",
+    "OOOOO..",
+    "OcccO..",
+    "OwwwOOO",
+    "OwwwO.O",
+    "OwwwOOO",
+    ".OOO...",
+]
+HEART_PIN_SPRITE = [        # 5 x 5칸, 얼굴 격자 (-3, 2)부터: 머리 왼쪽 옆 하트 핀 (선글라스와 2칸 띄움)
+    "qq.qq",
+    "qpWpq",
+    "qpppq",
+    ".qpq.",
+    "..q..",
+]
+SUNGLASSES_SPRITE = [       # 12 x 4칸, 얼굴 격자 (4, -1)부터: 머리 꼭대기에 걸친 선글라스
+    "OOOOOOOOOOOO",
+    "OkkgO..OkkgO",
+    "OkkkO..OkkkO",
+    ".OOO....OOO.",
+]
+LOOK_COLORS = {
+    "O": COLOR_OUTLINE, "W": COLOR_WHITE,
+    "b": COLOR_GUITAR_BODY, "B": COLOR_GUITAR_SHADE, "d": COLOR_GUITAR_HEAD,
+    "n": COLOR_GUITAR_NECK, "m": COLOR_GUITAR_NECK_LIGHT, "h": COLOR_GUITAR_HEAD,
+    "R": COLOR_HEADBAND_LIGHT, "r": COLOR_HEADBAND,
+    "s": COLOR_STEAM, "c": COLOR_COFFEE, "w": COLOR_MUG,
+    "q": COLOR_PINK_DARK, "p": COLOR_PINK,
+    "k": COLOR_SUNGLASS, "g": COLOR_SUNGLASS_SHINE,
+}
+# 외형 id -> ((열, 행), 격자). 그리는 차례: LOOKS_BEHIND는 얼굴보다 먼저, LOOKS_FRONT는 입 다음
+LOOK_SPRITES = {
+    LOOK_GUITAR: ((-6, -6), GUITAR_SPRITE),
+    LOOK_HEADBAND: ((0, 5), HEADBAND_SPRITE),
+    LOOK_COFFEE: ((20, 11), COFFEE_SPRITE),
+    LOOK_HEART_PIN: ((-3, 2), HEART_PIN_SPRITE),
+    LOOK_SUNGLASSES: ((4, -1), SUNGLASSES_SPRITE),
+}
+LOOKS_BEHIND = [LOOK_GUITAR]
+LOOKS_FRONT = [LOOK_HEADBAND, LOOK_HEART_PIN, LOOK_SUNGLASSES, LOOK_COFFEE]

@@ -87,7 +87,7 @@ def test_config_values():
     assert config.EXAM_SECONDS == 15
     assert config.MENTAL_DECAY_PER_SEC_EXAM == 2 and config.MENTAL_DECAY_PER_SEC == 1
     assert config.STUDY_KNOWLEDGE_EXAM == 20 and config.STUDY_KNOWLEDGE == 10
-    assert config.TOP_GRADUATE_KNOWLEDGE == 500 and config.NORMAL_GRADUATE_KNOWLEDGE == 300
+    assert config.TOP_GRADUATE_KNOWLEDGE == 700 and config.NORMAL_GRADUATE_KNOWLEDGE == 450
     assert (config.ENDING_LEAVE, config.ENDING_TOP, config.ENDING_NORMAL,
             config.ENDING_BARELY) == ("휴학", "수석 졸업", "무사 졸업", "아슬아슬 졸업")
     assert config.EXAM_BANNER_TEXT == "시험 기간! 공부 효과 2배, 멘탈 감소 2배"
@@ -174,7 +174,7 @@ def test_ending_r_fully_resets(playing_game):
 def test_ending_r_after_graduation_resets(playing_game):
     g = playing_game
     s = g.student
-    s.elapsed, s.health, s.mental, s.knowledge = 239.5, 100, 100, 600
+    s.elapsed, s.health, s.mental, s.knowledge = 239.5, 100, 100, config.TOP_GRADUATE_KNOWLEDGE + 100
     g.update(0.5)
     assert g.ending == config.ENDING_TOP
     press(g, pygame.K_r)
@@ -342,7 +342,7 @@ def test_student_get_ending():
     s.elapsed = 239.99
     assert s.get_ending() is None
     s.elapsed = 240.0
-    s.knowledge = 500
+    s.knowledge = config.TOP_GRADUATE_KNOWLEDGE
     assert s.get_ending() == config.ENDING_TOP
     s.health = 0
     assert s.get_ending() == config.ENDING_LEAVE
@@ -351,9 +351,9 @@ def test_student_get_ending():
 # ======================= 기능 12: 졸업 엔딩 =======================
 
 @pytest.mark.parametrize("knowledge, ending", [
-    (0, config.ENDING_BARELY), (1, config.ENDING_BARELY), (299, config.ENDING_BARELY),
-    (300, config.ENDING_NORMAL), (301, config.ENDING_NORMAL), (499, config.ENDING_NORMAL),
-    (500, config.ENDING_TOP), (501, config.ENDING_TOP), (100000, config.ENDING_TOP),
+    (0, config.ENDING_BARELY), (1, config.ENDING_BARELY), (449, config.ENDING_BARELY),
+    (450, config.ENDING_NORMAL), (451, config.ENDING_NORMAL), (699, config.ENDING_NORMAL),
+    (700, config.ENDING_TOP), (701, config.ENDING_TOP), (100000, config.ENDING_TOP),
 ])
 def test_judge_ending_boundaries(knowledge, ending):
     assert judge_ending(knowledge) == ending
@@ -363,8 +363,8 @@ def test_judge_ending_boundaries(knowledge, ending):
 
 
 @pytest.mark.parametrize("knowledge, ending", [
-    (299, config.ENDING_BARELY), (300, config.ENDING_NORMAL),
-    (499, config.ENDING_NORMAL), (500, config.ENDING_TOP),
+    (449, config.ENDING_BARELY), (450, config.ENDING_NORMAL),
+    (699, config.ENDING_NORMAL), (700, config.ENDING_TOP),
 ])
 def test_graduation_in_game_flow(playing_game, knowledge, ending):
     g = playing_game
@@ -379,7 +379,8 @@ def test_graduation_in_game_flow(playing_game, knowledge, ending):
 
 
 @pytest.mark.parametrize("knowledge, ending", [
-    (290, config.ENDING_BARELY), (490, config.ENDING_NORMAL),
+    (config.NORMAL_GRADUATE_KNOWLEDGE - 10, config.ENDING_BARELY),
+    (config.TOP_GRADUATE_KNOWLEDGE - 10, config.ENDING_NORMAL),
 ])
 def test_graduation_after_last_study_crosses_boundary(playing_game, knowledge, ending):
     """마지막 학년 시험 기간에 공부(+20)해서 기준을 넘긴 뒤 졸업하면 넘긴 값으로 판정된다."""
@@ -440,7 +441,7 @@ def test_big_dt_decays_only_up_to_240():
 def test_big_dt_in_game_graduates(playing_game):
     g = playing_game
     s = g.student
-    s.elapsed, s.health, s.mental, s.knowledge = 230.0, 100, 100, 350
+    s.elapsed, s.health, s.mental, s.knowledge = 230.0, 100, 100, config.NORMAL_GRADUATE_KNOWLEDGE + 50
     g.update(50.0)
     assert g.state == config.STATE_ENDING and g.ending == config.ENDING_NORMAL
     assert g.student.elapsed == 240
