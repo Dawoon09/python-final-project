@@ -17,7 +17,8 @@ python main.py
 
 ## 제약
 
-- Python 3.12, pygame 2.6, 표준 라이브러리(json, sys, os)만 사용한다. 다른 외부 라이브러리는 쓰지 않는다.
+- Python 3.12, pygame 2.6, 표준 라이브러리(json, sys, os, random)만 사용한다. 다른 외부 라이브러리는 쓰지 않는다.
+  - random은 랜덤 이벤트(기획서 9절) 전용. 게임 객체마다 `random.Random(시드)` 인스턴스를 두고 그것만 쓴다(테스트에서 시드 고정).
   - 예외: 테스트 도구 pytest(개발용, 게임 실행에는 쓰지 않음), 빌드 도구 PyInstaller.
 - 이미지·사운드 파일은 쓰지 않는다. 모든 그래픽은 `pygame.draw`의 도형으로만 그린다.
 - 한글 폰트는 `pygame.font.SysFont("malgungothic", 크기)`를 쓴다. 기본 폰트(`Font(None)`)는 한글이 깨진다.

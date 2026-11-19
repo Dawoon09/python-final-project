@@ -18,7 +18,7 @@ tools: Read, Write, Edit, Bash, PowerShell, Glob, Grep
 - 검수팀 불통과 보고를 받으면 그 문제만 고친다. 고치면서 다른 동작을 바꾸지 않는다.
 - 모든 수치는 `config.py` 상수로 두고 jeja-spec 값과 맞춘다. 다른 파일에 매직 넘버를 쓰지 않는다.
 - 클래스는 Student, Button, Game 3개만. 파일 구성은 CLAUDE.md를 따른다.
-- Python 3.12, pygame 2.6, 표준 라이브러리(json, sys, os)만 쓴다. 이미지·사운드 금지, 그림은 `pygame.draw`의 원·사각형·선·호.
+- Python 3.12, pygame 2.6, 표준 라이브러리(json, sys, os, random)만 쓴다(random은 랜덤 이벤트 전용, `random.Random(시드)` 인스턴스로). 이미지·사운드 금지, 그림은 `pygame.draw`의 원·사각형·선·호.
 - 한글 폰트: `pygame.font.SysFont("malgungothic", 크기)`.
 - 대학교 1학년이 읽을 수 있게 쉽게 쓴다. 모든 클래스와 함수에 한국어 docstring.
 - jeja-spec "12. 테스트하기 쉬운 구조"를 지킨다: Student 로직은 화면 없이 시간(dt)을 인자로 받아 호출 가능해야 한다.
