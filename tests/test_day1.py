@@ -113,7 +113,7 @@ def test_student_start_values():
         ("FEED_HEALTH", 20), ("REST_MENTAL", 20), ("REST_KNOWLEDGE", -2),
         ("STUDY_HEALTH", -5), ("STUDY_MENTAL", -8),
         ("STUDY_KNOWLEDGE", 10), ("STUDY_KNOWLEDGE_EXAM", 20),
-        ("ACTION_COOLDOWN", 1.0),
+        # G단위: ACTION_COOLDOWN(1초)은 기획서 10절로 삭제. AUTO_ACTION_INTERVAL 2.0은 test_idle_g.py에서 확인
         ("MENTAL_SMILE_MIN", 60), ("MENTAL_FLAT_MIN", 30),
         ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
         ("MAX_GRADE", 4),

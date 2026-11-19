@@ -113,7 +113,7 @@ GAME_CONSTANTS = [
     "HEALTH_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC_EXAM",
     "DECAY_INTERVAL", "TIME_EPSILON", "LOW_GAUGE_LIMIT",
     "FEED_HEALTH", "REST_MENTAL", "REST_KNOWLEDGE", "STUDY_HEALTH", "STUDY_MENTAL",
-    "STUDY_KNOWLEDGE", "STUDY_KNOWLEDGE_EXAM", "ACTION_COOLDOWN",
+    "STUDY_KNOWLEDGE", "STUDY_KNOWLEDGE_EXAM",  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
     "MENTAL_SMILE_MIN", "MENTAL_FLAT_MIN", "BASE_RADIUS", "RADIUS_PER_GRADE", "GLASSES_GRADE",
     "MOUTH_SMILE", "MOUTH_FLAT", "MOUTH_CRY",
     "TOP_GRADUATE_KNOWLEDGE", "NORMAL_GRADUATE_KNOWLEDGE",
@@ -125,8 +125,8 @@ GAME_CONSTANTS = [
 # 화면 글자 (기획서·jeja-spec 의 문구) : main 과도 같아야 한다
 UI_TEXTS = [
     "HEALTH_LABEL", "MENTAL_LABEL", "KNOWLEDGE_LABEL", "GRADE_TEXT", "TIME_LEFT_TEXT",
-    "KNOWLEDGE_TEXT", "FEED_BUTTON_TEXT", "REST_BUTTON_TEXT", "STUDY_BUTTON_TEXT",
-    "COOLDOWN_HINT_TEXT", "EXAM_BANNER_TEXT", "TITLE_TEXT", "BEST_RECORD_TEXT",
+    # G단위: 행동 버튼 글자 3개·쿨타임 안내는 기획서 10절로 삭제(방침 버튼·자동 행동 안내로 바뀜)
+    "KNOWLEDGE_TEXT", "EXAM_BANNER_TEXT", "TITLE_TEXT", "BEST_RECORD_TEXT",
     "START_HINT_TEXT", "ENDING_KNOWLEDGE_TEXT", "RESTART_HINT_TEXT",
 ]
 
@@ -279,6 +279,19 @@ def _remove_effect_hooks(fname, node):
     return node
 
 
+# (G단위) 기획서 10절(방치형 전환)이 규칙 자체를 바꾼 함수. main 과 비교하지 않고
+# 새 규칙은 test_idle_g.py 에서 확인한다.
+# - Game.is_cooling_down: 쿨타임 삭제로 함수가 없어짐
+# - Game.reset_round: 쿨타임 대신 방침·자동 행동 시계·last_action 초기화
+# - Game.make_buttons: 행동 버튼 3개 -> 방침 버튼 3개
+# - Game.do_action: 쿨타임 검사 삭제, 방침 배수, last_action
+# - Game.handle_event: 키 1/2/3·버튼 클릭 -> 방침 선택
+# - Game.update: 자동 행동 시계
+# - Student.study: 방침 배수(knowledge_ratio, cost_ratio)
+G_CHANGED = {"Game.is_cooling_down", "Game.reset_round", "Game.make_buttons", "Game.do_action",
+             "Game.handle_event", "Game.update", "Student.study"}
+
+
 @pytest.mark.parametrize("name", ["student.py", "game.py", "button.py"])
 def test_logic_functions_unchanged_from_main(name):
     """그리기 외 함수(게이지·쿨타임·학년·엔딩·기록·입력)는 main 과 docstring 빼고 똑같다.
@@ -292,7 +305,7 @@ def test_logic_functions_unchanged_from_main(name):
     new = _functions((ROOT / name).read_text(encoding="utf-8"))
     changed = []
     for fname, node in old.items():
-        if _is_drawing(fname) or fname == "Game.__init__":
+        if _is_drawing(fname) or fname == "Game.__init__" or fname in G_CHANGED:
             continue
         assert fname in new, f"{name}: {fname} 이 사라짐"
         new_node = _remove_event_hooks(fname, new[fname])
@@ -304,12 +317,15 @@ def test_logic_functions_unchanged_from_main(name):
 
 
 def test_do_action_effects_start_after_action_before_ending_check():
-    """do_action: before 저장은 행동 전, start_action_effects 는 쿨타임 설정 뒤·check_ending 앞."""
+    """do_action: before 저장은 행동 전, start_action_effects 는 last_action 기록 뒤·check_ending 앞.
+
+    G단위: 쿨타임 설정 줄이 없어져 그 자리를 last_action 기록으로 본다.
+    """
     node = _functions((ROOT / "game.py").read_text(encoding="utf-8"))["Game.do_action"]
     lines = [ast.unparse(s) for s in node.body]
     i_before = lines.index("before = self.get_gauge_values()")
     i_if = next(i for i, s in enumerate(lines) if s.startswith("if name == config.ACTION_FEED"))
-    i_cool = lines.index("self.cooldown = config.ACTION_COOLDOWN")
+    i_cool = lines.index("self.last_action = name")
     i_fx = lines.index("self.start_action_effects(name, before)")
     # (C 단위) 휴학 판정 뒤, 휴학이 아닐 때만 이벤트 판정. 그다음 return True 로 끝난다
     i_end = lines.index(ROLL_AFTER_ENDING)
@@ -345,11 +361,13 @@ def test_game_init_only_adds_backdrop():
     assert [ast.unparse(d) for d in new.args.defaults] == ["None", "None"]
 
 
-def test_action_keys_unchanged():
+def test_policy_keys_1_2_3():
+    """G단위: 키 1/2/3은 행동 대신 방침(공부 위주/균형/휴식 위주)이다(기획서 10절)."""
     import game as game_module
-    assert game_module.ACTION_KEYS == {pygame.K_1: config.ACTION_FEED,
-                                       pygame.K_2: config.ACTION_REST,
-                                       pygame.K_3: config.ACTION_STUDY}
+    assert not hasattr(game_module, "ACTION_KEYS")
+    assert game_module.POLICY_KEYS == {pygame.K_1: config.POLICY_STUDY_FOCUS,
+                                       pygame.K_2: config.POLICY_BALANCED,
+                                       pygame.K_3: config.POLICY_REST_FOCUS}
 
 
 # ======================= 2. config.py 인코딩·한글 문자열 =======================
@@ -374,13 +392,9 @@ def test_config_is_valid_utf8_without_broken_chars():
     ("ENDING_TOP", "수석 졸업"),
     ("ENDING_NORMAL", "무사 졸업"),
     ("ENDING_BARELY", "아슬아슬 졸업"),
-    ("FEED_BUTTON_TEXT", "학식 먹이기 [1]"),
-    ("REST_BUTTON_TEXT", "쉬게 하기 [2]"),
-    ("STUDY_BUTTON_TEXT", "공부시키기 [3]"),
     ("EXAM_BANNER_TEXT", "시험 기간! 공부 효과 2배, 멘탈 감소 2배"),
     ("START_HINT_TEXT", "Enter를 눌러 시작"),
     ("RESTART_HINT_TEXT", "R을 눌러 다시 하기"),
-    ("COOLDOWN_HINT_TEXT", "누른 뒤 1초 동안 회색 (쿨타임)"),
     ("GRADE_TEXT", "{}학년"),
     ("TIME_LEFT_TEXT", "남은 시간 {}초"),
     ("BEST_RECORD_TEXT", "최고 기록: 지식 {}"),
@@ -388,6 +402,16 @@ def test_config_is_valid_utf8_without_broken_chars():
 ])
 def test_korean_strings_match_spec(name, expected):
     assert getattr(config, name) == expected
+
+
+@pytest.mark.parametrize("policy, expected", [
+    (config.POLICY_STUDY_FOCUS, "공부 위주 [1]"),
+    (config.POLICY_BALANCED, "균형 [2]"),
+    (config.POLICY_REST_FOCUS, "휴식 위주 [3]"),
+])
+def test_policy_button_texts_match_spec(policy, expected):
+    """G단위: 행동 버튼 글자 대신 방침 버튼 글자(기획서 10절 화면)."""
+    assert config.POLICIES[policy][config.POLICY_TEXT] == expected
 
 
 def test_korean_strings_appear_in_spec_document():
@@ -511,21 +535,29 @@ def test_cooldown_gray_palette():
     assert not _is_grayish(config.COLOR_BUTTON)
 
 
-def test_cooldown_all_buttons_gray_then_back(game):
+def _policy_button_colors(game):
+    points = {n: (b.rect.left + 2 * P, b.rect.centery + config.BUTTON_PRESS_OFFSET)
+              for n, b in game.buttons.items()}
+    return {n: color(game.screen, *pt) for n, pt in points.items()}
+
+
+def test_policy_buttons_never_gray_selected_yellow(game):
+    """G단위: 쿨타임 회색은 없어졌다. 행동 뒤에도 방침 버튼은 회색이 되지 않고,
+    고른 방침만 노랑(COLOR_POLICY_SELECTED), 나머지는 하늘색이다.
+    (눌림 연출로 몸통이 4px 내려가도 같은 색이 나오도록 BUTTON_PRESS_OFFSET 만큼 아래 점을 본다.)
+    """
     press(game, pygame.K_RETURN)
     game.draw()
-    points = {n: (b.rect.left + 2 * P, b.rect.centery) for n, b in game.buttons.items()}
-    assert all(color(game.screen, *pt) == config.COLOR_BUTTON for pt in points.values())
-    press(game, pygame.K_3)
+    expected = {n: (config.COLOR_POLICY_SELECTED if n == config.POLICY_BALANCED
+                    else config.COLOR_BUTTON) for n in config.POLICY_ORDER}
+    assert _policy_button_colors(game) == expected
+    assert game.do_action(config.ACTION_STUDY)
     game.draw()
-    assert all(color(game.screen, *pt) == config.COLOR_GRAY for pt in points.values())
-    for _ in range(59):
+    assert _policy_button_colors(game) == expected
+    for _ in range(60):
         game.update(1 / 60)
     game.draw()
-    assert all(color(game.screen, *pt) == config.COLOR_GRAY for pt in points.values())
-    game.update(1 / 60)
-    game.draw()
-    assert all(color(game.screen, *pt) == config.COLOR_BUTTON for pt in points.values())
+    assert _policy_button_colors(game) == expected
 
 
 def _student(elapsed, health=80, mental=80):
@@ -774,10 +806,14 @@ def test_texts_fit_in_boxes(font):
     ew, _ = sprite_size(config.EXCLAIM_SPRITE, P)
     assert banner.left + config.EXAM_ICON_MARGIN + ew < text.left
     assert text.right < banner.right - config.EXAM_ICON_MARGIN - ew
-    # 쿨타임 안내는 버튼 아래(받침 포함)이고 화면 안
-    hint = _text_rect(font, config.COOLDOWN_HINT_TEXT,
-                      midtop=(config.COOLDOWN_HINT_X, config.COOLDOWN_HINT_Y))
-    assert hint.top >= config.BUTTON_Y + config.BUTTON_HEIGHT + P
+    # G단위: 쿨타임 안내 대신 자동 행동 진행 막대 + 안내. 막대는 버튼 아래(받침 포함),
+    # 안내는 막대 아래이고 화면 안
+    bar = pygame.Rect(config.BUTTON_START_X, config.AUTO_BAR_Y,
+                      config.POLICY_AREA_WIDTH, config.AUTO_BAR_HEIGHT)
+    assert bar.top >= config.BUTTON_Y + config.BUTTON_HEIGHT + P
+    small = pygame.font.SysFont(config.FONT_NAME, config.SMALL_FONT_SIZE)
+    hint = _text_rect(small, config.AUTO_HINT_TEXT, midtop=(bar.centerx, config.AUTO_HINT_Y))
+    assert hint.top >= bar.bottom
     assert hint.bottom <= config.SCREEN_HEIGHT
 
 
@@ -879,8 +915,10 @@ def test_button_class_still_button_only():
     methods = {n for n in vars(Button) if not n.startswith("__")}
     assert methods == {"is_clicked", "get_colors", "draw"}
     params = inspect.signature(Button.draw).parameters
+    # G단위: 고른 방침 강조용 selected=False 인자가 끝에 하나 늘었다
     assert list(params) == ["self", "screen", "font", "cooling_down", "hovered",
-                            "press_offset", "cooldown_progress"]
+                            "press_offset", "cooldown_progress", "selected"]
+    assert params["selected"].default is False
     assert params["hovered"].default is False
     assert params["press_offset"].default == config.NO_OFFSET == 0
     assert params["cooldown_progress"].default is None

@@ -446,7 +446,7 @@ def test_numpad_no_action(game, k):
     game.handle_event(pygame.event.Event(pygame.KEYDOWN, key=k, mod=0, unicode="", scancode=0))
     s = game.student
     assert (s.health, s.mental, s.knowledge) == (80, 80, 0)
-    assert game.is_cooling_down() is False
+    assert game.last_action is None   # (G단위) 쿨타임 대신: 아무 행동도 실행되지 않음
     assert game.running is True
 
 

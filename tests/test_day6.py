@@ -339,6 +339,9 @@ def test_gitignore_has_record_json():
 
 # ======================= 완료 기준: 엔딩 3종 실제 도달 =======================
 
+LEGACY_ACTION_GAP = 1.0   # 예전 쿨타임(1초). 사람이 행동하는 최소 간격으로만 쓴다
+
+
 def play(g, policy):
     """타이틀에서 Enter -> 1/60초씩 update, 쿨타임이 풀릴 때마다 policy(student)의 행동을 한다.
 
@@ -347,14 +350,18 @@ def play(g, policy):
     press(g, pygame.K_RETURN)
     assert g.state == config.STATE_PLAYING
     frames = 0
+    # (G단위) 쿨타임은 없어졌지만 이 시나리오는 "1초(예전 쿨타임)마다 행동 가능"한 사람을 흉내 낸다
+    wait = 0.0
     while g.state == config.STATE_PLAYING:
-        if not g.is_cooling_down():
+        if wait <= 1e-9:
             action = policy(g.student)
             if action is not None:
                 assert g.do_action(action)
+                wait = LEGACY_ACTION_GAP
         if g.state != config.STATE_PLAYING:
             break
         g.update(FRAME)
+        wait -= FRAME
         frames += 1
         assert frames <= config.TOTAL_SECONDS * 60 + 1
     return frames
@@ -492,7 +499,7 @@ def test_balance_human_like_interval(rec, interval, allowed):
     press(g, pygame.K_RETURN)
     wait = 0.0
     while g.state == config.STATE_PLAYING:
-        if wait <= 1e-9 and not g.is_cooling_down():
+        if wait <= 1e-9:   # (G단위) 쿨타임 없음: interval(>=1.5초)마다 행동
             g.do_action(greedy(g.student))
             wait = interval
         if g.state != config.STATE_PLAYING:

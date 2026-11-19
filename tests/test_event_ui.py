@@ -91,7 +91,7 @@ def gauges(g):
 
 def frozen_state(g):
     s = g.student
-    return (s.elapsed, s.decay_timer, s.health, s.mental, s.knowledge, g.cooldown,
+    return (s.elapsed, s.decay_timer, s.health, s.mental, s.knowledge, g.auto_timer,
             s.get_grade())
 
 
@@ -332,19 +332,26 @@ def test_input_ignored_right_after_dialog_opens(make_game):
 
 
 def test_action_key_mash_does_not_choose(make_game, monkeypatch):
-    """행동 키 1 로 이벤트가 뜬 바로 다음 프레임에 1 을 또 눌러도 선택으로 들어가지 않는다."""
+    """행동 직후 이벤트가 뜬 바로 다음 프레임부터 키 1·2 를 연타해도 선택으로 들어가지 않는다.
+
+    (G단위) 키 1 은 이제 방침 키라서 행동은 do_action 으로 시킨다. 방침 키를 연타하던 중
+    자동 행동으로 대화창이 떠도 같은 키가 선택으로 들어가면 안 된다는 뜻은 그대로다.
+    """
     g = make_game(5.0)
     monkeypatch.setattr(config, "EVENT_MAX_PER_GRADE", 5)
     monkeypatch.setattr(config, "EVENT_CHANCE", 1.0)
     monkeypatch.setattr(g, "pick_event", lambda: event_by_id("mt_invite"))
-    press(g, pygame.K_1)
+    press(g, pygame.K_1)                     # 방침 키(공부 위주)
+    assert g.do_action(config.ACTION_FEED)   # 행동 직후 대화창
     assert g.state == config.STATE_EVENT
+    policy = g.policy
     snap = gauges(g)
     for _ in range(int(config.EVENT_INPUT_DELAY / FRAME) - 1):
         g.update(FRAME)
         press(g, pygame.K_1)
         press(g, pygame.K_2)
     assert g.state == config.STATE_EVENT and gauges(g) == snap
+    assert g.policy == policy                # 대화창 중 키 1·2 는 방침도 바꾸지 않는다
 
 
 @pytest.mark.parametrize("how", ["key1", "key2", "click0", "click1", "call0", "call1"])

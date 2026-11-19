@@ -164,14 +164,20 @@ class Student:
         self.change_knowledge(config.REST_KNOWLEDGE)
         self.change_health(config.REST_HEALTH + self.get_trait_bonus(config.BONUS_REST_HEALTH))
 
-    def study(self):
+    def study(self, knowledge_ratio=config.NO_RATIO, cost_ratio=config.NO_RATIO):
         """공부시키기: 지식 +(공부 지식량), 체력 -5 (카페인 특성이면 -3), 멘탈 -8.
 
         0 아래로 내려가지 않는다. 시험 기간 지식 +20 규칙은 특성과 상관없이 그대로다.
+        knowledge_ratio·cost_ratio는 일과표 방침(기획서 10절)의 배수다.
+        기본값(특성 보정 포함)을 먼저 구한 뒤 배수를 곱하고 round()로 정수로 만든다.
+        - 지식: round(공부 지식량 x knowledge_ratio)
+        - 체력: round((-5 + 특성 보정) x cost_ratio), 멘탈: round(-8 x cost_ratio)
+        배수를 주지 않으면 1.0이라 예전과 같다.
         """
-        self.change_knowledge(self.get_study_knowledge())
-        self.change_health(config.STUDY_HEALTH + self.get_trait_bonus(config.BONUS_STUDY_HEALTH))
-        self.change_mental(config.STUDY_MENTAL)
+        health = config.STUDY_HEALTH + self.get_trait_bonus(config.BONUS_STUDY_HEALTH)
+        self.change_knowledge(round(self.get_study_knowledge() * knowledge_ratio))
+        self.change_health(round(health * cost_ratio))
+        self.change_mental(round(config.STUDY_MENTAL * cost_ratio))
 
     def get_study_knowledge(self):
         """공부시키기 한 번에 오르는 지식 양을 돌려준다: 평소 10, 시험 기간 20."""

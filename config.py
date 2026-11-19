@@ -37,7 +37,7 @@ MAX_GRADE = 4                               # 마지막 학년
 TOTAL_SECONDS = SECONDS_PER_GRADE * MAX_GRADE  # 전체 시간 240초
 EXAM_SECONDS = 15                           # 각 학년 마지막 15초가 시험 기간
 FIRST_GRADE = 1                             # 처음 학년
-ZERO_TIME = 0.0                             # 시간 값의 시작값·하한(초): 타이머 초기값, 쿨타임 하한
+ZERO_TIME = 0.0                             # 시간 값의 시작값·하한(초): 타이머 초기값·하한
 
 # ---------------------------------------------------------------
 # 4. 게이지
@@ -58,7 +58,7 @@ TIME_EPSILON = 1e-9             # 소수 덧셈 오차 허용치 (0.1을 10번 �
 LOW_GAUGE_LIMIT = 30        # 이 값 미만이면 막대가 빨간색, 체력은 다크서클
 
 # ---------------------------------------------------------------
-# 5. 행동 증감량과 쿨타임
+# 5. 행동 증감량과 자동 행동 (방치형: 쿨타임 대신 자동 행동 간격)
 # ---------------------------------------------------------------
 FEED_HEALTH = 20            # 학식 먹이기: 체력 +20
 
@@ -70,7 +70,32 @@ STUDY_MENTAL = -8           # 공부시키기: 멘탈 -8
 STUDY_KNOWLEDGE = 10        # 공부시키기: 지식 +10
 STUDY_KNOWLEDGE_EXAM = 20   # 시험 기간 공부시키기: 지식 +20
 
-ACTION_COOLDOWN = 1.0       # 행동 후 쿨타임(초), 세 행동이 함께 쓴다
+# 방치형 전환(기획서 10절): 행동 쿨타임은 없앴다. 대신 제자가 이 간격마다 스스로 행동한다.
+AUTO_ACTION_INTERVAL = 2.0  # 자동 행동 간격(초, 게임 시간). 게임 시작 후 첫 행동도 2초 뒤
+
+# 일과표 방침 이름 (Game.set_policy 에 넘기는 값)
+POLICY_STUDY_FOCUS = "study_focus"  # 공부 위주
+POLICY_BALANCED = "balanced"        # 균형
+POLICY_REST_FOCUS = "rest_focus"    # 휴식 위주
+POLICY_START = POLICY_BALANCED      # 새 게임의 시작 방침
+POLICY_ORDER = [POLICY_STUDY_FOCUS, POLICY_BALANCED, POLICY_REST_FOCUS]  # 버튼·키 1/2/3 순서
+
+# 방침 사전의 키
+POLICY_THRESHOLD = "threshold"            # 회복 기준: 체력이나 멘탈이 이 값 미만이면 회복한다
+POLICY_KNOWLEDGE_RATIO = "knowledge_ratio"  # 공부 지식 배수
+POLICY_COST_RATIO = "cost_ratio"          # 공부 체력·멘탈 소모 배수
+POLICY_TEXT = "text"                      # 방침 버튼 글자
+
+# 방침 3가지 (기획서 10절 표)
+POLICIES = {
+    POLICY_STUDY_FOCUS: {POLICY_THRESHOLD: 30, POLICY_KNOWLEDGE_RATIO: 1.4,
+                         POLICY_COST_RATIO: 1.6, POLICY_TEXT: "공부 위주 [1]"},
+    POLICY_BALANCED: {POLICY_THRESHOLD: 50, POLICY_KNOWLEDGE_RATIO: 1.0,
+                      POLICY_COST_RATIO: 1.0, POLICY_TEXT: "균형 [2]"},
+    POLICY_REST_FOCUS: {POLICY_THRESHOLD: 70, POLICY_KNOWLEDGE_RATIO: 0.8,
+                        POLICY_COST_RATIO: 0.7, POLICY_TEXT: "휴식 위주 [3]"},
+}
+NO_RATIO = 1.0              # 배수를 곱하지 않을 때의 값(×1.0). Student.study 의 기본값
 
 # ---------------------------------------------------------------
 # 6. 표정 기준
@@ -170,16 +195,16 @@ COLOR_RED_DARK = (178, 50, 70)
 COLOR_BAR_BG = (232, 222, 208)          # 게이지 막대의 빈 부분 색
 COLOR_BAR_BG_SHADE = (216, 204, 188)    # 빈 부분 맨 위 줄(안쪽 그림자)
 
-# 버튼: 평소 하늘색, 밝은색(마우스 올림용), 쿨타임 회색
+# 버튼: 평소 하늘색, 밝은색(마우스 올림용), 회색(대화창 입력 대기)
 COLOR_BUTTON = (130, 188, 238)          # 평소 버튼 몸통
 COLOR_BUTTON_LIGHT = (196, 226, 252)    # 버튼 위 하이라이트 줄
 COLOR_BUTTON_DARK = (92, 146, 206)      # 버튼 아래 그림자 줄
 COLOR_BUTTON_BRIGHT = (200, 234, 255)   # 밝은 버튼 몸통 (마우스를 올렸을 때 쓸 색, 평소색과 한눈에 구분)
 COLOR_BUTTON_TEXT = COLOR_OUTLINE       # 버튼 글자 색
-COLOR_GRAY = (184, 182, 194)            # 쿨타임 중 버튼 몸통
+COLOR_GRAY = (184, 182, 194)            # 회색 버튼 몸통 (입력 대기 중)
 COLOR_GRAY_LIGHT = (214, 212, 222)
 COLOR_GRAY_DARK = (148, 146, 162)
-COLOR_BUTTON_TEXT_COOL = (78, 74, 104)  # 쿨타임 중 버튼 글자 색 (회색 몸통 위에서도 읽히게 진하게)
+COLOR_BUTTON_TEXT_COOL = (78, 74, 104)  # 회색 버튼 글자 색 (회색 몸통 위에서도 읽히게 진하게)
 
 COLOR_INFO_BAR = COLOR_MINT             # 상단 정보바 몸통
 
@@ -423,31 +448,33 @@ MENTAL_LABEL = "멘탈"
 KNOWLEDGE_LABEL = "지식"
 
 # ---------------------------------------------------------------
-# 13. 행동 버튼 (화면 아래쪽에 가로로 3개)
+# 13. 방침 버튼 (화면 아래쪽 왼편에 가로로 3개, 오른편은 [업그레이드 U] 자리로 비워 둔다)
 # ---------------------------------------------------------------
-# 행동 이름 (Game.do_action 에 넘기는 값)
+# 행동 이름 (Game.do_action 에 넘기는 값, Game.choose_auto_action 이 돌려주는 값)
 ACTION_FEED = "feed"        # 학식 먹이기
 ACTION_REST = "rest"        # 쉬게 하기
 ACTION_STUDY = "study"      # 공부시키기
 
-# 버튼 글자 (jeja-spec 3절, 기획서 화면 예시)
-FEED_BUTTON_TEXT = "학식 먹이기 [1]"
-REST_BUTTON_TEXT = "쉬게 하기 [2]"
-STUDY_BUTTON_TEXT = "공부시키기 [3]"
-
-BUTTON_COUNT = 3            # 행동 버튼 개수
-BUTTON_WIDTH = 232          # 버튼 하나의 가로 길이
+BUTTON_COUNT = 3            # 방침 버튼 개수
+BUTTON_WIDTH = 176          # 버튼 하나의 가로 길이
 BUTTON_HEIGHT = 52          # 버튼 하나의 세로 길이 (아래 남색 받침 1칸은 별도)
-BUTTON_GAP = 24             # 버튼 사이 간격
+BUTTON_GAP = 16             # 버튼 사이 간격
 BUTTON_Y = 476              # 버튼 위쪽 y
-# 버튼 3개를 가운데 정렬했을 때 첫 버튼의 왼쪽 x: (800 - (232*3 + 24*2)) / 2 = 28
-BUTTON_START_X = (SCREEN_WIDTH - (BUTTON_WIDTH * BUTTON_COUNT
-                                  + BUTTON_GAP * (BUTTON_COUNT - 1))) // 2
+BUTTON_START_X = 24         # 첫 버튼의 왼쪽 x
+# 방침 버튼 3개가 차지하는 가로 길이: 176*3 + 16*2 = 560 (x 24 ~ 584).
+# 오른쪽 x 600 ~ 776 은 나중에 [업그레이드 U] 버튼(H단위)이 들어갈 자리다.
+POLICY_AREA_WIDTH = BUTTON_WIDTH * BUTTON_COUNT + BUTTON_GAP * (BUTTON_COUNT - 1)
 
-# 버튼 아래 쿨타임 안내 문구
-COOLDOWN_HINT_TEXT = "누른 뒤 1초 동안 회색 (쿨타임)"
-COOLDOWN_HINT_Y = 546       # 안내 문구 위쪽 y
-COOLDOWN_HINT_X = SCREEN_WIDTH // 2  # 안내 문구 가운데 x (화면 가운데)
+# 고른 방침 버튼 색: 노랑 계열로 밝게 강조 (평소 하늘색과 한눈에 구분, 반투명 없이)
+COLOR_POLICY_SELECTED = (255, 220, 104)        # 몸통 (시험 배너 노랑과 같은 색)
+COLOR_POLICY_SELECTED_LIGHT = (255, 238, 170)  # 위 하이라이트 줄
+COLOR_POLICY_SELECTED_DARK = (232, 184, 64)    # 아래 그림자 줄
+
+# 버튼 아래 자동 행동 진행 막대 (다음 자동 행동까지 남은 시간)
+AUTO_BAR_Y = 540            # 진행 막대 상자 위쪽 y
+AUTO_BAR_HEIGHT = 16        # 진행 막대 상자 세로 길이 (외곽선 1칸 + 막대 2칸)
+AUTO_HINT_TEXT = "다음 자동 행동까지"   # 진행 막대 아래 안내 문구
+AUTO_HINT_Y = 566           # 안내 문구 위쪽 y
 
 # ---------------------------------------------------------------
 # 14. 시험 기간 배너 (상단 정보바 바로 아래, 패널 위)
@@ -514,12 +541,12 @@ NO_CHANGE = 0               # 게이지 변화량이 0 (늘지도 줄지도 않�
 BLINK_SHOW = 0              # 깜빡임 차례 번호 % 2 가 이 값이면 "보임"
 BLINK_HIDE = 1              # 깜빡임 차례 번호 % 2 가 이 값이면 "숨김"
 
-# E1 버튼 호버·눌림·쿨타임 진행 막대
+# E1 버튼 호버·눌림·진행 막대 (자동 행동 막대, 대화창 입력 대기 막대)
 BUTTON_PRESS_OFFSET = 4     # 행동이 실행되면 버튼이 내려가는 거리(픽셀) = 받침 1칸
 BUTTON_PRESS_TIME = 0.12    # 버튼이 눌린 채로 있는 시간(초)
-COOLDOWN_BAR_HEIGHT = PIXEL_SIZE * 2   # 쿨타임 진행 막대 세로 길이(도트 2칸, 버튼 안쪽 맨 아래)
+COOLDOWN_BAR_HEIGHT = PIXEL_SIZE * 2   # 진행 막대 세로 길이(도트 2칸, 상자 안쪽 맨 아래)
 COLOR_COOLDOWN_TRACK = COLOR_GRAY_DARK  # 진행 막대의 아직 안 찬 부분
-COLOR_COOLDOWN_FILL = COLOR_BUTTON      # 진행 막대의 찬 부분 (다시 쓸 수 있게 되는 하늘색)
+COLOR_COOLDOWN_FILL = COLOR_BUTTON      # 진행 막대의 찬 부분 (하늘색)
 
 # E2 행동별 파티클 (random 대신 정해진 표를 차례로 쓴다)
 PARTICLE_COUNT = 10         # 행동 한 번에 나오는 파티클 수 (8~12개)

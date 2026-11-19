@@ -47,7 +47,8 @@ class FrameScript:
             "mental": s.mental,
             "knowledge": s.knowledge,
             "elapsed": s.elapsed,
-            "cooldown": self.game.cooldown,
+            "policy": self.game.policy,   # G단위: 쿨타임 대신 일과표 방침을 기록
+            "last_action": self.game.last_action,
             "best": self.game.best_record,
         })
 
@@ -97,6 +98,13 @@ def force_graduation(knowledge):
     return prepare
 
 
+def do(name):
+    """(G단위) 준비 함수: 행동 name을 game.do_action으로 바로 실행한다(키 1/2/3은 이제 방침 선택)."""
+    def prepare(game):
+        assert game.do_action(name)
+    return prepare
+
+
 def set_health(value):
     """준비 함수: 체력을 value로 맞춘다."""
     def prepare(game):
@@ -114,14 +122,17 @@ def set_health(value):
 ])
 def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_record_path,
                                                     knowledge, ending):
-    """Enter -> 1/2/3 키 -> 240초 강제 졸업 -> R -> ESC 를 실제 Game.run() 루프로 확인."""
+    """Enter -> 공부 행동 + 3키(방침) -> 학식 + 1키 -> 240초 강제 졸업 -> R -> ESC 를 실제 Game.run() 루프로 확인.
+
+    G단위: 키 1/2/3은 방침 선택이고 행동은 do_action으로 직접 시킨다(자동 행동은 conftest no_auto로 끔).
+    """
     g = Game()
     steps = [
         ("enter", None, [key(pygame.K_RETURN)]),
         ("after_enter", None, []),
-        ("key3", None, [key(pygame.K_3)]),
+        ("key3", do(config.ACTION_STUDY), [key(pygame.K_3)]),
         ("after_key3", None, []),
-        ("key1_in_cooldown", None, [key(pygame.K_1)]),
+        ("key1_in_cooldown", do(config.ACTION_FEED), [key(pygame.K_1)]),
         ("after_key1", None, []),
         ("force_end", force_graduation(knowledge), []),
         ("on_ending", None, []),
@@ -142,17 +153,20 @@ def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_recor
     assert after3["knowledge"] == config.STUDY_KNOWLEDGE
     assert after3["health"] == config.HEALTH_START + config.STUDY_HEALTH
     assert after3["mental"] == config.MENTAL_START + config.STUDY_MENTAL
-    assert after3["cooldown"] > 0
-    # 쿨타임 안의 1키는 무시
+    assert after3["policy"] == config.POLICY_REST_FOCUS   # 3키 -> 휴식 위주
+    # 쿨타임 없음: 바로 다음 프레임의 학식도 실행되고, 1키 -> 공부 위주
     after1 = by_label(script, "after_key1")
-    assert after1["health"] == after3["health"]
+    assert after1["health"] == after3["health"] + config.FEED_HEALTH
+    assert after1["last_action"] == config.ACTION_FEED
+    assert after1["policy"] == config.POLICY_STUDY_FOCUS
     # 강제 졸업 -> 엔딩 화면, 지식에 맞는 엔딩
     on_ending = by_label(script, "on_ending")
     assert on_ending["state"] == config.STATE_ENDING
     assert on_ending["ending"] == ending
     assert on_ending["best"] == knowledge
-    # 엔딩 화면의 3키는 무시
+    # 엔딩 화면의 3키는 무시(방침도 그대로)
     assert by_label(script, "r")["knowledge"] == knowledge
+    assert by_label(script, "r")["policy"] == config.POLICY_STUDY_FOCUS
     # R -> 새 판, 모든 값 초기화
     after_r = by_label(script, "after_r")
     assert after_r["state"] == config.STATE_PLAYING
@@ -161,6 +175,7 @@ def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_recor
     assert after_r["health"] == config.HEALTH_START
     assert after_r["mental"] == config.MENTAL_START
     assert after_r["elapsed"] < config.DECAY_INTERVAL
+    assert after_r["policy"] == config.POLICY_START   # 새 판은 균형으로
     # 최고 기록은 유지되고 파일에도 저장됨
     assert after_r["best"] == knowledge
     with open(isolated_record_path, encoding="utf-8") as f:
@@ -168,11 +183,11 @@ def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_recor
 
 
 def test_real_loop_leave_by_study_key_then_restart(monkeypatch, isolated_record_path):
-    """체력 3에서 3키 공부 -> 그 프레임에 바로 휴학 엔딩 -> R -> ESC (실제 루프)."""
+    """체력 3에서 공부 -> 그 프레임에 바로 휴학 엔딩 -> R -> ESC (실제 루프). G단위: 공부는 do_action."""
     g = Game()
     steps = [
         ("enter", None, [key(pygame.K_RETURN)]),
-        ("key3", set_health(3), [key(pygame.K_3)]),
+        ("key3", lambda game: (set_health(3)(game), do(config.ACTION_STUDY)(game)), []),
         ("after_key3", None, []),
         ("r", None, [key(pygame.K_r)]),
         ("after_r", None, []),
@@ -190,9 +205,12 @@ def test_real_loop_leave_by_study_key_then_restart(monkeypatch, isolated_record_
 
 
 def test_real_loop_click_button(monkeypatch):
-    """실제 루프에서 마우스 왼쪽 클릭으로 학식 버튼을 누르면 체력 +20."""
+    """실제 루프에서 마우스 왼쪽 클릭으로 방침 버튼을 누르면 그 방침이 된다(G단위: 행동 버튼 -> 방침 버튼).
+
+    클릭만으로는 행동하지 않으므로 체력은 그대로다.
+    """
     g = Game()
-    feed_center = g.buttons[config.ACTION_FEED].rect.center
+    feed_center = g.buttons[config.POLICY_REST_FOCUS].rect.center
     steps = [
         ("enter", None, [key(pygame.K_RETURN)]),
         ("click", set_health(50), [pygame.event.Event(
@@ -201,7 +219,10 @@ def test_real_loop_click_button(monkeypatch):
         ("esc", None, [key(pygame.K_ESCAPE)]),
     ]
     script = run_script(g, steps, monkeypatch)
-    assert by_label(script, "after_click")["health"] == 50 + config.FEED_HEALTH
+    after = by_label(script, "after_click")
+    assert after["policy"] == config.POLICY_REST_FOCUS
+    assert after["health"] == 50
+    assert after["last_action"] is None
 
 
 def test_main_entry_runs_game_loop(monkeypatch):
@@ -254,15 +275,14 @@ def test_no_numeric_literals_other_than_0_1(name):
     ("DECAY_INTERVAL", 1.0), ("LOW_GAUGE_LIMIT", 30),
     ("FEED_HEALTH", 20), ("REST_MENTAL", 20), ("REST_KNOWLEDGE", -2),
     ("STUDY_HEALTH", -5), ("STUDY_MENTAL", -8),
-    ("STUDY_KNOWLEDGE", 10), ("STUDY_KNOWLEDGE_EXAM", 20), ("ACTION_COOLDOWN", 1.0),
+    ("STUDY_KNOWLEDGE", 10), ("STUDY_KNOWLEDGE_EXAM", 20),  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
     ("MENTAL_SMILE_MIN", 60), ("MENTAL_FLAT_MIN", 30),
     ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
     ("TOP_GRADUATE_KNOWLEDGE", 700), ("NORMAL_GRADUATE_KNOWLEDGE", 450),
     ("ENDING_LEAVE", "휴학"), ("ENDING_TOP", "수석 졸업"),
     ("ENDING_NORMAL", "무사 졸업"), ("ENDING_BARELY", "아슬아슬 졸업"),
     ("RECORD_FILENAME", "record.json"),
-    ("FEED_BUTTON_TEXT", "학식 먹이기 [1]"), ("REST_BUTTON_TEXT", "쉬게 하기 [2]"),
-    ("STUDY_BUTTON_TEXT", "공부시키기 [3]"),
+    # G단위: 행동 버튼 글자 3개 -> 방침 버튼 글자(기획서 10절 화면: 공부 위주 [1] / 균형 [2] / 휴식 위주 [3])
     ("EXAM_BANNER_TEXT", "시험 기간! 공부 효과 2배, 멘탈 감소 2배"),
     ("START_HINT_TEXT", "Enter를 눌러 시작"), ("RESTART_HINT_TEXT", "R을 눌러 다시 하기"),
 ])

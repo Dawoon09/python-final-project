@@ -227,7 +227,9 @@ def test_new_game_has_no_event_state(make_game):
     assert s.event_counts == {1: 0, 2: 0, 3: 0, 4: 0}
 
 
-def test_ignored_input_during_cooldown_rolls_no_event(make_game, monkeypatch):
+def test_policy_input_rolls_no_event(make_game, monkeypatch):
+    """(G단위, 예전: 쿨타임 중 무시된 입력은 이벤트 판정 없음) 방침 키·방침 버튼은 행동이 아니므로
+    이벤트를 판정하지 않는다. 행동(do_action)이 실행된 직후에만 판정한다."""
     g = make_game(2)
     monkeypatch.setattr(config, "EVENT_CHANCE", 0.0)
     assert g.do_action(FEED)
@@ -235,10 +237,12 @@ def test_ignored_input_during_cooldown_rolls_no_event(make_game, monkeypatch):
     monkeypatch.setattr(config, "EVENT_CHANCE", 1.0)
     monkeypatch.setattr(g, "roll_event", lambda: calls.append(1))
     press(g, pygame.K_3)
-    click(g, g.buttons[REST].rect.center)
-    assert g.do_action(STUDY) is False
+    click(g, g.buttons[config.POLICY_STUDY_FOCUS].rect.center)
+    assert g.policy == config.POLICY_STUDY_FOCUS
     assert calls == []
     assert sum(g.student.event_counts.values()) == 0
+    assert g.do_action(STUDY) is True      # 쿨타임 없음: 바로 실행되고 판정 1번
+    assert calls == [1]
 
 
 def test_action_that_causes_leave_rolls_no_event(make_game, monkeypatch):
@@ -365,7 +369,6 @@ def test_max_five_per_grade(make_game, monkeypatch):
     assert not g.student.can_have_event()
     # 다음 학년은 다시 0부터
     g.student.elapsed = 60.0
-    g.cooldown = 0
     assert g.do_action(FEED)
     assert g.student.event_counts == {1: 5, 2: 1, 3: 0, 4: 0}
 
@@ -449,14 +452,17 @@ def in_dialog(make_game, monkeypatch):
     return g
 
 
-def test_dialog_freezes_time_gauges_cooldown(in_dialog):
+def test_dialog_freezes_time_gauges_auto_timer(in_dialog):
+    """(G단위) 쿨타임 대신 자동 행동 시계가 멈추는지 본다(2초 간격 실제 값 검사는 test_idle_g.py)."""
     g = in_dialog
     s = g.student
-    before = (s.elapsed, s.decay_timer, s.health, s.mental, s.knowledge, g.cooldown)
+    before = (s.elapsed, s.decay_timer, s.health, s.mental, s.knowledge, g.auto_timer,
+              g.last_action)
     for _ in range(300):
         g.update(0.05)   # 15초
     g.update(30.0)
-    assert (s.elapsed, s.decay_timer, s.health, s.mental, s.knowledge, g.cooldown) == before
+    assert (s.elapsed, s.decay_timer, s.health, s.mental, s.knowledge, g.auto_timer,
+            g.last_action) == before
     assert s.get_grade() == 1
     assert g.state == config.STATE_EVENT
     assert g.ending is None
@@ -604,16 +610,14 @@ def test_dialog_resume_after_choice(in_dialog):
     g = in_dialog
     s = g.student
     t0 = s.elapsed
-    cd = g.cooldown
+    cd = g.auto_timer
     pass_input_delay(g)
-    assert (s.elapsed, g.cooldown) == (t0, cd)   # 대기 동안에도 게임 시간·쿨타임 정지
+    assert (s.elapsed, g.auto_timer) == (t0, cd)   # 대기 동안에도 게임 시간·자동 행동 시계 정지
     press(g, pygame.K_2)
     assert g.state == config.STATE_PLAYING
     g.update(0.5)
     assert s.elapsed == pytest.approx(t0 + 0.5)
-    assert g.cooldown == pytest.approx(cd - 0.5)
-    g.update(0.6)
-    assert not g.is_cooling_down()
+    assert g.auto_timer == pytest.approx(cd - 0.5)   # (G단위) 자동 행동 시계가 다시 흐른다
     assert g.do_action(FEED)
 
 
@@ -971,7 +975,7 @@ def simulate(seed, policy, chooser, interval=1.0, think=0.3):
     while g.state in (config.STATE_PLAYING, config.STATE_EVENT):
         s = g.student
         if g.state == config.STATE_EVENT:
-            frozen = (s.elapsed, s.health, s.mental, s.knowledge, g.cooldown)
+            frozen = (s.elapsed, s.health, s.mental, s.knowledge, g.auto_timer)
             if dialog_wait is None:
                 dialog_wait = think
             if dialog_wait <= 1e-9:
@@ -980,10 +984,10 @@ def simulate(seed, policy, chooser, interval=1.0, think=0.3):
             else:
                 g.update(DT)
                 dialog_wait -= DT
-                if (s.elapsed, s.health, s.mental, s.knowledge, g.cooldown) != frozen:
+                if (s.elapsed, s.health, s.mental, s.knowledge, g.auto_timer) != frozen:
                     log["violations"].append(("not frozen", s.elapsed))
             continue
-        if wait <= 1e-9 and not g.is_cooling_down():
+        if wait <= 1e-9:   # (G단위) 쿨타임 없음: interval(>=1초)마다 행동
             action = policy(s)
             if action is not None:
                 assert g.do_action(action)

@@ -1,4 +1,7 @@
-"""3일차 검수: 세 가지 행동(기능 1~3), 쿨타임(기능 4), 버튼 클릭과 키보드 단축키."""
+"""3일차 검수: 세 가지 행동(기능 1~3), 버튼 클릭과 키보드 단축키.
+
+(G단위) 쿨타임(기능 4)은 기획서 10절로 없어졌고, 키·버튼은 일과표 방침 선택으로 바뀌었다.
+"""
 
 import os
 
@@ -72,7 +75,7 @@ def test_config_action_values_match_spec():
     assert (config.REST_MENTAL, config.REST_KNOWLEDGE) == (20, -2)
     assert (config.STUDY_HEALTH, config.STUDY_MENTAL, config.STUDY_KNOWLEDGE) == (-5, -8, 10)
     assert config.STUDY_KNOWLEDGE_EXAM == 20
-    assert config.ACTION_COOLDOWN == 1.0
+    assert not hasattr(config, "ACTION_COOLDOWN")   # G단위: 쿨타임 삭제(기획서 10절)
 
 
 def test_feed():
@@ -161,128 +164,90 @@ def test_repeated_actions_stay_in_range():
 
 
 # ======================= Game.do_action =======================
+# (G단위) 기획서 10절: 쿨타임이 없어지고 키 1/2/3·버튼은 일과표 방침 선택이 됐다.
+# 행동은 제자가 2초마다 스스로 하므로(conftest no_auto로 끔) 여기서는 do_action으로 직접 시킨다.
 
 def test_do_action_each(game):
     assert game.do_action(config.ACTION_FEED) is True
     assert gauges(game) == (100, 80, 0)
-    game.cooldown = 0.0
     assert game.do_action(config.ACTION_STUDY) is True
     assert gauges(game) == (95, 72, 10)
-    game.cooldown = 0.0
     assert game.do_action(config.ACTION_REST) is True
     assert gauges(game) == (95, 92, 8)
+    assert game.last_action == config.ACTION_REST
 
 
 def test_do_action_unknown_name_ignored(game):
     assert game.do_action("dance") is False
     assert gauges(game) == (80, 80, 0)
-    assert game.is_cooling_down() is False
+    assert game.last_action is None
 
 
-# ======================= 기능 4: 쿨타임 =======================
+# ======================= (G단위) 쿨타임 없음 =======================
+# 예전 기능 4(쿨타임 1초: 0.999초 무시/1.0초 허용, 공유, 연장 안 됨, 음수 안 됨, 타이틀에서 안 셈)
+# 테스트는 기획서 10절 "행동 쿨타임 1초 -> 없앤다"로 규칙이 사라져 삭제하고, 아래로 바꾼다.
 
-def test_action_starts_cooldown(game):
-    assert game.is_cooling_down() is False
-    game.do_action(config.ACTION_FEED)
-    assert game.cooldown == pytest.approx(1.0)
-    assert game.is_cooling_down() is True
-
-
-@pytest.mark.parametrize("second", [config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY])
-def test_cooldown_shared_between_actions(game, second):
-    game.do_action(config.ACTION_STUDY)
-    before = gauges(game)
-    assert game.do_action(second) is False
-    assert gauges(game) == before
+def test_no_cooldown_attribute(game):
+    assert not hasattr(game, "cooldown")
+    assert not hasattr(game, "is_cooling_down")
+    assert not hasattr(config, "ACTION_COOLDOWN")
 
 
-def test_0_999_ignored_1_0_allowed(game):
-    game.do_action(config.ACTION_STUDY)          # 지식 10
-    game.update(0.999)
-    assert game.do_action(config.ACTION_STUDY) is False
-    assert game.student.knowledge == 10
-    game.update(0.001)
-    assert game.is_cooling_down() is False
-    assert game.do_action(config.ACTION_STUDY) is True
-    assert game.student.knowledge == 20
-
-
-def test_cooldown_60fps_frames(game):
-    game.do_action(config.ACTION_STUDY)
-    for _ in range(59):
-        game.update(1 / 60)
-    assert game.is_cooling_down() is True
-    assert game.do_action(config.ACTION_STUDY) is False
-    game.update(1 / 60)
-    assert game.is_cooling_down() is False
-    assert game.do_action(config.ACTION_STUDY) is True
-    assert game.student.knowledge == 20
-
-
-def test_cooldown_tenths_float_error(game):
-    """0.1을 10번 흘려도(0.9999999...) 1초로 보고 쿨타임이 끝난다."""
-    game.do_action(config.ACTION_STUDY)
-    for _ in range(10):
-        game.update(0.1)
-    assert game.do_action(config.ACTION_STUDY) is True
-
-
-def test_attempt_during_cooldown_does_not_extend(game):
-    game.do_action(config.ACTION_FEED)
-    game.update(0.5)
-    game.do_action(config.ACTION_FEED)
-    game.handle_event(key(pygame.K_2))
-    game.handle_event(click(center(game, config.ACTION_STUDY)))
-    assert game.cooldown == pytest.approx(0.5)
-    game.update(0.5)
-    assert game.is_cooling_down() is False
-    assert game.do_action(config.ACTION_STUDY) is True
-
-
-def test_cooldown_never_negative(game):
-    game.do_action(config.ACTION_FEED)
-    game.update(5.0)
-    assert game.cooldown == 0.0
-
-
-def test_cooldown_ignores_key_and_click(game):
-    game.handle_event(key(pygame.K_3))
-    before = gauges(game)
-    game.handle_event(key(pygame.K_1))
-    game.handle_event(key(pygame.K_2))
-    game.handle_event(key(pygame.K_3))
-    for name in game.buttons:
-        game.handle_event(click(center(game, name)))
-    assert gauges(game) == before
-
-
-def test_cooldown_not_counting_outside_playing(game):
-    """게임 화면이 아니면 update가 시간을 흘리지 않는다(쿨타임도 그대로)."""
-    game.do_action(config.ACTION_FEED)
-    game.state = config.STATE_TITLE
-    game.update(5.0)
-    assert game.cooldown == pytest.approx(1.0)
-
-
-# ======================= 키보드 단축키 =======================
-
-@pytest.mark.parametrize("k, expected", [
-    (pygame.K_1, (100, 80, 0)),
-    (pygame.K_2, (80, 100, 0)),
-    (pygame.K_3, (75, 72, 10)),
+@pytest.mark.parametrize("second, expected", [
+    (config.ACTION_FEED, (95, 72, 10)),     # 체력 75 + 20 = 95
+    (config.ACTION_REST, (75, 92, 8)),
+    (config.ACTION_STUDY, (70, 64, 20)),
 ])
-def test_keys(game, k, expected):
-    game.handle_event(key(k))
+def test_consecutive_actions_all_run(game, second, expected):
+    """(예전: 쿨타임 공유로 무시) 이제는 바로 이어서 한 두 번째 행동도 실행된다."""
+    game.do_action(config.ACTION_STUDY)
+    assert gauges(game) == (75, 72, 10)
+    assert game.do_action(second) is True
     assert gauges(game) == expected
-    assert game.is_cooling_down() is True
+
+
+def test_actions_every_frame_60fps(game):
+    """(예전: 59프레임 무시) 매 프레임 공부해도 매번 실행된다."""
+    for i in range(1, 11):
+        assert game.do_action(config.ACTION_STUDY) is True
+        game.update(1 / 60)
+        assert game.student.knowledge == 10 * i
+
+
+@pytest.mark.parametrize("state", [config.STATE_TITLE, config.STATE_ENDING, config.STATE_EVENT])
+def test_do_action_only_in_playing(game, state):
+    """do_action은 게임 화면(STATE_PLAYING)에서만 실행된다."""
+    game.state = state
+    for name in (config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY):
+        assert game.do_action(name) is False
+    assert gauges(game) == (80, 80, 0)
+    assert game.last_action is None
+
+
+# ======================= 키보드 단축키 (G단위: 방침 선택) =======================
+
+@pytest.mark.parametrize("k, policy", [
+    (pygame.K_1, config.POLICY_STUDY_FOCUS),
+    (pygame.K_2, config.POLICY_BALANCED),
+    (pygame.K_3, config.POLICY_REST_FOCUS),
+])
+def test_keys(game, k, policy):
+    """키 1/2/3은 방침을 바꾸고 행동은 하지 않는다."""
+    if policy == config.POLICY_BALANCED:
+        game.set_policy(config.POLICY_REST_FOCUS)   # 시작값과 구분되게
+    game.handle_event(key(k))
+    assert game.policy == policy
+    assert gauges(game) == (80, 80, 0)
+    assert game.last_action is None
 
 
 @pytest.mark.parametrize("k", [pygame.K_KP1, pygame.K_KP2, pygame.K_KP3])
 def test_numpad_keys_no_action(game, k):
-    """(4일차 리드 결정) 숫자패드는 기획서에 없으므로 행동을 일으키지 않는다."""
+    """(4일차 리드 결정) 숫자패드는 기획서에 없으므로 행동도 방침 변경도 일으키지 않는다."""
     game.handle_event(key(k))
     assert gauges(game) == (80, 80, 0)
-    assert game.is_cooling_down() is False
+    assert game.policy == config.POLICY_START
+    assert game.last_action is None
 
 
 @pytest.mark.parametrize("k", [pygame.K_0, pygame.K_4, pygame.K_a, pygame.K_RETURN, pygame.K_r,
@@ -290,12 +255,14 @@ def test_numpad_keys_no_action(game, k):
 def test_other_keys_no_action(game, k):
     game.handle_event(key(k))
     assert gauges(game) == (80, 80, 0)
-    assert game.is_cooling_down() is False
+    assert game.policy == config.POLICY_START
+    assert game.last_action is None
 
 
 def test_keyup_no_action(game):
     game.handle_event(pygame.event.Event(pygame.KEYUP, key=pygame.K_1, mod=0))
     assert gauges(game) == (80, 80, 0)
+    assert game.policy == config.POLICY_START
 
 
 def test_escape_still_quits(game):
@@ -303,44 +270,46 @@ def test_escape_still_quits(game):
     assert game.running is False
 
 
-# ======================= 버튼 클릭 =======================
+# ======================= 버튼 클릭 (G단위: 방침 버튼) =======================
 
-@pytest.mark.parametrize("name, expected", [
-    (config.ACTION_FEED, (100, 80, 0)),
-    (config.ACTION_REST, (80, 100, 0)),
-    (config.ACTION_STUDY, (75, 72, 10)),
-])
-def test_click_each_button(game, name, expected):
+@pytest.mark.parametrize("name", [config.POLICY_STUDY_FOCUS, config.POLICY_BALANCED,
+                                  config.POLICY_REST_FOCUS])
+def test_click_each_button(game, name):
+    if name == config.POLICY_BALANCED:
+        game.set_policy(config.POLICY_STUDY_FOCUS)
     game.handle_event(click(center(game, name)))
-    assert gauges(game) == expected
-    assert game.is_cooling_down() is True
+    assert game.policy == name
+    assert gauges(game) == (80, 80, 0)
+    assert game.last_action is None
 
 
 @pytest.mark.parametrize("btn", [pygame.BUTTON_RIGHT, pygame.BUTTON_MIDDLE,
                                  pygame.BUTTON_WHEELUP, pygame.BUTTON_WHEELDOWN])
 def test_non_left_click_ignored(game, btn):
-    game.handle_event(click(center(game, config.ACTION_FEED), button=btn))
-    game.handle_event(click(center(game, config.ACTION_STUDY), button=btn))
+    game.handle_event(click(center(game, config.POLICY_STUDY_FOCUS), button=btn))
+    game.handle_event(click(center(game, config.POLICY_REST_FOCUS), button=btn))
     assert gauges(game) == (80, 80, 0)
-    assert game.is_cooling_down() is False
+    assert game.policy == config.POLICY_START
 
 
 def test_mouse_up_ignored(game):
-    game.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=center(game, config.ACTION_FEED),
+    game.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP,
+                                         pos=center(game, config.POLICY_STUDY_FOCUS),
                                          button=pygame.BUTTON_LEFT))
-    assert gauges(game) == (80, 80, 0)
+    assert game.policy == config.POLICY_START
 
 
 def test_click_outside_buttons(game):
-    feed = game.buttons[config.ACTION_FEED].rect
-    rest = game.buttons[config.ACTION_REST].rect
-    for pos in [(0, 0), (400, 300), (feed.left - 1, feed.centery),
-                (feed.right, feed.centery),           # 버튼 사이 간격
-                (rest.left - 1, rest.centery),
-                (feed.centerx, feed.top - 1), (feed.centerx, feed.bottom)]:
+    first = game.buttons[config.POLICY_STUDY_FOCUS].rect
+    second = game.buttons[config.POLICY_BALANCED].rect
+    game.set_policy(config.POLICY_REST_FOCUS)
+    for pos in [(0, 0), (400, 300), (first.left - 1, first.centery),
+                (first.right, first.centery),           # 버튼 사이 간격
+                (second.left - 1, second.centery),
+                (first.centerx, first.top - 1), (first.centerx, first.bottom)]:
         game.handle_event(click(pos))
     assert gauges(game) == (80, 80, 0)
-    assert game.is_cooling_down() is False
+    assert game.policy == config.POLICY_REST_FOCUS
 
 
 def test_button_is_clicked_boundaries():
@@ -355,55 +324,64 @@ def test_button_is_clicked_boundaries():
 
 
 def test_buttons_layout(game):
-    rects = [game.buttons[n].rect for n in (config.ACTION_FEED, config.ACTION_REST,
-                                            config.ACTION_STUDY)]
+    rects = [game.buttons[n].rect for n in config.POLICY_ORDER]
     for r in rects:
         assert r.size == (config.BUTTON_WIDTH, config.BUTTON_HEIGHT)
         assert r.top == config.BUTTON_Y
         assert 0 <= r.left and r.right <= config.SCREEN_WIDTH
         assert r.bottom <= config.SCREEN_HEIGHT
     assert rects[0].right <= rects[1].left and rects[1].right <= rects[2].left
-    # 가운데 정렬
-    assert rects[0].left == config.SCREEN_WIDTH - rects[2].right
+    # (G단위) 가운데 정렬 검사는 삭제: 기획서 10절 화면에서 하단 오른편은 [업그레이드 U] 버튼 자리라
+    # 방침 버튼 3개는 왼편에 놓인다. 대신 순서와 오른편 빈자리를 본다.
+    assert list(game.buttons) == config.POLICY_ORDER
+    assert rects[2].right < config.SCREEN_WIDTH - config.BUTTON_WIDTH // 2
 
 
 def test_button_texts(game):
-    assert game.buttons[config.ACTION_FEED].text == "학식 먹이기 [1]"
-    assert game.buttons[config.ACTION_REST].text == "쉬게 하기 [2]"
-    assert game.buttons[config.ACTION_STUDY].text == "공부시키기 [3]"
+    assert game.buttons[config.POLICY_STUDY_FOCUS].text == "공부 위주 [1]"
+    assert game.buttons[config.POLICY_BALANCED].text == "균형 [2]"
+    assert game.buttons[config.POLICY_REST_FOCUS].text == "휴식 위주 [3]"
     assert len(game.buttons) == 3
 
 
 def test_draw_renders_button_texts_and_hint(game):
     rec = RecordingFont(game.font)
+    small = RecordingFont(game.small_font)
     game.font = rec
+    game.small_font = small
     game.draw()
-    for t in ("학식 먹이기 [1]", "쉬게 하기 [2]", "공부시키기 [3]"):
+    for t in ("공부 위주 [1]", "균형 [2]", "휴식 위주 [3]"):
         assert t in rec.texts
-    assert any("누른 뒤 1초 동안 회색" in t for t in rec.texts)
+    # G단위: 쿨타임 안내 대신 자동 행동 진행 막대 안내
+    assert config.AUTO_HINT_TEXT in rec.texts + small.texts
 
 
 # ======================= 쿨타임 회색 (픽셀) =======================
 
+def expected_button_color(game, name):
+    """(G단위) 고른 방침 버튼은 노랑, 나머지는 하늘색."""
+    if name == game.policy:
+        return config.COLOR_POLICY_SELECTED
+    return config.COLOR_BUTTON
+
+
 def test_buttons_normal_color(game):
     game.draw()
     for name in game.buttons:
-        assert color_at(game.screen, button_body_point(game, name)) == config.COLOR_BUTTON
+        assert color_at(game.screen, button_body_point(game, name)) == \
+            expected_button_color(game, name)
 
 
-def test_buttons_gray_during_cooldown_then_back(game):
-    game.handle_event(key(pygame.K_1))
-    game.draw()
-    for name in game.buttons:
-        assert color_at(game.screen, button_body_point(game, name)) == config.COLOR_GRAY
-    game.update(0.999)
-    game.draw()
-    for name in game.buttons:
-        assert color_at(game.screen, button_body_point(game, name)) == config.COLOR_GRAY
-    game.update(0.001)
-    game.draw()
-    for name in game.buttons:
-        assert color_at(game.screen, button_body_point(game, name)) == config.COLOR_BUTTON
+def test_buttons_never_gray_after_action(game):
+    """(예전: 쿨타임 동안 회색) G단위: 쿨타임이 없으므로 행동 직후에도 회색이 되지 않는다."""
+    game.do_action(config.ACTION_FEED)
+    for dt in (0.0, 0.5, 0.5):
+        game.update(dt)
+        game.draw()
+        for name in game.buttons:
+            got = color_at(game.screen, button_body_point(game, name))
+            assert got != config.COLOR_GRAY
+            assert got == expected_button_color(game, name)
 
 
 def test_button_draw_direct(game):
@@ -425,13 +403,15 @@ def test_gray_differs_from_normal():
 
 @pytest.mark.parametrize("state", [config.STATE_TITLE, config.STATE_ENDING])
 def test_no_action_outside_playing(game, state):
+    """타이틀·엔딩에서는 키 1/2/3·방침 버튼이 행동도 방침 변경도 하지 않는다."""
     game.state = state
     for k in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_KP1, pygame.K_KP2, pygame.K_KP3):
         game.handle_event(key(k))
     for name in list(game.buttons):
         game.handle_event(click(center(game, name)))
     assert gauges(game) == (80, 80, 0)
-    assert game.is_cooling_down() is False
+    assert game.policy == config.POLICY_START
+    assert game.last_action is None
 
 
 @pytest.mark.parametrize("state", [config.STATE_TITLE, config.STATE_ENDING])
@@ -444,16 +424,16 @@ def test_escape_quits_in_any_state(game, state):
 # ======================= 완료 기준: 클릭과 1~3키로 게이지가 변함 =======================
 
 def test_done_criteria_play_sequence(game):
-    """키 1 -> 1초 -> 클릭 공부 -> 1초 -> 키 2 를 실제 이벤트로 진행."""
-    game.handle_event(key(pygame.K_1))
+    """학식 -> 1초 -> 공부 -> 1초 -> 휴식 (G단위: 행동은 do_action, 균형 방침이라 배수 1.0)."""
+    game.do_action(config.ACTION_FEED)
     assert gauges(game) == (100, 80, 0)
     for _ in range(60):
         game.update(1 / 60)                       # 자연 감소 1회: 99, 79
-    game.handle_event(click(center(game, config.ACTION_STUDY)))
+    game.do_action(config.ACTION_STUDY)
     assert gauges(game) == (94, 71, 10)
     for _ in range(60):
         game.update(1 / 60)                       # 93, 70
-    game.handle_event(key(pygame.K_2))
+    game.do_action(config.ACTION_REST)
     assert gauges(game) == (93, 90, 8)
     game.draw()
 
@@ -470,7 +450,7 @@ def test_done_criteria_bar_redrawn_after_action(game):
     x_after_50 = config.GAUGE_X + config.BAR_WIDTH * 60 // config.GAUGE_MAX
     x_inside_50 = config.GAUGE_X + config.BAR_WIDTH * 40 // config.GAUGE_MAX
     assert color_at(game.screen, (x_after_50, y)) == config.COLOR_BAR_BG
-    game.handle_event(key(pygame.K_1))
+    game.do_action(config.ACTION_FEED)
     assert game.student.health == 70
     assert game.get_shown_gauge(config.GAUGE_HEALTH) == 50
     game.draw()

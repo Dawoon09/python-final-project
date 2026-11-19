@@ -7,14 +7,15 @@ import sys
 import pygame
 
 import config
-from button import Button, draw_pixel_box, draw_sprite, render_text, sprite_size
+from button import (Button, draw_pixel_box, draw_progress_bar, draw_sprite, render_text,
+                    sprite_size)
 from student import Student
 
-# 키보드 단축키 -> 행동 이름 (기획서 조작키: 1/2/3)
-ACTION_KEYS = {
-    pygame.K_1: config.ACTION_FEED,
-    pygame.K_2: config.ACTION_REST,
-    pygame.K_3: config.ACTION_STUDY,
+# 키보드 단축키 -> 일과표 방침 이름 (기획서 10절 조작키: 1/2/3)
+POLICY_KEYS = {
+    pygame.K_1: config.POLICY_STUDY_FOCUS,
+    pygame.K_2: config.POLICY_BALANCED,
+    pygame.K_3: config.POLICY_REST_FOCUS,
 }
 
 # 대화창(선택지형 이벤트)에서 키 -> 선택지 번호 (키 1: 첫 번째, 키 2: 두 번째)
@@ -25,10 +26,11 @@ CHOICE_KEYS = {
 
 
 class Game:
-    """메인 루프와 화면 전환(타이틀/게임/엔딩), 시간 관리(행동 쿨타임 포함), 기록 저장을 맡는 클래스."""
+    """메인 루프와 화면 전환(타이틀/게임/엔딩), 시간 관리(자동 행동 시계 포함),
+    일과표 방침, 기록 저장을 맡는 클래스."""
 
     def __init__(self, record_path=None, seed=None):
-        """pygame을 켜고 800x600 창과 시계, 글꼴, 버튼 3개, 첫 화면(타이틀)을 준비한다.
+        """pygame을 켜고 800x600 창과 시계, 글꼴, 방침 버튼 3개, 첫 화면(타이틀)을 준비한다.
 
         record_path는 최고 기록 파일 경로다. 주지 않으면 config.RECORD_PATH
         (exe 옆 또는 main.py 옆의 record.json)를 쓴다. 테스트에서는 임시 폴더 경로를 넘긴다.
@@ -65,13 +67,17 @@ class Game:
         self.state = config.START_STATE  # 처음 보여 줄 화면(타이틀)
 
     def reset_round(self):
-        """한 판에 쓰는 값을 모두 처음으로 되돌린다: 새 제자, 쿨타임 0, 엔딩 없음, 연출 비움.
+        """한 판에 쓰는 값을 모두 처음으로 되돌린다: 새 제자, 엔딩 없음, 연출 비움.
 
+        일과표 방침은 시작값(균형)으로, 자동 행동 시계는 2초(첫 행동은 시작 2초 뒤)로,
+        마지막 행동(last_action)은 None으로 돌린다.
         제자를 새로 만들므로 특성·외형·연계 플래그·이벤트 기록도 함께 초기화된다.
         떠 있던 대화창(current_event)과 자동형 알림도 비운다.
         """
         self.student = Student()
-        self.cooldown = config.ZERO_TIME  # 남은 쿨타임(초). 0이면 행동할 수 있다
+        self.policy = config.POLICY_START   # 일과표 방침 이름. 시작값은 균형
+        self.auto_timer = config.AUTO_ACTION_INTERVAL  # 다음 자동 행동까지 남은 시간(초)
+        self.last_action = None             # 마지막으로 실행된 행동 이름. 아직 없으면 None
         self.ending = None                # 엔딩 이름. 엔딩 전에는 None
         self.current_event = None         # 대화창에 떠 있는 선택지형 이벤트. 없으면 None
         self.clear_effects()
@@ -160,17 +166,15 @@ class Game:
         return True
 
     def make_buttons(self):
-        """화면 아래쪽에 가로로 놓인 행동 버튼 3개를 {행동 이름: Button} 사전으로 만든다."""
-        items = [
-            (config.ACTION_FEED, config.FEED_BUTTON_TEXT),
-            (config.ACTION_REST, config.REST_BUTTON_TEXT),
-            (config.ACTION_STUDY, config.STUDY_BUTTON_TEXT),
-        ]
+        """화면 아래쪽 왼편에 가로로 놓인 일과표 방침 버튼 3개를 {방침 이름: Button} 사전으로 만든다.
+
+        순서는 공부 위주 [1], 균형 [2], 휴식 위주 [3]. 오른편은 업그레이드 버튼 자리로 비워 둔다.
+        """
         buttons = {}
-        for index, (name, text) in enumerate(items):
+        for index, name in enumerate(config.POLICY_ORDER):
             x = config.BUTTON_START_X + index * (config.BUTTON_WIDTH + config.BUTTON_GAP)
-            buttons[name] = Button(x, config.BUTTON_Y,
-                                   config.BUTTON_WIDTH, config.BUTTON_HEIGHT, text)
+            buttons[name] = Button(x, config.BUTTON_Y, config.BUTTON_WIDTH,
+                                   config.BUTTON_HEIGHT, config.POLICIES[name][config.POLICY_TEXT])
         return buttons
 
     def make_choice_buttons(self):
@@ -179,22 +183,51 @@ class Game:
                        config.CHOICE_BUTTON_HEIGHT, "")
                 for y in config.CHOICE_BUTTON_YS]
 
-    def is_cooling_down(self):
-        """쿨타임 중이면 True를 돌려준다(소수 오차는 TIME_EPSILON 만큼 허용)."""
-        return self.cooldown > config.TIME_EPSILON
+    # ------------------------------------------------------------
+    # 일과표 방침과 자동 행동 (기획서 10절, G단위)
+    # ------------------------------------------------------------
+    def set_policy(self, name):
+        """일과표 방침을 name(study_focus/balanced/rest_focus)으로 바꾼다.
+
+        모르는 이름이면 바꾸지 않는다. 바꿨으면 True, 아니면 False를 돌려준다.
+        고른 버튼은 잠깐 눌린 모양(E1)이 된다. 다음 자동 행동부터 새 방침을 따른다.
+        """
+        if name not in config.POLICIES:
+            return False
+        self.policy = name
+        self.press_timers[name] = config.BUTTON_PRESS_TIME
+        return True
+
+    def choose_auto_action(self):
+        """지금 방침으로 제자가 스스로 고를 행동 이름(feed/rest/study)을 돌려준다.
+
+        체력이나 멘탈이 방침의 회복 기준 미만이면 둘 중 낮은 쪽을 회복한다:
+        체력이 멘탈보다 낮거나 같으면 학식(feed), 멘탈이 더 낮으면 휴식(rest).
+        둘 다 기준 이상이면 공부(study)한다.
+        """
+        threshold = config.POLICIES[self.policy][config.POLICY_THRESHOLD]
+        health = self.student.health
+        mental = self.student.mental
+        if health < threshold or mental < threshold:
+            if health <= mental:
+                return config.ACTION_FEED
+            return config.ACTION_REST
+        return config.ACTION_STUDY
 
     def do_action(self, name):
-        """행동 name(feed/rest/study)을 실행하고 쿨타임 1초를 시작한다.
+        """행동 name(feed/rest/study)을 바로 실행한다(쿨타임 없음).
 
-        게임 화면이 아니거나 쿨타임 중이면 아무것도 하지 않는다.
-        실행했으면 True, 무시했으면 False를 돌려준다. 세 행동이 쿨타임 하나를 함께 쓴다.
+        게임 화면(STATE_PLAYING)이 아니거나 모르는 행동 이름이면 아무것도 하지 않는다.
+        실행했으면 True, 무시했으면 False를 돌려준다. 실행하면 last_action에 이름을 남긴다.
+        공부는 지금 방침의 지식 배수·소모 배수를 적용한다(학식·휴식은 방침과 상관없다).
         행동으로 체력이나 멘탈이 0이 되면 그 즉시 휴학 엔딩으로 바꾼다.
-        실제로 실행됐을 때만 연출(눌림·파티클·팝업·점프·게이지 애니메이션)을 시작한다.
+        실제로 실행됐을 때만 연출(파티클·팝업·점프·게이지 애니메이션)을 시작한다.
         휴학으로 끝나면 end_game이 연출을 다시 비운다.
         휴학이 아니면 랜덤 이벤트를 판정한다(roll_event). 대화창이 떠 있는 동안에는
         상태가 게임 화면이 아니므로 행동이 무시된다.
+        보통은 update의 자동 행동 시계가 2초마다 부른다.
         """
-        if self.state != config.STATE_PLAYING or self.is_cooling_down():
+        if self.state != config.STATE_PLAYING:
             return False
         before = self.get_gauge_values()
         if name == config.ACTION_FEED:
@@ -202,10 +235,12 @@ class Game:
         elif name == config.ACTION_REST:
             self.student.rest()
         elif name == config.ACTION_STUDY:
-            self.student.study()
+            policy = config.POLICIES[self.policy]
+            self.student.study(policy[config.POLICY_KNOWLEDGE_RATIO],
+                               policy[config.POLICY_COST_RATIO])
         else:
             return False
-        self.cooldown = config.ACTION_COOLDOWN
+        self.last_action = name
         self.start_action_effects(name, before)
         if not self.check_ending():
             self.roll_event()
@@ -215,7 +250,7 @@ class Game:
     # 랜덤 이벤트 (기획서 9절, jeja-spec 14절)
     # ------------------------------------------------------------
     def roll_event(self):
-        """행동 직후 이벤트가 뜰지 정하고, 뜨면 시작한다. 뜬 이벤트(dict) 또는 None을 돌려준다.
+        """자동 행동 직후 이벤트가 뜰지 정하고, 뜨면 시작한다. 뜬 이벤트(dict) 또는 None을 돌려준다.
 
         그 학년 이벤트 수가 최대(5)면 뜨지 않는다. 최소 보장 조건이면 반드시 뜬다(간격 예외).
         아니면 직전 이벤트 이후 게임 시간이 최소 간격(8초) 이상 지났고
@@ -315,12 +350,13 @@ class Game:
         - 창 닫기(QUIT) 또는 ESC: 모든 화면에서 running을 False로 바꾼다.
         - 타이틀 화면에서 Enter: 새 판 시작.
         - 엔딩 화면에서 R: 새 판 시작.
-        - 게임 화면에서 마우스 왼쪽 클릭이 버튼 위면, 또는 1/2/3 키면 그 행동을 한다.
+        - 게임 화면에서 1/2/3 키 또는 방침 버튼 클릭: 일과표 방침을 바꾼다
+          (1 공부 위주, 2 균형, 3 휴식 위주). 행동은 제자가 스스로 한다.
         - 마우스 이동(MOUSEMOTION): 버튼 호버 표시에 쓸 마우스 위치를 기억한다.
         - 마우스가 창 밖으로 나감(WINDOWLEAVE): 마우스 위치를 잊어 호버 표시를 끈다.
         - 대화창(선택지형 이벤트)이 떠 있으면 키 1/2 또는 선택 버튼 클릭으로 선택지를 고른다.
-          이때 행동 키(3 포함)·행동 버튼은 무시한다.
-        다른 화면의 Enter/R, 다른 키는 무시한다. 쿨타임 중이면 do_action이 입력을 무시한다.
+          이때 방침 키(3 포함)·방침 버튼은 무시한다.
+        다른 화면의 Enter/R, 다른 키는 무시한다.
         """
         if event.type == pygame.QUIT:
             self.running = False
@@ -337,13 +373,13 @@ class Game:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
                 self.start_new_game()
         elif self.state == config.STATE_PLAYING:
-            if event.type == pygame.KEYDOWN and event.key in ACTION_KEYS:
-                self.do_action(ACTION_KEYS[event.key])
+            if event.type == pygame.KEYDOWN and event.key in POLICY_KEYS:
+                self.set_policy(POLICY_KEYS[event.key])
             elif (event.type == pygame.MOUSEBUTTONDOWN
                   and event.button == pygame.BUTTON_LEFT):
                 for name, button in self.buttons.items():
                     if button.is_clicked(event.pos):
-                        self.do_action(name)
+                        self.set_policy(name)
                         break
         elif self.state == config.STATE_EVENT:
             if event.type == pygame.KEYDOWN and event.key in CHOICE_KEYS:
@@ -359,21 +395,34 @@ class Game:
         """dt초만큼 게임 상태를 진행한다.
 
         게임 화면일 때만 제자의 시간을 흘려 게이지를 자연 감소시키고,
-        남은 쿨타임도 dt만큼 줄인다(0 아래로는 내려가지 않음).
-        그다음 엔딩을 확인한다: 자연 감소로 체력·멘탈이 0이 되었으면 휴학,
-        아니면 240초가 되었을 때 졸업. 그래서 240초 시점에 0이 겹치면 휴학이 먼저다.
+        자동 행동 시계(auto_timer)도 dt만큼 줄인다. 시계가 0이 되면 지금 방침으로
+        행동을 골라(choose_auto_action) 실행하고(do_action) 시계를 다시 2초로 채운다.
+        dt가 커서 자동 행동 시각을 여러 번 지나가면, 행동 시각마다 끊어서 차례대로 처리한다
+        (행동 시각까지 시간을 흘림 -> 엔딩 확인 -> 행동 -> 남은 시간 계속).
+        엔딩 확인: 자연 감소로 체력·멘탈이 0이 되었으면 휴학,
+        아니면 240초가 되었을 때 졸업. 그래서 240초 시점에 0이 겹치면 휴학이 먼저이고,
+        엔딩이 나면 그 시각의 자동 행동은 하지 않는다.
         타이틀·엔딩 화면과 대화창(선택지형 이벤트)이 떠 있는 동안에는
-        시간·게이지·쿨타임이 흐르지 않는다(게임 정지).
+        시간·게이지·자동 행동 시계가 흐르지 않는다(게임 정지). 자동 행동 직후
+        대화창이 뜨면 이번 dt의 남은 시간도 흘리지 않는다.
         마지막으로 화면 연출 시계를 진행한다(update_effects, 게임 결과에는 영향 없음).
         """
-        if self.state == config.STATE_PLAYING:
-            self.student.update(dt)
-            self.cooldown = max(config.ZERO_TIME, self.cooldown - dt)
-            self.check_ending()
+        remaining = dt
+        while self.state == config.STATE_PLAYING:
+            step = min(remaining, self.auto_timer)
+            self.student.update(step)
+            self.auto_timer -= step
+            remaining -= step
+            if self.check_ending():
+                break
+            if self.auto_timer > config.TIME_EPSILON:
+                break   # 이번 dt 안에는 더 할 자동 행동이 없다
+            self.auto_timer = config.AUTO_ACTION_INTERVAL
+            self.do_action(self.choose_auto_action())
         self.update_effects(dt)
 
     # ------------------------------------------------------------
-    # 화면 연출 E1~E6 (보기만 바꾸며 게이지·쿨타임·학년·엔딩에는 영향이 없다)
+    # 화면 연출 E1~E6 (보기만 바꾸며 게이지·자동 행동 시계·학년·엔딩에는 영향이 없다)
     # ------------------------------------------------------------
     def clear_effects(self):
         """파티클·팝업·버튼 눌림·점프·숨쉬기·게이지 애니메이션·이벤트 알림을 모두 처음 상태로 비운다.
@@ -385,7 +434,7 @@ class Game:
         self.dialog_time = config.ZERO_TIME  # 대화창이 뜬 뒤 흐른 시간(초): 입력 대기·등장 연출용
         self.particles = []        # 파티클 dict 리스트 (E2)
         self.popups = []           # 수치 팝업 dict 리스트 (E3)
-        self.press_timers = {}     # {행동 이름: 버튼이 눌린 채 남은 시간(초)} (E1)
+        self.press_timers = {}     # {이름: 눌린 채 남은 시간(초)} (E1). 방침 버튼은 고를 때 눌린다
         self.jump_timer = config.ZERO_TIME   # 점프 남은 시간(초) (E5)
         self.breath_time = config.ZERO_TIME  # 숨쉬기 시계(초) (E5)
         # E4: 표시값 = 실제 값 + gauge_lag. 행동 직후에는 "바뀌기 전 값" 쪽에 있다가
@@ -508,7 +557,7 @@ class Game:
 
         깜빡임 시계는 모든 화면에서 흐른다. 나머지(눌림·점프·숨쉬기·파티클·팝업·
         게이지 애니메이션·자동형 알림)는 게임 화면과 대화창 화면에서만 흐른다.
-        (대화창 중에도 연출만 마저 흐르고, 게임 시간·게이지·쿨타임은 update에서 멈춘다.)
+        (대화창 중에도 연출만 마저 흐르고, 게임 시간·게이지·자동 행동 시계는 update에서 멈춘다.)
         게임 결과 값은 건드리지 않는다.
         """
         self.blink_time += dt
@@ -692,7 +741,7 @@ class Game:
 
         도트 상자 -> 제목 띠(연분홍, 양끝 별) -> 상황 글자(2줄까지) -> 선택 버튼 2개와
         각 버튼 아래 효과 미리보기 한 줄. 뜬 직후 EVENT_DIALOG_SLIDE_TIME 동안 위에서
-        한 칸씩 내려온다. 입력 대기(0.3초) 동안은 선택 버튼이 회색이고 진행 막대가 차오르며(E1 쿨타임 방식),
+        한 칸씩 내려온다. 입력 대기(0.3초) 동안은 선택 버튼이 회색이고 진행 막대가 차오르며(E1 진행 막대),
         그 뒤에는 마우스를 올린 버튼이 밝아진다(E1 호버).
         """
         if self.current_event is None:
@@ -877,7 +926,8 @@ class Game:
                              (start_x + index * step, y, config.PIXEL_SIZE, config.PIXEL_SIZE))
 
     def draw_playing(self):
-        """게임 화면: 상단 정보바, (시험 기간이면) 노란 배너, 상태 패널(게이지), 제자 무대, 버튼."""
+        """게임 화면: 상단 정보바, (시험 기간이면) 노란 배너, 상태 패널(게이지), 제자 무대,
+        방침 버튼과 자동 행동 진행 막대."""
         self.draw_info_bar()
         if self.student.is_exam_period():
             self.draw_exam_banner()
@@ -1023,26 +1073,33 @@ class Game:
                                    config.INFO_TEXT_CENTER_Y)
         self.screen.blit(knowledge, knowledge_rect)
 
-    def draw_buttons(self):
-        """행동 버튼 3개와 그 아래 "누른 뒤 1초 동안 회색 (쿨타임)" 안내 문구를 그린다.
+    def get_auto_progress(self):
+        """다음 자동 행동까지의 진행률(0~1)을 돌려준다. 방금 행동했으면 0, 곧 행동하면 1에 가깝다."""
+        return config.FULL_RATIO - self.auto_timer / config.AUTO_ACTION_INTERVAL
 
-        E1: 마우스가 올라간 버튼은 밝게, 방금 실행된 버튼은 눌린 자리(4px 아래)에,
-        쿨타임 중이면 세 버튼 모두 회색 + 1초에 걸쳐 차오르는 진행 막대를 그린다.
+    def draw_buttons(self):
+        """방침 버튼 3개, 그 아래 자동 행동 진행 막대와 "다음 자동 행동까지" 안내 문구를 그린다.
+
+        지금 고른 방침 버튼은 노랑 계열로 밝게 강조하고(반투명 없음),
+        마우스가 올라간 버튼은 밝은 하늘색, 방금 고른 버튼은 잠깐 눌린 자리(4px 아래)에 그린다.
+        진행 막대는 방침 버튼 3개 너비의 도트 상자 안에 2초에 걸쳐 차오른다(draw_progress_bar).
         """
-        cooling_down = self.is_cooling_down()
-        progress = None
-        if cooling_down:
-            progress = config.FULL_RATIO - self.cooldown / config.ACTION_COOLDOWN
         for name, button in self.buttons.items():
             hovered = self.mouse_pos is not None and button.is_clicked(self.mouse_pos)
             offset = config.NO_OFFSET
             if self.press_timers.get(name, config.ZERO_TIME) > config.TIME_EPSILON:
                 offset = config.BUTTON_PRESS_OFFSET
-            button.draw(self.screen, self.font, cooling_down, hovered, offset, progress)
+            button.draw(self.screen, self.font, False, hovered, offset,
+                        selected=(name == self.policy))
 
-        hint = render_text(self.font, config.COOLDOWN_HINT_TEXT, config.COLOR_TEXT_SOFT)
+        bar = pygame.Rect(config.BUTTON_START_X, config.AUTO_BAR_Y,
+                          config.POLICY_AREA_WIDTH, config.AUTO_BAR_HEIGHT)
+        inner = draw_pixel_box(self.screen, bar, config.COLOR_COOLDOWN_TRACK)
+        draw_progress_bar(self.screen, inner, self.get_auto_progress())
+
+        hint = render_text(self.small_font, config.AUTO_HINT_TEXT, config.COLOR_TEXT_SOFT)
         hint_rect = hint.get_rect()
-        hint_rect.midtop = (config.COOLDOWN_HINT_X, config.COOLDOWN_HINT_Y)
+        hint_rect.midtop = (bar.centerx, config.AUTO_HINT_Y)
         self.screen.blit(hint, hint_rect)
 
     def run(self):

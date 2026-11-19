@@ -51,8 +51,9 @@ def color(surf, x, y):
 
 def snapshot(g):
     s = g.student
-    return (s.health, s.mental, s.knowledge, s.elapsed, s.decay_timer, g.cooldown,
-            g.state, g.ending)
+    # (G단위) 쿨타임 대신 자동 행동 시계·방침·마지막 행동을 본다
+    return (s.health, s.mental, s.knowledge, s.elapsed, s.decay_timer, g.auto_timer,
+            g.policy, g.last_action, g.state, g.ending)
 
 
 def click(g, pos):
@@ -109,7 +110,11 @@ def test_enter_starts_new_game(title_game):
     assert g.state == config.STATE_PLAYING
     assert (s.health, s.mental, s.knowledge) == (80, 80, 0)
     assert s.get_grade() == 1 and s.elapsed == 0 and s.decay_timer == 0
-    assert g.cooldown == 0 and g.ending is None
+    assert g.ending is None
+    # (G단위) 쿨타임 0 대신: 방침은 균형, 자동 행동 시계는 꽉 참, 아직 행동 없음
+    assert g.policy == config.POLICY_START
+    assert g.auto_timer == config.AUTO_ACTION_INTERVAL
+    assert g.last_action is None
 
 
 def test_numpad_enter_ignored_on_title(title_game):
@@ -129,8 +134,10 @@ def test_title_ignores_other_keys(title_game, key):
 def test_title_ignores_button_clicks(title_game):
     g = title_game
     before = snapshot(g)
-    for name in (config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY):
-        click(g, button_center(g, name))
+    # (G단위) 버튼은 방침 버튼이다
+    for policy, name in zip(config.POLICY_ORDER,
+                            (config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY)):
+        click(g, button_center(g, policy))
         assert g.do_action(name) is False
     assert snapshot(g) == before
 
@@ -158,16 +165,19 @@ def test_ending_r_fully_resets(playing_game):
     g = playing_game
     g.update(30.4)  # elapsed 30.4, decay_timer 0.4
     g.student.knowledge = 200
+    g.set_policy(config.POLICY_STUDY_FOCUS)   # 공부 체력 -8: 5 -> 0
     force_ending_by_study(g)
-    assert g.cooldown == config.ACTION_COOLDOWN
     assert g.ending == config.ENDING_LEAVE
     press(g, pygame.K_r)
     s = g.student
     assert g.state == config.STATE_PLAYING
     assert (s.health, s.mental, s.knowledge) == (80, 80, 0)
     assert s.elapsed == 0 and s.decay_timer == 0 and s.get_grade() == 1
-    assert g.cooldown == 0 and g.ending is None
-    # 쿨타임이 풀렸으므로 바로 행동 가능
+    assert g.ending is None
+    # (G단위) 쿨타임 대신: 방침은 균형으로, 자동 행동 시계는 처음(2초)으로, last_action 없음
+    assert g.policy == config.POLICY_START
+    assert g.auto_timer == config.AUTO_ACTION_INTERVAL
+    assert g.last_action is None
     assert g.do_action(config.ACTION_FEED) is True
 
 
@@ -197,10 +207,10 @@ def test_ending_ignores_other_keys(playing_game, key):
 def test_ending_ignores_clicks_and_actions(playing_game):
     g = playing_game
     force_ending_by_study(g)
-    g.cooldown = 0
     before = snapshot(g)
-    for name in (config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY):
-        click(g, button_center(g, name))
+    for policy, name in zip(config.POLICY_ORDER,
+                            (config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY)):
+        click(g, button_center(g, policy))
         assert g.do_action(name) is False
     assert snapshot(g) == before
 
@@ -298,16 +308,18 @@ def test_study_health_to_zero_ends_immediately(playing_game):
 def test_study_mental_to_zero_ends_immediately(playing_game):
     g = playing_game
     g.student.mental = 8
-    press(g, pygame.K_3)
+    g.do_action(config.ACTION_STUDY)   # (G단위) 키 3은 방침 선택이므로 do_action
     assert g.student.mental == 0
     assert g.state == config.STATE_ENDING and g.ending == config.ENDING_LEAVE
 
 
-def test_study_below_zero_by_click_ends(playing_game):
+def test_study_below_zero_ends(playing_game):
+    """(G단위: 예전 '클릭 공부') 멘탈 3에서 공부(-8)하면 0에서 멈추고 바로 휴학."""
     g = playing_game
     g.student.mental = 3
-    click(g, button_center(g, config.ACTION_STUDY))
+    g.do_action(config.ACTION_STUDY)
     assert g.student.mental == 0
+    assert g.state == config.STATE_ENDING and g.ending == config.ENDING_LEAVE
     assert g.state == config.STATE_ENDING and g.ending == config.ENDING_LEAVE
 
 
@@ -511,7 +523,8 @@ def test_ending_texts(playing_game, ending):
     assert "누적 지식 456" in all_texts
     assert "R을 눌러 다시 하기" in all_texts
     # 게임 화면 요소(버튼·배너)는 엔딩 화면에 없다
-    assert config.FEED_BUTTON_TEXT not in all_texts
+    for policy in config.POLICY_ORDER:   # (G단위) 방침 버튼 글자
+        assert config.POLICIES[policy][config.POLICY_TEXT] not in all_texts
     assert config.EXAM_BANNER_TEXT not in all_texts
 
 
@@ -525,7 +538,8 @@ def test_title_texts(title_game):
     assert "제자 키우기" in all_texts
     assert "최고 기록: 지식 0" in all_texts
     assert "Enter를 눌러 시작" in all_texts
-    assert config.FEED_BUTTON_TEXT not in all_texts
+    for policy in config.POLICY_ORDER:   # (G단위) 방침 버튼 글자
+        assert config.POLICIES[policy][config.POLICY_TEXT] not in all_texts
 
 
 def test_title_screen_has_no_game_elements(title_game):
@@ -584,7 +598,7 @@ def test_study_in_exam_via_game(playing_game):
     g.update(45.0)
     assert g.student.is_exam_period()
     k, h, m = g.student.knowledge, g.student.health, g.student.mental
-    press(g, pygame.K_3)
+    g.do_action(config.ACTION_STUDY)   # (G단위) 균형 방침: 배수 1.0
     assert (g.student.knowledge, g.student.health, g.student.mental) == (k + 20, h - 5, m - 8)
 
 
@@ -721,15 +735,14 @@ def test_banner_pixels_do_not_cover_gauges(playing_game):
                  config.INFO_TEXT_CENTER_Y) == config.COLOR_INFO_BAR
 
 
-# ======================= 회귀: 쿨타임, 게이지 범위 =======================
+# ======================= 회귀: (G단위) 쿨타임 없음, 게이지 범위 =======================
 
-def test_cooldown_still_shared(playing_game):
+def test_no_cooldown_between_actions(playing_game):
+    """(예전: 쿨타임 공유) 기획서 10절로 쿨타임이 없어져 이어서 한 행동이 모두 실행된다."""
     g = playing_game
     assert g.do_action(config.ACTION_FEED) is True
-    assert g.do_action(config.ACTION_REST) is False
-    assert g.do_action(config.ACTION_STUDY) is False
-    g.update(0.99)
-    assert g.do_action(config.ACTION_STUDY) is False
+    assert g.do_action(config.ACTION_REST) is True
+    assert g.do_action(config.ACTION_STUDY) is True
     g.update(0.01)
     assert g.do_action(config.ACTION_STUDY) is True
 
@@ -741,11 +754,12 @@ def test_random_full_play_gauges_in_range(seed):
     g = Game()
     try:
         press(g, pygame.K_RETURN)
-        keys = [pygame.K_1, pygame.K_2, pygame.K_3]
+        # (G단위) 키 1/2/3은 방침이므로 행동은 do_action으로 무작위로 시킨다
+        actions = [config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY]
         frames = 0
         while g.state == config.STATE_PLAYING:
             if rng.random() < 0.05:
-                press(g, rng.choice(keys))
+                g.do_action(rng.choice(actions))
             g.update(FRAME)
             frames += 1
             s = g.student
@@ -761,25 +775,34 @@ def test_random_full_play_gauges_in_range(seed):
 
 # ======================= 완료 기준: 처음부터 끝까지 한 판 =======================
 
-def _smart_bot_key(s):
+LEGACY_ACTION_GAP = 1.0   # (G단위) 예전 쿨타임(1초). 사람 흉내 봇의 행동 간격으로만 쓴다
+
+
+def _smart_bot_action(s):
     if s.health <= 40:
-        return pygame.K_1
+        return config.ACTION_FEED
     if s.mental <= 40:
-        return pygame.K_2
-    return pygame.K_3
+        return config.ACTION_REST
+    return config.ACTION_STUDY
 
 
 def test_full_play_title_to_graduation_and_restart(title_game):
-    """타이틀 -> Enter -> 60fps로 240초 동안 키보드로만 플레이 -> 졸업 엔딩 -> R -> 새 판."""
+    """타이틀 -> Enter -> 60fps로 240초 동안 1초마다 행동 -> 졸업 엔딩 -> R -> 새 판.
+
+    (G단위) 키 1/2/3이 방침 선택이 되어 행동은 do_action으로 시킨다(자동 행동은 conftest가 끔).
+    """
     g = title_game
     g.draw()
     press(g, pygame.K_RETURN)
     frames = 0
     banner_frames = 0
+    wait = 0.0
     while g.state == config.STATE_PLAYING:
-        if not g.is_cooling_down():
-            press(g, _smart_bot_key(g.student))
+        if wait <= 1e-9:
+            g.do_action(_smart_bot_action(g.student))
+            wait = LEGACY_ACTION_GAP
         g.update(FRAME)
+        wait -= FRAME
         frames += 1
         if g.state == config.STATE_PLAYING and frames % 30 == 0:
             g.draw()

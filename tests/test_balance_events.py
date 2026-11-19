@@ -84,7 +84,7 @@ def set_time(g, elapsed, count=None, last=None):
         s.event_counts[s.get_grade()] = count
     s.last_event_time = last
     s.health = s.mental = 80
-    g.cooldown = 0
+    # (G단위) 쿨타임이 없어져 g.cooldown = 0 으로 풀어 줄 필요가 없다
 
 
 def rng_draws(monkeypatch, g, value=0.0):
@@ -190,7 +190,7 @@ def test_guaranteed_event_also_restarts_gap(make_game, monkeypatch):
     assert g.student.event_counts[1] == 1
     g.update(0.5)
     g.student.health = g.student.mental = 80
-    g.cooldown = 0
+    # (G단위) 쿨타임이 없어져 g.cooldown = 0 으로 풀어 줄 필요가 없다
     assert g.do_action(FEED)                         # 8.0초 뒤: 뜸
     assert g.student.event_counts[1] == 2
 
@@ -238,7 +238,7 @@ def test_dialog_pause_not_counted_in_gap(make_game, monkeypatch):
     assert g.student.event_counts[1] == 1                 # 간격 미충족 -> 없음
     g.update(0.5)
     g.student.health = g.student.mental = 80
-    g.cooldown = 0
+    # (G단위) 쿨타임이 없어져 g.cooldown = 0 으로 풀어 줄 필요가 없다
     assert g.student.is_event_gap_passed()
     assert g.do_action(FEED)
     assert g.student.event_counts[1] == 2
@@ -294,7 +294,6 @@ def test_gap_skip_keeps_rng_sequence_deterministic(make_game, monkeypatch):
         g.student.last_event_time = 1.0
         state = g.rng.getstate()
         for _ in range(n):                    # 간격 안(2~7.9초) 행동 n 번
-            g.cooldown = 0
             assert g.do_action(FEED)
             g.student.elapsed += 0.9
         assert g.rng.getstate() == state
@@ -362,7 +361,7 @@ def run(seed, interval, policy=greedy, chooser=None, think=0.3):
                 g.update(DT)
                 dialog_wait -= DT
             continue
-        if wait <= 1e-9 and not g.is_cooling_down():
+        if wait <= 1e-9:   # (G단위) 쿨타임 없음: interval(>=1초)마다 행동
             action = policy(g.student)
             if action is not None:
                 assert g.do_action(action)
@@ -627,7 +626,7 @@ def test_choice_result_under_notice_no_overlap(quiet_game, grade):
     assert g.do_action(STUDY)
     g.start_event(event_by_id("professor_praise"))
     g.update(0.5)
-    g.cooldown = 0
+    # (G단위) 쿨타임이 없어져 g.cooldown = 0 으로 풀어 줄 필요가 없다
     assert g.do_action(STUDY)
     event = max(config.CHOICE_EVENTS,
                 key=lambda e: len(e[config.EVENT_OPTIONS][0][config.OPTION_EFFECTS]))
