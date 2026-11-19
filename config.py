@@ -1157,24 +1157,27 @@ UPGRADE_BUTTON_X = BUTTON_START_X + POLICY_AREA_WIDTH + BUTTON_GAP   # 600
 UPGRADE_BUTTON_Y = BUTTON_Y                                          # 476
 UPGRADE_BUTTON_ENDING_Y = 516
 
-# 업그레이드 패널: 정보바 아래부터 방침 버튼 위까지 (x 12~788, y 64~468). 반투명 없이 도트 상자
-UPGRADE_PANEL_RECT = (12, 64, 776, 404)
+# 업그레이드 패널 (J단위에서 배치 변경): 왼쪽 상태 패널 자리(x 12~268, y 116~468)에 겹쳐 그린다.
+# 그래서 패널이 열려 있어도 오른쪽 제자 무대(제자·배경)는 그대로 보인다. 반투명 없이 도트 상자
+UPGRADE_PANEL_RECT = (STATUS_PANEL_X, PANEL_Y, STATUS_PANEL_WIDTH, 352)  # 아래 끝 468 (방침 버튼 476 위)
 UPGRADE_PANEL_TITLE = "업그레이드"
-UPGRADE_PANEL_HINT = "↑↓ 고르기 · Enter/클릭 사기 · U 닫기"
-UPGRADE_HEADER_Y = 92               # 패널 머리 줄(제목·안내·연구비) 가운데 y
-UPGRADE_HEADER_MARGIN = 32          # 머리 줄 글자와 패널 좌우 끝 사이 여백
+UPGRADE_HEADER_Y = 136              # 머리 줄(제목·연구비) 가운데 y
+UPGRADE_HEADER_LEFT = 28            # 제목 글자 왼쪽 x
+UPGRADE_HEADER_RIGHT = 252          # 연구비 글자 오른쪽 끝 x
 UPGRADE_ROW_X = 24                  # 항목 줄 상자 왼쪽 x
-UPGRADE_ROW_WIDTH = 752             # 항목 줄 상자 가로 길이 -> 오른쪽 끝 776
-UPGRADE_ROW_TOP = 116               # 첫 항목 줄 위쪽 y
-UPGRADE_ROW_HEIGHT = 32             # 항목 줄 상자 세로 길이
-UPGRADE_ROW_STEP = 34               # 항목 줄 사이 거리 (10줄 -> 마지막 아래 끝 454)
-UPGRADE_CURSOR_X = 32               # 고른 줄 표시 화살표 왼쪽 x
-UPGRADE_NAME_X = 52                 # 이름 글자 왼쪽 x
-UPGRADE_LEVEL_X = 220               # "Lv 0/5" 글자 왼쪽 x
-UPGRADE_EFFECT_X = 320              # 효과 설명 글자 왼쪽 x
-UPGRADE_COST_RIGHT = 760            # 가격 글자 오른쪽 끝 x
+UPGRADE_ROW_WIDTH = 232             # 항목 줄 상자 가로 길이 -> 오른쪽 끝 256 (패널 안쪽 20~260)
+UPGRADE_ROW_TOP = 150               # 첫 항목 줄 위쪽 y
+UPGRADE_ROW_HEIGHT = 28             # 항목 줄 상자 세로 길이 (안쪽 20: 작은 글자 한 줄)
+UPGRADE_ROW_STEP = 29               # 항목 줄 사이 거리 (10줄 -> 마지막 아래 끝 439)
+UPGRADE_CURSOR_X = 28               # 고른 줄 표시 화살표 왼쪽 x
+UPGRADE_NAME_X = 48                 # 이름 글자 왼쪽 x
+UPGRADE_LEVEL_X = 148               # "Lv 0/5" 글자 왼쪽 x
+UPGRADE_COST_RIGHT = 248            # 가격 글자 오른쪽 끝 x
+UPGRADE_FOOTER_X = 28               # 바닥 줄(고른 항목 효과) 글자 왼쪽 x
+UPGRADE_FOOTER_Y = 450              # 바닥 줄 가운데 y (패널 안쪽 아래 끝 460 안)
+UPGRADE_FOOTER_TEXT = "효과: {}"     # 바닥 줄 글자 틀: 고른 줄(↑↓)의 레벨당 효과
 UPGRADE_LEVEL_TEXT = "Lv {}/{}"
-UPGRADE_COST_TEXT = "{} 연구비"
+UPGRADE_COST_TEXT = "{}"                # 가격 글자(숫자만, 단위 연구비는 머리 줄에 보인다)
 UPGRADE_MAX_TEXT = "MAX"
 UPGRADE_CURSOR_START = 0            # 패널을 처음 열었을 때 고른 줄 번호
 UPGRADE_CURSOR_STEP = 1             # ↑↓ 한 번에 움직이는 줄 수
@@ -1206,3 +1209,569 @@ GRAD_SCHOOL_HINT_Y = 460    # 둘째 줄 가운데 y (첫 줄 RESTART_HINT_Y 428
 # 엔딩 이름이 길면(예: "대학원 12년차 수료") 큰 글씨 대신 조금 작은 글씨로 그린다
 ENDING_NAME_MAX_WIDTH = 520     # 큰 글씨 엔딩 이름이 넘으면 안 되는 가로 길이 (패널 608 안)
 ENDING_LONG_FONT_SIZE = 44      # 긴 엔딩 이름 글자 크기
+
+# ---------------------------------------------------------------
+# 22. 무대 배경 4겹 (기획서 10절 "배경", J단위)
+#   1) 장소(학년) 2) 하늘(계절·시간대) 3) 행동 소품(마지막 자동 행동) 4) 시설(산 시설)
+#   배경은 제자 무대 안쪽(x 288~784, y 120~456)에 그리고, 제자·파티클·팝업·알림보다 먼저 그린다.
+#   좌표는 무대 안쪽 왼쪽 위를 (0, 0)으로 하는 도트 칸(4 x 4 픽셀) 단위다(가로 124칸, 세로 84칸).
+# ---------------------------------------------------------------
+# 계절: 학년(대학원은 년차) 안 0~15초 봄, 15~30초 여름, 30~45초 가을, 45~60초 겨울(시험 기간)
+SEASON_SPRING = "spring"
+SEASON_SUMMER = "summer"
+SEASON_AUTUMN = "autumn"
+SEASON_WINTER = "winter"
+SEASONS = [SEASON_SPRING, SEASON_SUMMER, SEASON_AUTUMN, SEASON_WINTER]  # 학년 안 순서
+SEASON_SECONDS = SECONDS_PER_GRADE // len(SEASONS)   # 계절 하나의 길이 15초 (= 시험 기간 길이)
+INDEX_STEP = 1                     # 목록에서 다음 칸까지의 거리 (마지막 칸 번호 = 길이 - 1)
+SINGLE_COUNT = 1                   # 사각형 조각 하나를 그릴 때의 개수
+
+# 시간대: 계절 15초 안에서 낮(0~9초) -> 저녁(9~12초) -> 밤(12~15초)
+TIME_DAY = "day"
+TIME_EVENING = "evening"
+TIME_NIGHT = "night"
+DAY_END = 9.0                      # 계절 안에서 낮이 끝나는 시각(초)
+EVENING_END = 12.0                 # 계절 안에서 저녁이 끝나는 시각(초). 그 뒤 15초까지 밤
+
+# 하늘색이 부드럽게 바뀌는 기준점: (계절 안 시각(초), 시간대 색, 몇 계절 뒤의 색인지)
+# 두 기준점 사이는 직선으로 섞는다(선형 보간). 낮색은 7.5초까지 그대로 -> 9.5초 저녁색
+# -> 11초까지 그대로 -> 12.5초 밤색 -> 14초까지 그대로 -> 15초에 "다음 계절의 낮색".
+# 그래서 계절·학년이 바뀌는 순간에도 하늘색이 끊기지 않는다(밤 -> 다음 날 아침).
+SKY_KEYFRAMES = [
+    (0.0, TIME_DAY, 0),
+    (7.5, TIME_DAY, 0),
+    (9.5, TIME_EVENING, 0),
+    (11.0, TIME_EVENING, 0),
+    (12.5, TIME_NIGHT, 0),
+    (14.0, TIME_NIGHT, 0),
+    (15.0, TIME_DAY, 1),
+]
+# 계절별 하늘색 {시간대: RGB}. 파스텔 레트로 팔레트
+SKY_COLORS = {
+    SEASON_SPRING: {TIME_DAY: (178, 222, 246), TIME_EVENING: (250, 196, 172),
+                    TIME_NIGHT: (64, 66, 124)},
+    SEASON_SUMMER: {TIME_DAY: (132, 202, 246), TIME_EVENING: (252, 172, 132),
+                    TIME_NIGHT: (46, 54, 112)},
+    SEASON_AUTUMN: {TIME_DAY: (192, 214, 236), TIME_EVENING: (242, 162, 122),
+                    TIME_NIGHT: (58, 52, 102)},
+    SEASON_WINTER: {TIME_DAY: (214, 226, 242), TIME_EVENING: (214, 184, 206),
+                    TIME_NIGHT: (40, 44, 86)},
+}
+
+# 장소 id (학년별, 대학원은 연구실)
+PLACE_LAWN = "lawn"                # 1학년 캠퍼스 잔디
+PLACE_LECTURE = "lecture"          # 2학년 강의동
+PLACE_LIBRARY = "library"          # 3학년 도서관 앞
+PLACE_CEREMONY = "ceremony"        # 4학년 졸업식장
+PLACE_LAB = "lab"                  # 대학원 연구실 (실내, 창문으로 하늘이 보인다)
+PLACE_BY_GRADE = {1: PLACE_LAWN, 2: PLACE_LECTURE, 3: PLACE_LIBRARY, 4: PLACE_CEREMONY}
+
+# 배경 그림을 미리 그려 두는 Surface에서 "비어 있음(하늘이 비침)"을 뜻하는 색.
+# 이 색은 set_colorkey로 통째로 빼고 붙인다(반투명 아님). 다른 그림에는 쓰지 않는 자홍색
+COLOR_KEY = (255, 0, 255)
+SCENE_CELL = PIXEL_SIZE            # 배경 도트 1칸 크기(픽셀)
+
+# 계절별 땅·나무 색. snow는 겨울에만 있는 눈(지붕·창틀 위). None이면 그리지 않는다
+SEASON_COLORS = {
+    SEASON_SPRING: {"ground": (156, 214, 146), "ground_light": (190, 232, 172),
+                    "ground_dark": (118, 182, 116), "leaf": (246, 178, 200),
+                    "leaf_light": (253, 214, 226), "leaf_dark": (222, 136, 168),
+                    "accent": (253, 206, 222), "snow": None},
+    SEASON_SUMMER: {"ground": (116, 198, 116), "ground_light": (152, 222, 142),
+                    "ground_dark": (76, 158, 94), "leaf": (90, 178, 106),
+                    "leaf_light": (142, 212, 132), "leaf_dark": (58, 138, 82),
+                    "accent": (255, 220, 104), "snow": None},
+    SEASON_AUTUMN: {"ground": (210, 190, 124), "ground_light": (228, 208, 152),
+                    "ground_dark": (176, 146, 94), "leaf": (242, 152, 82),
+                    "leaf_light": (250, 192, 122), "leaf_dark": (202, 106, 62),
+                    "accent": (226, 88, 84), "snow": None},
+    SEASON_WINTER: {"ground": (236, 240, 248), "ground_light": (255, 255, 255),
+                    "ground_dark": (204, 210, 228), "leaf": (240, 244, 252),
+                    "leaf_light": (255, 255, 255), "leaf_dark": (196, 204, 226),
+                    "accent": (255, 255, 255), "snow": (255, 255, 255)},
+}
+
+# 계절과 상관없는 배경 색 (이름 -> RGB)
+SCENE_COLORS = {
+    "outline": COLOR_OUTLINE,
+    "white": COLOR_WHITE,
+    "key": COLOR_KEY,
+    "far": (206, 212, 236), "far_dark": (172, 180, 216),          # 먼 건물
+    "glass": (204, 230, 250), "glass_dark": (132, 168, 214),      # 창문 유리
+    "path": (234, 222, 198), "path_dark": (212, 196, 170),        # 길·광장 바닥
+    "wood": (198, 152, 110), "wood_dark": (150, 104, 78),         # 나무(목재)
+    "brick": (236, 178, 152), "brick_dark": (204, 140, 120),      # 벽돌 건물
+    "roof": (150, 108, 128),                                      # 지붕
+    "stone": (238, 234, 226), "stone_dark": (204, 198, 192),      # 돌 건물
+    "door": (150, 104, 78),
+    "banner": COLOR_PINK, "banner_light": COLOR_PINK_LIGHT,       # 졸업식 현수막
+    "gold": (250, 210, 96),     # 금색 장식 (엔딩 학사모 술 색과 겹치지 않게 조금 다르게)
+    "flag_mint": COLOR_MINT, "flag_sky": COLOR_SKY,
+    "balloon_pink": COLOR_PINK_DARK, "balloon_sky": COLOR_SKY_DARK,
+    "wall": (236, 232, 220), "wall_dark": (214, 206, 190),        # 연구실 벽
+    "floor": (214, 178, 140), "floor_dark": (186, 146, 110),      # 연구실 바닥
+    "board": (250, 250, 246), "board_frame": (160, 160, 182),     # 화이트보드
+    "book_pink": COLOR_PINK, "book_mint": COLOR_MINT_DARK, "book_sky": COLOR_SKY_DARK,
+    "book_yellow": COLOR_YELLOW,
+    "plant": (96, 172, 112), "pot": (226, 150, 120),
+    "lamp": (250, 236, 170),
+    "cafe_wall": (252, 236, 214), "gym_wall": (178, 210, 244), "gym_dark": (110, 150, 210),
+    "cup": COLOR_WHITE, "coffee": (150, 100, 70),
+}
+
+# 배경 조각 종류
+PART_RECT = "rect"        # ("rect", 색 이름, 열, 행, 가로 칸, 세로 칸)
+PART_WINDOWS = "windows"  # ("windows", 색 이름, 열, 행, 가로 개수, 세로 개수, 가로 칸, 세로 칸, 가로 간격, 세로 간격)
+PART_SPRITE = "sprite"    # ("sprite", 스프라이트 이름, 열, 행)
+
+# 배경 스프라이트: 이름 -> (문자열 격자, {글자: 색 이름}). "." 은 비어 있음
+SCENE_SPRITES = {
+    "tree": ([                                   # 나무 (잎 색이 계절 따라 바뀐다)
+        "....oooooo....",
+        "..ooLLLLLLoo..",
+        ".oLLllLLLLLLo.",
+        ".oLllLLLLaLdo.",
+        "oLLlLLLLLLLLLo",
+        "oLaLLLLLLLLdLo",
+        "oLLLLLLLdLLLLo",
+        "oLdLLLLaLLLLdo",
+        ".oLLLLdLLLLLo.",
+        ".oLLLLLLLLLdo.",
+        "..oddLLLLddo..",
+        "...ooddddoo...",
+        ".....oTto.....",
+        ".....oTto.....",
+        ".....oTto.....",
+        ".....oTto.....",
+        ".....oTto.....",
+        "....ooTtoo....",
+    ], {"o": "outline", "L": "leaf", "l": "leaf_light", "d": "leaf_dark", "a": "accent",
+        "T": "wood", "t": "wood_dark"}),
+    "bush": ([                                   # 작은 덤불
+        "..oooooo..",
+        ".oLLlLLLo.",
+        "oLlLLLaLLo",
+        "oLLLLLLLdo",
+        "oooooooooo",
+    ], {"o": "outline", "L": "leaf", "l": "leaf_light", "d": "leaf_dark", "a": "accent"}),
+    "bench": ([                                  # 벤치 (겨울에는 위에 눈)
+        "ssssssssssssss",
+        "oooooooooooooo",
+        "oWWWWWWWWWWWWo",
+        "oooooooooooooo",
+        "oWWWWWWWWWWWWo",
+        "oooooooooooooo",
+        ".o..........o.",
+        ".o..........o.",
+    ], {"o": "outline", "W": "wood", "s": "snow"}),
+    "flower": ([                                 # 꽃 (겨울에는 눈덩이)
+        ".a.",
+        "aya",
+        ".g.",
+    ], {"a": "accent", "y": "gold", "g": "leaf_dark"}),
+    "lamp": ([                                   # 가로등
+        "oooo",
+        "oYYo",
+        "oYYo",
+        "oooo",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        "oooo",
+    ], {"o": "outline", "Y": "lamp"}),
+    "book": ([                                   # 도서관 박공의 펼친 책 표시
+        ".oo..oo.",
+        "oWWooWWo",
+        "oWWooWWo",
+        "oooooooo",
+    ], {"o": "outline", "W": "white"}),
+    "cap": ([                                    # 현수막 가운데 학사모
+        "...oo...",
+        ".oooooo.",
+        "oooooooo",
+        ".oooooy.",
+        "..oooo.y",
+    ], {"o": "outline", "y": "gold"}),
+    "balloon_pink": ([                           # 풍선 (분홍)
+        ".oooo.",
+        "oBWBBo",
+        "oBBBBo",
+        "oBBBBo",
+        ".oBBo.",
+        "..oo..",
+        "...o..",
+        "..o...",
+        "...o..",
+        "..o...",
+    ], {"o": "outline", "B": "balloon_pink", "W": "white"}),
+    "balloon_sky": ([                            # 풍선 (하늘)
+        ".oooo.",
+        "oBWBBo",
+        "oBBBBo",
+        "oBBBBo",
+        ".oBBo.",
+        "..oo..",
+        "...o..",
+        "..o...",
+        "...o..",
+        "..o...",
+    ], {"o": "outline", "B": "balloon_sky", "W": "white"}),
+    "chair": ([                                  # 졸업식 의자
+        "oooo..",
+        "oCCo..",
+        "oCCo..",
+        "oCCooo",
+        "oCCCCo",
+        "oooooo",
+        "o....o",
+        "o....o",
+    ], {"o": "outline", "C": "far_dark"}),
+    "plant": ([                                  # 연구실 화분
+        "..o..o..",
+        ".oPo.oPo",
+        "oPPooPPo",
+        ".oPPPPo.",
+        "..oPPo..",
+        "...oo...",
+        ".oooooo.",
+        ".oRRRRo.",
+        ".oRRRRo.",
+        "..oRRo..",
+        "..oooo..",
+    ], {"o": "outline", "P": "plant", "R": "pot"}),
+    # 시설 3개 (가로 16칸, 세로 18칸). s는 겨울 지붕 눈
+    "library": ([
+        "......ssss......",
+        "......oooo......",
+        "....ooRRRRoo....",
+        "..ooRRRRRRRRoo..",
+        "ooRRRRRRRRRRRRoo",
+        "oooooooooooooooo",
+        "oSSSSSoBBoSSSSSo",
+        "oSSSSSoBBoSSSSSo",
+        "oooooooooooooooo",
+        "oScSScSSSScSScSo",
+        "oScSScSooScSScSo",
+        "oScSScoDDoScSSco",
+        "oScSScoDDoScSSco",
+        "oScSScoDDoScSSco",
+        "oScSScoDDoScSSco",
+        "oooooooooooooooo",
+        "oSSSSSSSSSSSSSSo",
+        "oooooooooooooooo",
+    ], {"o": "outline", "R": "roof", "S": "stone", "c": "stone_dark", "B": "book_sky",
+        "D": "door", "s": "snow"}),
+    "cafe": ([
+        "ssssssssssssssss",
+        "oooooooooooooooo",
+        "oWWWWWWWWWWWWWWo",
+        "oWWWWoCCoWWWWWWo",
+        "oWWWWoKKooWWWWWo",
+        "oWWWWoKKoWWWWWWo",
+        "oWWWWWooWWWWWWWo",
+        "oooooooooooooooo",
+        "oPWPWPWPWPWPWPWo",
+        "oPWPWPWPWPWPWPWo",
+        ".oooooooooooooo.",
+        ".oWWWWWWWWWWWWo.",
+        ".oGGGGGWoDDDDWo.",
+        ".oGGGGGWoDDDDWo.",
+        ".oGGGGGWoDDDDWo.",
+        ".oWWWWWWoDDDDWo.",
+        ".oWWWWWWoDDDDWo.",
+        ".oooooooooooooo.",
+    ], {"o": "outline", "W": "cafe_wall", "C": "cup", "K": "coffee", "P": "banner",
+        "G": "glass", "D": "door", "s": "snow"}),
+    "gym": ([
+        "ssssssssssssssss",
+        "oooooooooooooooo",
+        "oNNNNNNNNNNNNNNo",
+        "oNooNNNNNNNNooNo",
+        "oNooooooooooooNo",
+        "oNooNNNNNNNNooNo",
+        "oNNNNNNNNNNNNNNo",
+        "oooooooooooooooo",
+        "oBBBBBBBBBBBBBBo",
+        "oBGGGBGGGBGGGBBo",
+        "oBGGGBGGGBGGGBBo",
+        "oBBBBBBBBBBBBBBo",
+        "oBGGGBBoDDDDoBBo",
+        "oBGGGBBoDDDDoBBo",
+        "oBBBBBBoDDDDoBBo",
+        "oBBBBBBoDDDDoBBo",
+        "oBBBBBBoDDDDoBBo",
+        "oooooooooooooooo",
+    ], {"o": "outline", "N": "gym_dark", "B": "gym_wall", "G": "glass", "D": "door",
+        "s": "snow"}),
+}
+
+GROUND_ROW = 45                     # 바깥 장소의 땅이 시작하는 행 (무대 안쪽 y 180, 화면 y 300)
+OUTDOOR_GROUND = [                  # 바깥 장소 공통 땅(계절 색)
+    (PART_RECT, "ground", 0, GROUND_ROW, 124, 39),
+    (PART_RECT, "ground_light", 0, GROUND_ROW, 124, 1),
+    (PART_WINDOWS, "ground_dark", 4, 50, 8, 4, 2, 1, 16, 9),   # 풀잎 무늬
+]
+
+# 장소별 배경 조각: back(시설보다 뒤), front(시설보다 앞, 주로 땅 위 물건)
+PLACE_BACK = {
+    PLACE_LAWN: OUTDOOR_GROUND + [
+        (PART_RECT, "far", 34, 28, 56, 17),                      # 먼 강의동
+        (PART_RECT, "far_dark", 34, 26, 56, 2),
+        (PART_RECT, "snow", 34, 25, 56, 1),
+        (PART_WINDOWS, "glass", 37, 30, 8, 3, 4, 3, 6, 5),
+        (PART_RECT, "path", 58, 45, 8, 4),                       # 앞으로 넓어지는 길
+        (PART_RECT, "path", 56, 49, 12, 5),
+        (PART_RECT, "path", 54, 54, 16, 6),
+        (PART_RECT, "path", 52, 60, 20, 8),
+        (PART_RECT, "path", 50, 68, 24, 16),
+        (PART_SPRITE, "tree", 20, 27),
+        (PART_SPRITE, "tree", 76, 27),
+    ],
+    PLACE_LECTURE: OUTDOOR_GROUND + [
+        (PART_RECT, "path", 18, 45, 88, 6),                      # 건물 앞 광장
+        (PART_RECT, "path_dark", 18, 45, 88, 1),
+        (PART_RECT, "brick", 22, 10, 80, 35),                    # 강의동 벽돌 건물
+        (PART_RECT, "brick_dark", 22, 42, 80, 3),
+        (PART_RECT, "roof", 20, 7, 84, 3),
+        (PART_RECT, "snow", 20, 6, 84, 1),
+        (PART_WINDOWS, "glass", 26, 13, 9, 2, 6, 5, 8, 9),
+        (PART_WINDOWS, "glass_dark", 26, 17, 9, 2, 6, 1, 8, 9),
+        (PART_RECT, "outline", 55, 31, 14, 14),                  # 현관
+        (PART_RECT, "door", 56, 32, 12, 13),
+        (PART_RECT, "glass", 57, 34, 4, 6),
+        (PART_RECT, "glass", 63, 34, 4, 6),
+        (PART_WINDOWS, "brick_dark", 22, 10, 2, 1, 2, 32, 78, 0),  # 양 끝 기둥
+        (PART_SPRITE, "bush", 24, 40),
+        (PART_SPRITE, "bush", 90, 40),
+    ],
+    PLACE_LIBRARY: OUTDOOR_GROUND + [
+        (PART_RECT, "path", 22, 45, 80, 8),                      # 앞마당
+        (PART_RECT, "stone", 26, 18, 72, 27),                    # 도서관 본관
+        (PART_RECT, "stone_dark", 22, 16, 80, 2),                # 박공(계단 모양 지붕)
+        (PART_RECT, "stone", 30, 13, 64, 3),
+        (PART_RECT, "stone", 40, 10, 44, 3),
+        (PART_RECT, "stone", 52, 7, 20, 3),
+        (PART_RECT, "snow", 52, 6, 20, 1),
+        (PART_RECT, "snow", 40, 9, 12, 1),
+        (PART_RECT, "snow", 72, 9, 12, 1),
+        (PART_SPRITE, "book", 58, 10),
+        (PART_WINDOWS, "stone_dark", 28, 19, 8, 1, 3, 26, 9, 0),  # 기둥
+        (PART_WINDOWS, "glass_dark", 33, 23, 7, 1, 3, 10, 9, 0),  # 긴 창
+        (PART_RECT, "stone_dark", 20, 45, 84, 2),                # 계단
+        (PART_RECT, "stone", 18, 47, 88, 2),
+        (PART_RECT, "stone_dark", 18, 49, 88, 1),
+        (PART_SPRITE, "lamp", 20, 31),
+        (PART_SPRITE, "lamp", 100, 31),
+    ],
+    PLACE_CEREMONY: OUTDOOR_GROUND + [
+        (PART_RECT, "wood_dark", 22, 8, 2, 37),                  # 현수막 기둥
+        (PART_RECT, "wood_dark", 100, 8, 2, 37),
+        (PART_RECT, "outline", 23, 7, 78, 12),                   # 현수막
+        (PART_RECT, "banner", 24, 8, 76, 10),
+        (PART_RECT, "banner_light", 24, 8, 76, 1),
+        (PART_WINDOWS, "gold", 28, 12, 6, 1, 2, 2, 6, 0),
+        (PART_WINDOWS, "gold", 62, 12, 6, 1, 2, 2, 6, 0),
+        (PART_SPRITE, "cap", 58, 10),
+        (PART_WINDOWS, "flag_mint", 26, 19, 7, 1, 3, 3, 12, 0),  # 깃발 줄
+        (PART_WINDOWS, "flag_sky", 32, 19, 6, 1, 3, 3, 12, 0),
+        (PART_RECT, "outline", 29, 37, 66, 8),                   # 단상
+        (PART_RECT, "wood", 30, 38, 64, 7),
+        (PART_RECT, "wood_dark", 30, 43, 64, 2),
+        (PART_RECT, "banner", 54, 38, 16, 4),
+        (PART_SPRITE, "balloon_pink", 12, 18),
+        (PART_SPRITE, "balloon_sky", 106, 20),
+    ],
+    PLACE_LAB: [
+        (PART_RECT, "wall", 0, 0, 124, 62),                      # 벽
+        (PART_RECT, "wall_dark", 0, 56, 124, 6),
+        (PART_RECT, "floor", 0, 62, 124, 22),                    # 바닥
+        (PART_RECT, "floor_dark", 0, 62, 124, 1),
+        (PART_WINDOWS, "floor_dark", 6, 63, 8, 1, 1, 21, 16, 0),
+        (PART_RECT, "wood", 68, 6, 44, 32),                      # 창틀
+        (PART_RECT, "key", 70, 8, 19, 28),                       # 창유리(하늘이 비친다)
+        (PART_RECT, "key", 91, 8, 19, 28),
+        (PART_RECT, "ground", 70, 30, 19, 6),                    # 창밖 땅
+        (PART_RECT, "ground", 91, 30, 19, 6),
+        (PART_RECT, "ground_light", 70, 30, 40, 1),
+        (PART_SPRITE, "bush", 72, 25),
+    ],
+}
+PLACE_FRONT = {
+    PLACE_LAWN: [
+        (PART_SPRITE, "bench", 6, 56),
+        (PART_SPRITE, "bench", 102, 64),
+        (PART_SPRITE, "flower", 30, 52),
+        (PART_SPRITE, "flower", 40, 72),
+        (PART_SPRITE, "flower", 80, 56),
+        (PART_SPRITE, "flower", 94, 76),
+        (PART_SPRITE, "flower", 14, 76),
+        (PART_SPRITE, "flower", 114, 52),
+    ],
+    PLACE_LECTURE: [
+        (PART_SPRITE, "flower", 12, 60),
+        (PART_SPRITE, "flower", 30, 74),
+        (PART_SPRITE, "flower", 96, 58),
+        (PART_SPRITE, "flower", 110, 76),
+    ],
+    PLACE_LIBRARY: [
+        (PART_SPRITE, "flower", 8, 62),
+        (PART_SPRITE, "flower", 26, 76),
+        (PART_SPRITE, "flower", 100, 60),
+        (PART_SPRITE, "flower", 114, 74),
+    ],
+    PLACE_CEREMONY: [
+        (PART_SPRITE, "chair", 4, 64),                           # 왼쪽 의자 줄
+        (PART_SPRITE, "chair", 12, 64),
+        (PART_SPRITE, "chair", 20, 64),
+        (PART_SPRITE, "chair", 28, 64),
+        (PART_SPRITE, "chair", 4, 75),
+        (PART_SPRITE, "chair", 12, 75),
+        (PART_SPRITE, "chair", 20, 75),
+        (PART_SPRITE, "chair", 28, 75),
+        (PART_SPRITE, "chair", 90, 75),                          # 오른쪽 의자 줄
+        (PART_SPRITE, "chair", 98, 75),
+        (PART_SPRITE, "chair", 106, 75),
+        (PART_SPRITE, "chair", 114, 75),
+    ],
+    PLACE_LAB: [
+        (PART_RECT, "wood", 89, 6, 2, 32),                       # 창 가운데 살
+        (PART_RECT, "wood_dark", 66, 38, 48, 2),                 # 창턱
+        (PART_RECT, "snow", 68, 37, 44, 1),
+        (PART_RECT, "wood_dark", 4, 12, 24, 50),                 # 책장
+        (PART_RECT, "wood", 6, 14, 20, 46),
+        (PART_WINDOWS, "wood_dark", 6, 25, 1, 3, 20, 1, 0, 12),
+        (PART_WINDOWS, "book_pink", 7, 16, 3, 4, 2, 9, 6, 12),
+        (PART_WINDOWS, "book_sky", 9, 17, 3, 4, 2, 8, 6, 12),
+        (PART_WINDOWS, "book_yellow", 11, 18, 3, 4, 2, 7, 6, 12),
+        (PART_RECT, "board_frame", 32, 10, 32, 20),              # 화이트보드
+        (PART_RECT, "board", 33, 11, 30, 18),
+        (PART_RECT, "book_sky", 36, 14, 12, 1),
+        (PART_RECT, "book_sky", 36, 17, 16, 1),
+        (PART_RECT, "book_pink", 36, 20, 9, 1),
+        (PART_RECT, "book_mint", 50, 23, 2, 4),
+        (PART_RECT, "book_mint", 53, 21, 2, 6),
+        (PART_RECT, "book_mint", 56, 18, 2, 9),
+        (PART_RECT, "board_frame", 38, 30, 20, 1),
+        (PART_SPRITE, "plant", 114, 51),
+    ],
+}
+
+# 시설: 업그레이드 id -> 스프라이트 이름. 레벨 1 이상이면 무대 뒤쪽에 건물이 생긴다
+FACILITY_SPRITES = {
+    UPGRADE_LIBRARY: "library",
+    UPGRADE_CAFE: "cafe",
+    UPGRADE_GYM: "gym",
+}
+FACILITY_IDS = [UPGRADE_LIBRARY, UPGRADE_CAFE, UPGRADE_GYM]
+FACILITY_OWNED_LEVEL = 1           # 이 레벨 이상이면 시설이 있다
+# 시설 자리: 장소 -> {업그레이드 id: (왼쪽 x 픽셀, 아래 끝 y 픽셀, 도트 칸 크기)} (무대 안쪽 기준)
+# 바깥 장소는 땅 시작선(y 180) 위 양옆, 연구실은 창밖에 작게(칸 2픽셀) 보인다
+OUTDOOR_FACILITY_SLOTS = {
+    UPGRADE_LIBRARY: (4, GROUND_ROW * SCENE_CELL, SCENE_CELL),
+    UPGRADE_CAFE: (360, GROUND_ROW * SCENE_CELL, SCENE_CELL),
+    UPGRADE_GYM: (428, GROUND_ROW * SCENE_CELL, SCENE_CELL),
+}
+LAB_FACILITY_CELL = 2
+FACILITY_SLOTS = {
+    PLACE_LAWN: OUTDOOR_FACILITY_SLOTS,
+    PLACE_LECTURE: OUTDOOR_FACILITY_SLOTS,
+    PLACE_LIBRARY: OUTDOOR_FACILITY_SLOTS,
+    PLACE_CEREMONY: OUTDOOR_FACILITY_SLOTS,
+    PLACE_LAB: {
+        UPGRADE_LIBRARY: (318, 124, LAB_FACILITY_CELL),
+        UPGRADE_CAFE: (368, 124, LAB_FACILITY_CELL),
+        UPGRADE_GYM: (402, 124, LAB_FACILITY_CELL),
+    },
+}
+
+# 해·달·별 (하늘 겹, 매 프레임 그린다). 위치는 무대 안쪽 기준 픽셀
+SUN_SPRITE = [
+    "..YYYY..",
+    ".YyyYYY.",
+    "YyyYYYYY",
+    "YyYYYYYY",
+    "YYYYYYYY",
+    "YYYYYYYY",
+    ".YYYYYY.",
+    "..YYYY..",
+]
+MOON_SPRITE = [
+    "..MMM...",
+    ".MMm....",
+    "MMm.....",
+    "MMm.....",
+    "MMm.....",
+    "MMMm....",
+    ".MMMMMM.",
+    "..MMMM..",
+]
+SUN_COLORS = {"Y": (255, 220, 104), "y": (255, 244, 196)}           # 낮 해
+EVENING_SUN_COLORS = {"Y": (246, 140, 96), "y": (252, 196, 150)}    # 저녁 해(노을)
+MOON_COLORS = {"M": (255, 244, 196), "m": (226, 214, 160)}
+COLOR_STAR_NIGHT = (255, 244, 196)  # 밤하늘 별 도트
+# 장소 -> {시간대: 해·달 왼쪽 위 (x, y)}. 연구실은 창유리 안쪽에 보이게
+OUTDOOR_SKY_POS = {TIME_DAY: (440, 16), TIME_EVENING: (440, 64), TIME_NIGHT: (440, 16)}
+SKY_OBJECT_POS = {
+    PLACE_LAWN: OUTDOOR_SKY_POS,
+    PLACE_LECTURE: OUTDOOR_SKY_POS,
+    PLACE_LIBRARY: OUTDOOR_SKY_POS,
+    PLACE_CEREMONY: OUTDOOR_SKY_POS,
+    PLACE_LAB: {TIME_DAY: (288, 40), TIME_EVENING: (288, 80), TIME_NIGHT: (288, 40)},
+}
+STAR_POSITIONS = [(40, 20), (120, 44), (200, 12), (260, 56), (332, 24), (396, 100),
+                  (152, 84), (476, 104), (64, 96), (300, 92), (336, 44), (380, 56),
+                  (420, 72), (424, 40)]
+
+# 행동 소품: 마지막 자동 행동 -> 스프라이트. 다음 행동 전까지 제자 오른쪽 땅에 보인다
+PROP_SPRITES = {
+    ACTION_STUDY: [                    # 책상과 책
+        "....oooooo.......oo...",
+        "....oPPPPo......oYYo..",
+        "...oooooooo....oYYo...",
+        "...oSSSSSSo...oYYo....",
+        "...oooooooo..ooo......",
+        "oooooooooooooooooooooo",
+        "oWWWWWWWWWWWWWWWWWWWWo",
+        "oooooooooooooooooooooo",
+        ".oDo..............oDo.",
+        ".oDo..............oDo.",
+        ".oDo..............oDo.",
+        ".oDo..............oDo.",
+        ".ooo..............ooo.",
+    ],
+    ACTION_REST: [                     # 이불과 베개
+        "..........oooooooooooooo",
+        "oooooo...oSSSSSSSSSSSSSo",
+        "oCCCCCo.oSSsSSSSsSSSSsSo",
+        "oCCCCCCooSSSSSSSSSSSSSSo",
+        "oCCCCCCCoSSSsSSSSsSSSSso",
+        "oooooooooooooooooooooooo",
+        "oWWWWWWWWWWWWWWWWWWWWWWo",
+        "oooooooooooooooooooooooo",
+    ],
+    ACTION_FEED: [                     # 식판 (밥·국·반찬)
+        "...ooo......ooo...",
+        "..oCCCo....oAAAo..",
+        ".oCCCCCo..oAAAAAo.",
+        ".oCCCCCo..oAAAAAo.",
+        "..ooooo....ooooo..",
+        "oooooooooooooooooo",
+        "oTGGoTTTTTTTToRRTo",
+        "oTGGoTTTTTTTToRRTo",
+        "oooooooooooooooooo",
+    ],
+}
+PROP_COLORS = {
+    "o": COLOR_OUTLINE, "P": COLOR_PINK, "S": COLOR_SKY, "s": COLOR_SKY_LIGHT,
+    "Y": COLOR_YELLOW, "W": (198, 152, 110), "D": (150, 104, 78),
+    "C": COLOR_WHITE, "A": COLOR_APRICOT, "T": COLOR_MINT, "G": (120, 196, 120),
+    "R": COLOR_PINK_DARK,
+}
+PROP_X = 344                        # 소품 왼쪽 x (무대 안쪽 기준, 제자 오른쪽)
+PROP_BOTTOM = 300                   # 소품 아래 끝 y (무대 안쪽 기준)

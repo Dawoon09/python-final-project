@@ -243,12 +243,19 @@ def test_face_grows_each_grade_pixels(surface):
 
 
 def test_done_criteria_game_face_grows_every_60s(game):
-    """완료 기준: 60초마다 학년과 크기가 바뀜 (Game.update + Game.draw, 1/60초 프레임)."""
+    """완료 기준: 60초마다 학년과 크기가 바뀜 (Game.update + Game.draw, 1/60초 프레임).
+
+    (J단위) 무대에 배경(하늘·잔디 등)이 깔려 게임 화면에서는 COLOR_BG로 얼굴 끝을 찾을 수
+    없으므로, Game.draw()가 문제없이 도는 것을 확인한 뒤 그 순간의 game.student를
+    크림색 빈 Surface에 그려 얼굴 폭을 잰다(의도: Game 시간 진행으로 60초마다 커짐).
+    """
     sizes = []
     grades = []
+    plain = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
     for _ in range(4):
         game.draw()
-        sizes.append(face_extent(game.screen))
+        draw_on(plain, game.student)
+        sizes.append(face_extent(plain))
         grades.append(game.student.get_grade())
         # 체력·멘탈이 0이 되지 않게 유지(휴학은 5일차)
         game.student.health = game.student.mental = 100

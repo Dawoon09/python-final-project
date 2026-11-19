@@ -1000,16 +1000,24 @@ def test_panel_texts_fit_inside_rows(g, monkeypatch, setup):
         assert any(t == name for t, _ in in_row)
         for t, r in in_row:
             assert inner.contains(r), (uid, t, r, inner)
-        # 같은 줄 글자끼리 겹치지 않는다(이름 / 레벨 / 효과 / 가격)
+        # 같은 줄 글자끼리 겹치지 않는다(이름 / 레벨 / 가격)
+        # (J단위 재배치) 효과 설명은 줄 안에서 빠지고 패널 바닥 줄("효과: …")로 옮겨졌다
         rects = sorted((r for _, r in in_row), key=lambda r: r.left)
-        assert len(rects) == 4
+        assert len(rects) == 3
         for a, b in zip(rects, rects[1:]):
             assert a.right <= b.left, (uid, a, b)
-    # 머리 줄 글자(제목·안내·연구비)도 서로 겹치지 않는다
+    # 머리 줄 글자(제목·연구비)도 서로 겹치지 않는다 (J단위: 안내 문구는 빠짐)
     header = sorted((r for t, r in texts if r.bottom <= config.UPGRADE_ROW_TOP), key=lambda r: r.left)
-    assert len(header) == 3
+    assert len(header) == 2
     for a, b in zip(header, header[1:]):
         assert a.right <= b.left
+    # (J단위) 바닥 줄: 고른 줄 항목의 효과 설명 하나가 마지막 줄 아래, 패널 안에 있다
+    last_row = g.get_upgrade_row_rect(len(config.UPGRADE_IDS) - 1)
+    footer = [(t, r) for t, r in texts if r.top >= last_row.bottom]
+    chosen = config.UPGRADES_BY_ID[config.UPGRADE_IDS[g.upgrade_cursor]]
+    assert [t for t, _ in footer] == [
+        config.UPGRADE_FOOTER_TEXT.format(chosen[config.UPGRADE_EFFECT_TEXT])]
+    assert panel.contains(footer[0][1])
 
 
 def test_panel_row_texts_show_level_cost_and_max(g, monkeypatch):
@@ -1017,7 +1025,8 @@ def test_panel_row_texts_show_level_cost_and_max(g, monkeypatch):
     g.upgrades[LIB] = 1
     g.upgrade_panel_open = True
     texts = [t for t, _ in draw_and_collect(g, "draw_upgrade_panel", monkeypatch)]
-    assert "Lv 2/5" in texts and "204 연구비" in texts
+    # (J단위 재배치) 좁은 왼쪽 패널이라 가격은 숫자만("204") 쓴다. 단위는 머리 줄 "연구비 N"
+    assert "Lv 2/5" in texts and "204" in texts
     assert "Lv 1/1" in texts and "MAX" in texts
     assert config.MONEY_TEXT.format("연구비", 0) in texts
 

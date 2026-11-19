@@ -96,6 +96,18 @@ class Game:
         self.ending_upgrade_button = Button(config.UPGRADE_BUTTON_X, config.UPGRADE_BUTTON_ENDING_Y,
                                             config.BUTTON_WIDTH, config.BUTTON_HEIGHT,
                                             config.UPGRADE_BUTTON_TEXT)
+        # 무대 배경(J단위): 장소·계절·시설이 바뀔 때만 다시 그리는 배경 그림과 그 열쇠
+        self.scenery = None
+        self.scenery_key = None
+        # 해·달·행동 소품은 모양이 바뀌지 않으므로 처음에 한 번만 그려 둔다
+        self.sky_objects = {
+            config.TIME_DAY: self.make_sprite_surface(config.SUN_SPRITE, config.SUN_COLORS),
+            config.TIME_EVENING: self.make_sprite_surface(config.SUN_SPRITE,
+                                                          config.EVENING_SUN_COLORS),
+            config.TIME_NIGHT: self.make_sprite_surface(config.MOON_SPRITE, config.MOON_COLORS),
+        }
+        self.prop_surfaces = {name: self.make_sprite_surface(grid, config.PROP_COLORS)
+                              for name, grid in config.PROP_SPRITES.items()}
         self.reset_round()
         self.state = config.START_STATE  # 처음 보여 줄 화면(타이틀)
 
@@ -959,6 +971,196 @@ class Game:
         pygame.display.flip()
 
     # ------------------------------------------------------------
+    # 무대 배경 4겹 (기획서 10절 "배경", J단위)
+    #   1) 장소(학년) 2) 하늘(계절·시간대) 3) 행동 소품 4) 시설
+    #   계산 메서드(get_season 등)는 화면 없이도 부를 수 있다.
+    # ------------------------------------------------------------
+    def get_season_time(self):
+        """(계절 번호 0~3, 그 계절 안에서 흐른 시간(초) 0~15)를 돌려준다.
+
+        학년(대학원이면 년차) 안 시간으로 정한다: 0~15초 봄, 15~30초 여름,
+        30~45초 가을, 45~60초 겨울(시험 기간). 60초를 넘는 값(졸업 순간)은 겨울 끝으로 본다.
+        """
+        time_in_term = max(config.ZERO_TIME, self.student.get_time_in_grade())
+        index = int((time_in_term + config.TIME_EPSILON) // config.SEASON_SECONDS)
+        index = min(index, len(config.SEASONS) - config.INDEX_STEP)
+        time_in_season = time_in_term - index * config.SEASON_SECONDS
+        return index, min(max(config.ZERO_TIME, time_in_season), config.SEASON_SECONDS)
+
+    def get_season(self):
+        """지금 계절 이름("spring"/"summer"/"autumn"/"winter")을 돌려준다."""
+        index, _ = self.get_season_time()
+        return config.SEASONS[index]
+
+    def get_time_of_day(self):
+        """지금 시간대("day"/"evening"/"night")를 돌려준다.
+
+        계절 15초 안에서 0~9초 낮, 9~12초 저녁, 12~15초 밤이다.
+        """
+        _, time_in_season = self.get_season_time()
+        if time_in_season + config.TIME_EPSILON < config.DAY_END:
+            return config.TIME_DAY
+        if time_in_season + config.TIME_EPSILON < config.EVENING_END:
+            return config.TIME_EVENING
+        return config.TIME_NIGHT
+
+    def get_sky_color(self):
+        """지금 하늘색 (R, G, B) 정수 튜플을 돌려준다.
+
+        config.SKY_KEYFRAMES의 기준점 두 개 사이에서 시간 비율만큼 두 색을 섞는다(선형 보간).
+        마지막 기준점(15초)은 다음 계절의 낮색이라 밤에서 다음 날 아침으로 자연스럽게 넘어간다.
+        """
+        index, time_in_season = self.get_season_time()
+        frames = config.SKY_KEYFRAMES
+        for start, end in zip(frames, frames[config.INDEX_STEP:]):
+            start_time, start_name, start_skip = start
+            end_time, end_name, end_skip = end
+            if time_in_season <= end_time:
+                ratio = (time_in_season - start_time) / (end_time - start_time)
+                first = self.get_keyframe_color(index + start_skip, start_name)
+                second = self.get_keyframe_color(index + end_skip, end_name)
+                return tuple(round(a + (b - a) * ratio) for a, b in zip(first, second))
+        _, last_name, last_skip = frames[-config.INDEX_STEP]
+        return tuple(self.get_keyframe_color(index + last_skip, last_name))
+
+    def get_keyframe_color(self, season_index, time_name):
+        """계절 번호 season_index(4 이상이면 다음 해 봄부터 다시)의 시간대 time_name 하늘색."""
+        season = config.SEASONS[season_index % len(config.SEASONS)]
+        return config.SKY_COLORS[season][time_name]
+
+    def get_place(self):
+        """지금 장소 id를 돌려준다: 1학년 "lawn", 2학년 "lecture", 3학년 "library",
+        4학년 "ceremony", 대학원 "lab"."""
+        if self.grad_year > config.GRAD_YEAR_UNDERGRAD:
+            return config.PLACE_LAB
+        return config.PLACE_BY_GRADE[self.student.get_grade()]
+
+    def get_owned_facilities(self):
+        """산 시설(도서관·카페·헬스장) 업그레이드 id를 튜플로 돌려준다(배경 4겹째)."""
+        return tuple(upgrade_id for upgrade_id in config.FACILITY_IDS
+                     if self.upgrades[upgrade_id] >= config.FACILITY_OWNED_LEVEL)
+
+    def make_sprite_surface(self, grid, colors, cell=config.SCENE_CELL):
+        """스프라이트 grid를 한 번만 찍어 둔 Surface를 만들어 돌려준다.
+
+        빈 칸은 COLOR_KEY(자홍색)로 칠하고 set_colorkey로 그 색을 빼고 붙인다(반투명 아님).
+        매 프레임 칸을 하나씩 찍지 않고 이 Surface를 통째로 붙이면 빠르다.
+        """
+        surface = pygame.Surface(sprite_size(grid, cell))
+        surface.fill(config.COLOR_KEY)
+        surface.set_colorkey(config.COLOR_KEY)
+        draw_sprite(surface, grid, config.NO_OFFSET, config.NO_OFFSET, cell, colors)
+        return surface
+
+    def get_scene_color(self, name, season):
+        """배경 색 이름 name의 색을 돌려준다. 계절 색(땅·잎·눈)이 먼저, 없으면 고정 색.
+
+        겨울이 아닐 때의 "snow"처럼 그 계절에 없는 것은 None(그리지 않음)이다.
+        """
+        season_colors = config.SEASON_COLORS[season]
+        if name in season_colors:
+            return season_colors[name]
+        return config.SCENE_COLORS[name]
+
+    def draw_scene_sprite(self, surface, sprite_name, x, y, cell, season):
+        """배경 스프라이트 sprite_name을 (x, y) 픽셀에 칸 크기 cell로 찍는다(계절 색 반영)."""
+        grid, names = config.SCENE_SPRITES[sprite_name]
+        colors = {}
+        for char, name in names.items():
+            color = self.get_scene_color(name, season)
+            if color is not None:
+                colors[char] = color
+        draw_sprite(surface, grid, x, y, cell, colors)
+
+    def draw_scene_part(self, surface, part, season):
+        """배경 조각 하나(사각형 / 같은 사각형 여러 개 / 스프라이트)를 칸 단위 위치에 그린다."""
+        cell = config.SCENE_CELL
+        kind = part[config.FIRST_ROW]
+        if kind == config.PART_SPRITE:
+            _, sprite_name, col, row = part
+            self.draw_scene_sprite(surface, sprite_name, col * cell, row * cell, cell, season)
+            return
+        if kind == config.PART_RECT:
+            _, name, col, row, width, height = part
+            count_x, count_y, step_x, step_y = (config.SINGLE_COUNT, config.SINGLE_COUNT,
+                                                config.NO_OFFSET, config.NO_OFFSET)
+        else:
+            _, name, col, row, count_x, count_y, width, height, step_x, step_y = part
+        color = self.get_scene_color(name, season)
+        if color is None:
+            return
+        for i in range(count_x):
+            for j in range(count_y):
+                pygame.draw.rect(surface, color, ((col + i * step_x) * cell,
+                                                  (row + j * step_y) * cell,
+                                                  width * cell, height * cell))
+
+    def make_scenery(self, place, season, facilities):
+        """장소·계절·시설로 배경 그림(무대 안쪽 크기 Surface)을 새로 그려 돌려준다.
+
+        순서: 장소 뒤쪽(땅·건물·나무) -> 산 시설 건물 -> 장소 앞쪽(벤치·꽃·의자 등).
+        하늘 자리는 COLOR_KEY로 비워 두어(set_colorkey) 매 프레임 그린 하늘이 비쳐 보인다.
+        연구실은 창유리만 비어 있어서 창밖으로 하늘(계절·시간대)이 보인다.
+        """
+        inner = self.get_stage_inner()
+        surface = pygame.Surface(inner.size)
+        surface.fill(config.COLOR_KEY)
+        surface.set_colorkey(config.COLOR_KEY)
+        for part in config.PLACE_BACK[place]:
+            self.draw_scene_part(surface, part, season)
+        for upgrade_id in facilities:
+            x, bottom, cell = config.FACILITY_SLOTS[place][upgrade_id]
+            sprite_name = config.FACILITY_SPRITES[upgrade_id]
+            _, height = sprite_size(config.SCENE_SPRITES[sprite_name][config.FIRST_ROW], cell)
+            self.draw_scene_sprite(surface, sprite_name, x, bottom - height, cell, season)
+        for part in config.PLACE_FRONT[place]:
+            self.draw_scene_part(surface, part, season)
+        return surface
+
+    def get_scenery(self):
+        """지금 장소·계절·시설에 맞는 배경 그림을 돌려준다.
+
+        셋 중 하나라도 바뀌었을 때만 새로 그리고(make_scenery), 아니면 그려 둔 것을 다시 쓴다.
+        그래서 매 프레임에는 하늘색 채우기와 그림 붙이기만 한다(60 FPS 유지).
+        """
+        key = (self.get_place(), self.get_season(), self.get_owned_facilities())
+        if key != self.scenery_key:
+            self.scenery = self.make_scenery(*key)
+            self.scenery_key = key
+        return self.scenery
+
+    def draw_background(self):
+        """제자 무대 안쪽에 배경 4겹을 그린다(제자·파티클·팝업·알림보다 먼저).
+
+        하늘색 채우기 -> 해(낮)·노을 해(저녁)·달과 별(밤) -> 장소·시설 그림 -> 행동 소품.
+        """
+        inner = self.get_stage_inner()
+        self.screen.fill(self.get_sky_color(), inner)
+        self.screen.set_clip(inner)
+        time_name = self.get_time_of_day()
+        if time_name == config.TIME_NIGHT:
+            for x, y in config.STAR_POSITIONS:
+                pygame.draw.rect(self.screen, config.COLOR_STAR_NIGHT,
+                                 (inner.left + x, inner.top + y,
+                                  config.PIXEL_SIZE, config.PIXEL_SIZE))
+        x, y = config.SKY_OBJECT_POS[self.get_place()][time_name]
+        self.screen.blit(self.sky_objects[time_name], (inner.left + x, inner.top + y))
+        self.screen.blit(self.get_scenery(), inner.topleft)
+        self.draw_action_prop(inner)
+        self.screen.set_clip(None)
+
+    def draw_action_prop(self, inner):
+        """마지막 자동 행동의 소품(공부: 책상과 책, 휴식: 이불, 학식: 식판)을 제자 오른쪽에 그린다.
+
+        아직 행동이 없으면(last_action이 None) 아무것도 그리지 않는다.
+        """
+        prop = self.prop_surfaces.get(self.last_action)
+        if prop is None:
+            return
+        self.screen.blit(prop, (inner.left + config.PROP_X,
+                                inner.top + config.PROP_BOTTOM - prop.get_height()))
+
+    # ------------------------------------------------------------
     # 업그레이드 화면 (H단위): [업그레이드 U] 버튼과 패널
     # ------------------------------------------------------------
     def draw_upgrade_button(self, button):
@@ -968,33 +1170,42 @@ class Game:
                     selected=self.upgrade_panel_open)
 
     def draw_upgrade_panel(self):
-        """업그레이드 패널을 그린다(반투명 없이 도트 상자).
+        """업그레이드 패널을 왼쪽 상태 패널 자리에 그린다(반투명 없이 도트 상자).
 
-        머리 줄: 왼쪽 "업그레이드", 가운데 조작 안내, 오른쪽 "연구비 N".
-        아래로 항목 10줄: 이름, "Lv 지금/최대", 효과 설명, 가격(최고 레벨이면 "MAX").
+        오른쪽 제자 무대는 가리지 않으므로 패널을 열어도 제자와 배경이 보인다.
+        머리 줄: 왼쪽 "업그레이드", 오른쪽 "연구비 N".
+        아래로 항목 10줄: 이름, "Lv 지금/최대", 가격(최고 레벨이면 "MAX").
         살 수 있는 항목은 민트, 연구비가 모자라거나 최고 레벨이면 회색이다.
         고른 줄(↑↓)에는 왼쪽에 화살표를 붙이고, 마우스를 올린 줄(살 수 있을 때)은 밝게 칠한다.
+        바닥 줄에는 고른 줄 항목의 효과 설명("효과: 학식 체력 +4")을 쓴다.
         """
         panel = pygame.Rect(config.UPGRADE_PANEL_RECT)
         draw_pixel_box(self.screen, panel, config.COLOR_BG, config.COLOR_PANEL_LIGHT,
                        config.COLOR_PANEL_SHADOW, drop=config.COLOR_DROP)
-        title = render_text(self.font, config.UPGRADE_PANEL_TITLE)
+        title = render_text(self.event_font, config.UPGRADE_PANEL_TITLE)
         title_rect = title.get_rect()
-        title_rect.midleft = (panel.left + config.UPGRADE_HEADER_MARGIN, config.UPGRADE_HEADER_Y)
+        title_rect.midleft = (config.UPGRADE_HEADER_LEFT, config.UPGRADE_HEADER_Y)
         self.screen.blit(title, title_rect)
-        hint = render_text(self.small_font, config.UPGRADE_PANEL_HINT, config.COLOR_TEXT_SOFT)
-        hint_rect = hint.get_rect()
-        hint_rect.center = (panel.centerx, config.UPGRADE_HEADER_Y)
-        self.screen.blit(hint, hint_rect)
-        money = render_text(self.font, config.MONEY_TEXT.format(config.MONEY_LABEL, self.money))
+        money = render_text(self.small_font,
+                            config.MONEY_TEXT.format(config.MONEY_LABEL, self.money))
         money_rect = money.get_rect()
-        money_rect.midright = (panel.right - config.UPGRADE_HEADER_MARGIN, config.UPGRADE_HEADER_Y)
+        money_rect.midright = (config.UPGRADE_HEADER_RIGHT, config.UPGRADE_HEADER_Y)
         self.screen.blit(money, money_rect)
         for index, upgrade_id in enumerate(config.UPGRADE_IDS):
             self.draw_upgrade_row(index, upgrade_id)
+        chosen = config.UPGRADES_BY_ID[config.UPGRADE_IDS[self.upgrade_cursor]]
+        footer = render_text(self.small_font,
+                             config.UPGRADE_FOOTER_TEXT.format(chosen[config.UPGRADE_EFFECT_TEXT]),
+                             config.COLOR_TEXT_SOFT)
+        footer_rect = footer.get_rect()
+        footer_rect.midleft = (config.UPGRADE_FOOTER_X, config.UPGRADE_FOOTER_Y)
+        self.screen.blit(footer, footer_rect)
 
     def draw_upgrade_row(self, index, upgrade_id):
-        """업그레이드 패널의 index번째 항목 줄 하나를 그린다(draw_upgrade_panel이 부른다)."""
+        """업그레이드 패널의 index번째 항목 줄 하나를 그린다(draw_upgrade_panel이 부른다).
+
+        줄 안에는 이름, "Lv 지금/최대", 가격 세 가지만 작은 글자로 쓴다(효과는 바닥 줄).
+        """
         upgrade = config.UPGRADES_BY_ID[upgrade_id]
         row = self.get_upgrade_row_rect(index)
         buyable = self.can_buy_upgrade(upgrade_id)
@@ -1023,14 +1234,13 @@ class Game:
         columns = [
             (upgrade[config.UPGRADE_NAME], config.UPGRADE_NAME_X),
             (config.UPGRADE_LEVEL_TEXT.format(level, max_level), config.UPGRADE_LEVEL_X),
-            (upgrade[config.UPGRADE_EFFECT_TEXT], config.UPGRADE_EFFECT_X),
         ]
         for text, x in columns:
-            surface = render_text(self.event_font, text, text_color)
+            surface = render_text(self.small_font, text, text_color)
             rect = surface.get_rect()
             rect.midleft = (x, inner.centery)
             self.screen.blit(surface, rect)
-        cost = render_text(self.event_font, cost_text, text_color)
+        cost = render_text(self.small_font, cost_text, text_color)
         cost_rect = cost.get_rect()
         cost_rect.midright = (config.UPGRADE_COST_RIGHT, inner.centery)
         self.screen.blit(cost, cost_rect)
@@ -1325,8 +1535,8 @@ class Game:
                              (start_x + index * step, y, config.PIXEL_SIZE, config.PIXEL_SIZE))
 
     def draw_playing(self):
-        """게임 화면: 상단 정보바, (시험 기간이면) 노란 배너, 상태 패널(게이지), 제자 무대,
-        방침 버튼과 자동 행동 진행 막대."""
+        """게임 화면: 상단 정보바, (시험 기간이면) 노란 배너, 상태 패널(게이지),
+        제자 무대(배경 4겹 -> 제자 -> 파티클·팝업 -> 알림), 방침 버튼과 자동 행동 진행 막대."""
         self.draw_info_bar()
         if self.student.is_exam_period():
             self.draw_exam_banner()
@@ -1334,6 +1544,7 @@ class Game:
                          config.STATUS_PANEL_WIDTH, config.PANEL_HEIGHT))
         self.draw_panel((config.STAGE_X, config.PANEL_Y,
                          config.STAGE_WIDTH, config.PANEL_HEIGHT))
+        self.draw_background()
         self.student.draw_gauges(self.screen, self.font,
                                  self.get_shown_gauge(config.GAUGE_HEALTH),
                                  self.get_shown_gauge(config.GAUGE_MENTAL))

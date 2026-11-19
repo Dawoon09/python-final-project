@@ -396,6 +396,15 @@ def test_game_init_only_adds_backdrop():
         "self.ending_upgrade_button = Button(config.UPGRADE_BUTTON_X, "
         "config.UPGRADE_BUTTON_ENDING_Y, config.BUTTON_WIDTH, config.BUTTON_HEIGHT, "
         "config.UPGRADE_BUTTON_TEXT)",
+        # (J 단위) 무대 배경 캐시(장소·계절·시설 열쇠)와 한 번만 그려 두는 해·달·행동 소품
+        "self.scenery = None",
+        "self.scenery_key = None",
+        "self.sky_objects = {config.TIME_DAY: self.make_sprite_surface(config.SUN_SPRITE, "
+        "config.SUN_COLORS), config.TIME_EVENING: self.make_sprite_surface(config.SUN_SPRITE, "
+        "config.EVENING_SUN_COLORS), config.TIME_NIGHT: "
+        "self.make_sprite_surface(config.MOON_SPRITE, config.MOON_COLORS)}",
+        "self.prop_surfaces = {name: self.make_sprite_surface(grid, config.PROP_COLORS) "
+        "for name, grid in config.PROP_SPRITES.items()}",
     ]
     # (C 단위) 인자는 record_path=None, seed=None 둘
     assert [a.arg for a in new.args.args] == ["self", "record_path", "seed"]
