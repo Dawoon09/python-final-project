@@ -96,7 +96,7 @@ class Game:
         self.ending_upgrade_button = Button(config.UPGRADE_BUTTON_X, config.UPGRADE_BUTTON_ENDING_Y,
                                             config.BUTTON_WIDTH, config.BUTTON_HEIGHT,
                                             config.UPGRADE_BUTTON_TEXT)
-        # 무대 배경(J단위): 장소·계절·시설이 바뀔 때만 다시 그리는 배경 그림과 그 열쇠
+        # 무대 배경(J단위): 장소·계절·시설·그늘 단계가 바뀔 때만 다시 그리는 배경 그림과 그 열쇠
         self.scenery = None
         self.scenery_key = None
         # 해·달·행동 소품은 모양이 바뀌지 않으므로 처음에 한 번만 그려 둔다
@@ -1052,33 +1052,57 @@ class Game:
         draw_sprite(surface, grid, config.NO_OFFSET, config.NO_OFFSET, cell, colors)
         return surface
 
-    def get_scene_color(self, name, season):
+    def get_scene_color(self, name, season, shade=config.SCENE_SHADE_NONE):
         """배경 색 이름 name의 색을 돌려준다. 계절 색(땅·잎·눈)이 먼저, 없으면 고정 색.
 
         겨울이 아닐 때의 "snow"처럼 그 계절에 없는 것은 None(그리지 않음)이다.
+        shade(그늘 단계, 0이면 없음)가 있으면 밤 남색을 그 단계 비율만큼 섞은 색을 돌려준다.
+        하늘 자리 색(COLOR_KEY)은 섞지 않는다(colorkey로 빠져야 하므로).
         """
         season_colors = config.SEASON_COLORS[season]
         if name in season_colors:
-            return season_colors[name]
-        return config.SCENE_COLORS[name]
+            color = season_colors[name]
+        else:
+            color = config.SCENE_COLORS[name]
+        if color is None or shade == config.SCENE_SHADE_NONE or color == config.COLOR_KEY:
+            return color
+        ratio = config.SCENE_SHADE_RATIOS[shade]
+        return tuple(round(a + (b - a) * ratio) for a, b in zip(color, config.SCENE_SHADE_COLOR))
 
-    def draw_scene_sprite(self, surface, sprite_name, x, y, cell, season):
-        """배경 스프라이트 sprite_name을 (x, y) 픽셀에 칸 크기 cell로 찍는다(계절 색 반영)."""
+    def get_scene_shade(self):
+        """지금 배경 그늘 단계(0 = 낮, 클수록 어둡다)를 돌려준다.
+
+        계절 안 시각으로 SCENE_SHADE_STEPS 표에서 찾는다(낮 0 -> 저녁 1 -> 밤 2 -> 새벽 1).
+        실내(연구실)는 언제나 0이다. 단계가 몇 개뿐이라 배경을 다시 그리는 일이 적다.
+        """
+        if self.get_place() not in config.SCENE_SHADE_PLACES:
+            return config.SCENE_SHADE_NONE
+        _, time_in_season = self.get_season_time()
+        shade = config.SCENE_SHADE_NONE
+        for start_time, level in config.SCENE_SHADE_STEPS:
+            if time_in_season + config.TIME_EPSILON >= start_time:
+                shade = level
+        return shade
+
+    def draw_scene_sprite(self, surface, sprite_name, x, y, cell, season,
+                          shade=config.SCENE_SHADE_NONE):
+        """배경 스프라이트 sprite_name을 (x, y) 픽셀에 칸 크기 cell로 찍는다(계절 색·그늘 반영)."""
         grid, names = config.SCENE_SPRITES[sprite_name]
         colors = {}
         for char, name in names.items():
-            color = self.get_scene_color(name, season)
+            color = self.get_scene_color(name, season, shade)
             if color is not None:
                 colors[char] = color
         draw_sprite(surface, grid, x, y, cell, colors)
 
-    def draw_scene_part(self, surface, part, season):
+    def draw_scene_part(self, surface, part, season, shade=config.SCENE_SHADE_NONE):
         """배경 조각 하나(사각형 / 같은 사각형 여러 개 / 스프라이트)를 칸 단위 위치에 그린다."""
         cell = config.SCENE_CELL
         kind = part[config.FIRST_ROW]
         if kind == config.PART_SPRITE:
             _, sprite_name, col, row = part
-            self.draw_scene_sprite(surface, sprite_name, col * cell, row * cell, cell, season)
+            self.draw_scene_sprite(surface, sprite_name, col * cell, row * cell, cell, season,
+                                   shade)
             return
         if kind == config.PART_RECT:
             _, name, col, row, width, height = part
@@ -1086,7 +1110,7 @@ class Game:
                                                 config.NO_OFFSET, config.NO_OFFSET)
         else:
             _, name, col, row, count_x, count_y, width, height, step_x, step_y = part
-        color = self.get_scene_color(name, season)
+        color = self.get_scene_color(name, season, shade)
         if color is None:
             return
         for i in range(count_x):
@@ -1095,35 +1119,38 @@ class Game:
                                                   (row + j * step_y) * cell,
                                                   width * cell, height * cell))
 
-    def make_scenery(self, place, season, facilities):
-        """장소·계절·시설로 배경 그림(무대 안쪽 크기 Surface)을 새로 그려 돌려준다.
+    def make_scenery(self, place, season, facilities, shade=config.SCENE_SHADE_NONE):
+        """장소·계절·시설·그늘 단계로 배경 그림(무대 안쪽 크기 Surface)을 새로 그려 돌려준다.
 
         순서: 장소 뒤쪽(땅·건물·나무) -> 산 시설 건물 -> 장소 앞쪽(벤치·꽃·의자 등).
         하늘 자리는 COLOR_KEY로 비워 두어(set_colorkey) 매 프레임 그린 하늘이 비쳐 보인다.
         연구실은 창유리만 비어 있어서 창밖으로 하늘(계절·시간대)이 보인다.
+        shade가 0보다 크면(저녁·밤) 모든 색을 밤 남색 쪽으로 조금 섞어 어둡게 그린다.
         """
         inner = self.get_stage_inner()
         surface = pygame.Surface(inner.size)
         surface.fill(config.COLOR_KEY)
         surface.set_colorkey(config.COLOR_KEY)
         for part in config.PLACE_BACK[place]:
-            self.draw_scene_part(surface, part, season)
+            self.draw_scene_part(surface, part, season, shade)
         for upgrade_id in facilities:
             x, bottom, cell = config.FACILITY_SLOTS[place][upgrade_id]
             sprite_name = config.FACILITY_SPRITES[upgrade_id]
             _, height = sprite_size(config.SCENE_SPRITES[sprite_name][config.FIRST_ROW], cell)
-            self.draw_scene_sprite(surface, sprite_name, x, bottom - height, cell, season)
+            self.draw_scene_sprite(surface, sprite_name, x, bottom - height, cell, season, shade)
         for part in config.PLACE_FRONT[place]:
-            self.draw_scene_part(surface, part, season)
+            self.draw_scene_part(surface, part, season, shade)
         return surface
 
     def get_scenery(self):
-        """지금 장소·계절·시설에 맞는 배경 그림을 돌려준다.
+        """지금 장소·계절·시설·그늘 단계에 맞는 배경 그림을 돌려준다.
 
-        셋 중 하나라도 바뀌었을 때만 새로 그리고(make_scenery), 아니면 그려 둔 것을 다시 쓴다.
+        넷 중 하나라도 바뀌었을 때만 새로 그리고(make_scenery), 아니면 그려 둔 것을 다시 쓴다.
+        그늘 단계는 계절마다 몇 번만 바뀌므로(낮 -> 저녁 -> 밤 -> 새벽) 다시 그리는 일이 적다.
         그래서 매 프레임에는 하늘색 채우기와 그림 붙이기만 한다(60 FPS 유지).
         """
-        key = (self.get_place(), self.get_season(), self.get_owned_facilities())
+        key = (self.get_place(), self.get_season(), self.get_owned_facilities(),
+               self.get_scene_shade())
         if key != self.scenery_key:
             self.scenery = self.make_scenery(*key)
             self.scenery_key = key
@@ -1174,6 +1201,7 @@ class Game:
 
         오른쪽 제자 무대는 가리지 않으므로 패널을 열어도 제자와 배경이 보인다.
         머리 줄: 왼쪽 "업그레이드", 오른쪽 "연구비 N".
+        그 아래 미니 게이지 줄: 패널이 가린 체력·멘탈 막대를 작게 보여 준다(draw_panel_gauges).
         아래로 항목 10줄: 이름, "Lv 지금/최대", 가격(최고 레벨이면 "MAX").
         살 수 있는 항목은 민트, 연구비가 모자라거나 최고 레벨이면 회색이다.
         고른 줄(↑↓)에는 왼쪽에 화살표를 붙이고, 마우스를 올린 줄(살 수 있을 때)은 밝게 칠한다.
@@ -1191,6 +1219,7 @@ class Game:
         money_rect = money.get_rect()
         money_rect.midright = (config.UPGRADE_HEADER_RIGHT, config.UPGRADE_HEADER_Y)
         self.screen.blit(money, money_rect)
+        self.draw_panel_gauges()
         for index, upgrade_id in enumerate(config.UPGRADE_IDS):
             self.draw_upgrade_row(index, upgrade_id)
         chosen = config.UPGRADES_BY_ID[config.UPGRADE_IDS[self.upgrade_cursor]]
@@ -1200,6 +1229,35 @@ class Game:
         footer_rect = footer.get_rect()
         footer_rect.midleft = (config.UPGRADE_FOOTER_X, config.UPGRADE_FOOTER_Y)
         self.screen.blit(footer, footer_rect)
+
+    def draw_panel_gauges(self):
+        """업그레이드 패널 머리 줄 아래에 체력·멘탈 미니 게이지 2개를 한 줄에 나란히 그린다.
+
+        패널이 열려 있어도 게임은 흐르므로(방치형) 가려진 게이지를 여기서 볼 수 있게 한다.
+        각 칸: 작은 라벨 글자 + 남색 도트 테두리 막대. 막대 길이는 표시값(E4 부드러운 변화),
+        채움 색은 실제 값이 30 미만이면 빨강, 아니면 초록(기능 6과 같은 규칙).
+        """
+        for name, label, label_x in config.UPGRADE_GAUGES:
+            text = render_text(self.small_font, label)
+            text_rect = text.get_rect()
+            text_rect.midleft = (label_x, config.UPGRADE_GAUGE_Y)
+            self.screen.blit(text, text_rect)
+            bar = pygame.Rect(config.ORIGIN, (config.UPGRADE_GAUGE_BAR_WIDTH,
+                                              config.UPGRADE_GAUGE_BAR_HEIGHT))
+            bar.midleft = (text_rect.right + config.UPGRADE_GAUGE_BAR_GAP + config.PIXEL_SIZE,
+                           config.UPGRADE_GAUGE_Y)
+            draw_pixel_box(self.screen, bar.inflate(config.BOX_INSET, config.BOX_INSET),
+                           config.COLOR_BAR_BG)
+            if getattr(self.student, name) < config.LOW_GAUGE_LIMIT:
+                main, light = config.COLOR_RED, config.COLOR_RED_LIGHT
+            else:
+                main, light = config.COLOR_GREEN, config.COLOR_GREEN_LIGHT
+            shown = min(max(self.get_shown_gauge(name), config.GAUGE_MIN), config.GAUGE_MAX)
+            fill = pygame.Rect(bar.left, bar.top, int(bar.width * shown / config.GAUGE_MAX),
+                               bar.height)
+            pygame.draw.rect(self.screen, main, fill)
+            pygame.draw.rect(self.screen, light, (fill.left, fill.top, fill.width,
+                                                  config.PIXEL_SIZE))
 
     def draw_upgrade_row(self, index, upgrade_id):
         """업그레이드 패널의 index번째 항목 줄 하나를 그린다(draw_upgrade_panel이 부른다).
@@ -1455,62 +1513,66 @@ class Game:
                               config.COLOR_PANEL_LIGHT, config.COLOR_PANEL_SHADOW,
                               drop=config.COLOR_DROP)
 
-    def draw_text_center(self, font, text, center_y, color=config.COLOR_TEXT):
-        """글자 text를 화면 가운데(가로)에, 세로 가운데가 center_y가 되게 그리고 사각형을 돌려준다."""
+    def draw_text_center(self, font, text, center_y, color=config.COLOR_TEXT,
+                         center_x=config.SCREEN_CENTER_X):
+        """글자 text를 가운데 x가 center_x(기본: 화면 가운데), 세로 가운데가 center_y가 되게
+        그리고 사각형을 돌려준다."""
         surface = render_text(font, text, color)
         rect = surface.get_rect()
-        rect.center = (config.SCREEN_CENTER_X, center_y)
+        rect.center = (center_x, center_y)
         self.screen.blit(surface, rect)
         return rect
 
-    def draw_big_text(self, text, center_y):
-        """큰 제목 글자를 살구색 그림자 글자와 겹쳐 화면 가운데에 그린다(레트로 느낌).
+    def draw_big_text(self, text, center_y, center_x=config.SCREEN_CENTER_X,
+                      max_width=config.ENDING_NAME_MAX_WIDTH):
+        """큰 제목 글자를 살구색 그림자 글자와 겹쳐 가운데 x = center_x 에 그린다(레트로 느낌).
 
-        글자가 길어 큰 글씨로 ENDING_NAME_MAX_WIDTH를 넘으면(예: "대학원 12년차 수료")
+        글자가 길어 큰 글씨로 max_width를 넘으면(예: "대학원 12년차 수료")
         조금 작은 글씨(ending_font)로 그려서 가운데 패널 밖으로 나가지 않게 한다.
         """
         font = self.title_font
         shadow = render_text(font, text, config.COLOR_TITLE_SHADOW)
-        if shadow.get_width() > config.ENDING_NAME_MAX_WIDTH:
+        if shadow.get_width() > max_width:
             font = self.ending_font
             shadow = render_text(font, text, config.COLOR_TITLE_SHADOW)
         rect = shadow.get_rect()
-        rect.center = (config.SCREEN_CENTER_X + config.TITLE_SHADOW_OFFSET,
+        rect.center = (center_x + config.TITLE_SHADOW_OFFSET,
                        center_y + config.TITLE_SHADOW_OFFSET)
         self.screen.blit(shadow, rect)
-        self.draw_text_center(font, text, center_y)
+        self.draw_text_center(font, text, center_y, center_x=center_x)
 
-    def draw_badge(self, text, center_y, fill, light):
-        """글자 하나를 감싸는 작은 도트 배지(상자)를 화면 가운데에 그린다."""
+    def draw_badge(self, text, center_y, fill, light, center_x=config.SCREEN_CENTER_X):
+        """글자 하나를 감싸는 작은 도트 배지(상자)를 가운데 x = center_x 에 그린다."""
         surface = render_text(self.font, text)
         rect = surface.get_rect()
         box = pygame.Rect(config.ORIGIN, (rect.width + config.BADGE_PADDING_X * config.HALF,
                                           config.BADGE_HEIGHT))
-        box.center = (config.SCREEN_CENTER_X, center_y)
+        box.center = (center_x, center_y)
         inner = draw_pixel_box(self.screen, box, fill, light, drop=config.COLOR_DROP)
         rect.center = inner.center
         self.screen.blit(surface, rect)
 
-    def draw_key_hint(self, text, center_y):
+    def draw_key_hint(self, text, center_y, center_x=config.SCREEN_CENTER_X):
         """키 안내 문구(예: "Enter를 눌러 시작") 앞에 작은 도트 화살표를 붙여 그린다.
 
+        글자 가운데 x는 center_x(기본: 화면 가운데)다.
         E6 깜빡임: 0.5초마다 화살표가 보였다 숨었다 하고, 숨은 차례에는 글자 색이
         살짝 옅어진다. 글자 자체는 늘 보여서 읽기 불편하지 않다.
         """
         if not self.is_blink_on():
-            self.draw_text_center(self.font, text, center_y, config.COLOR_HINT_DIM)
+            self.draw_text_center(self.font, text, center_y, config.COLOR_HINT_DIM, center_x)
             return
-        rect = self.draw_text_center(self.font, text, center_y)
+        rect = self.draw_text_center(self.font, text, center_y, center_x=center_x)
         arrow_width, arrow_height = sprite_size(config.ARROW_SPRITE, config.PIXEL_SIZE)
         draw_sprite(self.screen, config.ARROW_SPRITE,
                     rect.left - config.HINT_ARROW_GAP - arrow_width,
                     center_y - arrow_height // config.HALF,
                     config.PIXEL_SIZE, {config.SPRITE_INK: config.COLOR_PINK_DARK})
 
-    def draw_stars(self, stars):
-        """장식용 반짝이 별들을 (x, y, 색) 목록대로 찍는다."""
+    def draw_stars(self, stars, shift_x=config.NO_OFFSET):
+        """장식용 반짝이 별들을 (x, y, 색) 목록대로 찍는다. shift_x만큼 오른쪽으로 옮겨 찍을 수 있다."""
         for x, y, color in stars:
-            draw_sprite(self.screen, config.STAR_SPRITE, x, y, config.PIXEL_SIZE,
+            draw_sprite(self.screen, config.STAR_SPRITE, x + shift_x, y, config.PIXEL_SIZE,
                         {config.SPRITE_INK: color})
 
     def draw_title(self):
@@ -1586,8 +1648,11 @@ class Game:
         draw_sprite(self.screen, particle["sprite"], left, top, cell, particle["colors"])
 
     def draw_popup(self, popup):
-        """수치 팝업 하나("체력 +20")를 떠오른 높이에 굵은 글씨 + 남색 1px 그림자로 그린다.
+        """수치 팝업 하나("체력 +20")를 떠오른 높이에 굵은 글씨로 그린다.
 
+        순서: 남색 그림자(오른쪽 아래 2px) -> 크림색 테두리(사방 1px) -> 색 글자.
+        크림 테두리 덕분에 남색 밤하늘에서도, 남색 그림자 덕분에 밝은 낮 하늘에서도 읽힌다
+        (반투명 없이 글자를 여러 번 찍는다).
         POPUP_BLINK_START가 지나면 POPUP_BLINK_STEP마다 보였다 숨었다 하며 사라진다.
         글자 가운데 x는 popup["x"](행동 팝업 = 무대 가운데, 이벤트 팝업 = 왼쪽 위 칸)이고,
         x가 없는 팝업은 무대 가운데에 그린다.
@@ -1604,6 +1669,9 @@ class Game:
         rect.center = center
         for dx, dy in config.POPUP_OUTLINE_OFFSETS:
             self.screen.blit(outline, rect.move(dx, dy))
+        rim = render_text(self.popup_font, popup["text"], config.COLOR_POPUP_RIM)
+        for dx, dy in config.POPUP_RIM_OFFSETS:
+            self.screen.blit(rim, rect.move(dx, dy))
         self.screen.blit(render_text(self.popup_font, popup["text"], popup["color"]), rect)
 
     def draw_ending(self):
@@ -1612,38 +1680,54 @@ class Game:
         - 학부 졸업: 등급(수석/무사/아슬아슬 졸업), 졸업 보너스, "R: 환생 (명성 +1)" / "C: 대학원 진학"
         - 대학원 수료: "대학원 n년차 수료", "R: 환생 (명성 +1)" (졸업 보너스 없음)
         - 휴학: "R을 눌러 다시 하기"
+        업그레이드 패널(왼쪽)이 열려 있으면 가운데 패널과 글자·그림을 오른쪽으로 옮겨
+        그려서 패널이 엔딩 이름·안내를 가리지 않게 한다(get_ending_layout).
         """
-        self.draw_panel(config.MENU_PANEL_RECT)
-        self.draw_big_text(self.ending, config.ENDING_NAME_Y)
+        panel_rect, center_x, name_max_width = self.get_ending_layout()
+        self.draw_panel(panel_rect)
+        self.draw_big_text(self.ending, config.ENDING_NAME_Y, center_x, name_max_width)
         if self.ending == config.ENDING_LEAVE:
             self.draw_center_sprite(config.CLOUD_SPRITE, config.CLOUD_TOP_Y,
-                                    config.CLOUD_PIXEL, config.CLOUD_COLORS)
+                                    config.CLOUD_PIXEL, config.CLOUD_COLORS, center_x)
         else:
-            self.draw_stars(config.ENDING_STARS)
-            self.draw_graduation_cap()
+            self.draw_stars(config.ENDING_STARS, center_x - config.SCREEN_CENTER_X)
+            self.draw_graduation_cap(center_x)
         self.draw_badge(config.ENDING_KNOWLEDGE_TEXT.format(self.student.knowledge),
-                        config.ENDING_KNOWLEDGE_Y, config.COLOR_MINT_LIGHT, config.COLOR_WHITE)
+                        config.ENDING_KNOWLEDGE_Y, config.COLOR_MINT_LIGHT, config.COLOR_WHITE,
+                        center_x)
         if self.graduation_bonus > config.MONEY_START:
             self.draw_text_center(self.event_font,
                                   config.GRADUATION_BONUS_TEXT.format(self.graduation_bonus),
-                                  config.GRADUATION_BONUS_Y, config.COLOR_TEXT_SOFT)
+                                  config.GRADUATION_BONUS_Y, config.COLOR_TEXT_SOFT, center_x)
         if self.can_reincarnate():
-            self.draw_key_hint(config.REINCARNATE_HINT_TEXT, config.RESTART_HINT_Y)
+            self.draw_key_hint(config.REINCARNATE_HINT_TEXT, config.RESTART_HINT_Y, center_x)
             if self.is_graduation_ending():
-                self.draw_key_hint(config.GRAD_SCHOOL_HINT_TEXT, config.GRAD_SCHOOL_HINT_Y)
+                self.draw_key_hint(config.GRAD_SCHOOL_HINT_TEXT, config.GRAD_SCHOOL_HINT_Y,
+                                   center_x)
         else:
-            self.draw_key_hint(config.RESTART_HINT_TEXT, config.RESTART_HINT_Y)
+            self.draw_key_hint(config.RESTART_HINT_TEXT, config.RESTART_HINT_Y, center_x)
 
-    def draw_center_sprite(self, grid, top, cell, colors):
-        """스프라이트 grid를 화면 가운데(가로)에, 위쪽 y가 top이 되게 칸 크기 cell로 찍는다."""
+    def get_ending_layout(self):
+        """엔딩 화면 배치 (가운데 패널 사각형, 글자 가운데 x, 엔딩 이름 최대 가로 길이)를 돌려준다.
+
+        업그레이드 패널이 닫혀 있으면 화면 가운데 패널(MENU_PANEL_RECT, 가운데 400),
+        열려 있으면 패널과 겹치지 않는 오른쪽 자리(ENDING_PANEL_OPEN_RECT, 가운데 536)다.
+        """
+        if self.upgrade_panel_open:
+            return (config.ENDING_PANEL_OPEN_RECT, config.ENDING_OPEN_CENTER_X,
+                    config.ENDING_NAME_MAX_WIDTH_OPEN)
+        return config.MENU_PANEL_RECT, config.SCREEN_CENTER_X, config.ENDING_NAME_MAX_WIDTH
+
+    def draw_center_sprite(self, grid, top, cell, colors, center_x=config.SCREEN_CENTER_X):
+        """스프라이트 grid를 가운데 x가 center_x(기본: 화면 가운데), 위쪽 y가 top이 되게
+        칸 크기 cell로 찍는다."""
         width, _ = sprite_size(grid, cell)
-        draw_sprite(self.screen, grid, config.SCREEN_CENTER_X - width // config.HALF, top,
-                    cell, colors)
+        draw_sprite(self.screen, grid, center_x - width // config.HALF, top, cell, colors)
 
-    def draw_graduation_cap(self):
-        """도트 학사모(납작한 마름모 윗판 + 띠 + 금색 술)를 화면 가운데 위쪽에 찍는다."""
+    def draw_graduation_cap(self, center_x=config.SCREEN_CENTER_X):
+        """도트 학사모(납작한 마름모 윗판 + 띠 + 금색 술)를 가운데 x = center_x 위쪽에 찍는다."""
         self.draw_center_sprite(config.CAP_SPRITE, config.CAP_TOP_Y,
-                                config.CAP_PIXEL, config.CAP_COLORS)
+                                config.CAP_PIXEL, config.CAP_COLORS, center_x)
 
     def draw_exam_banner(self):
         """정보바 바로 아래에 노란 도트 배너와 문구, 양옆 느낌표를 그린다(패널 위)."""

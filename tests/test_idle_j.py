@@ -485,13 +485,24 @@ def test_scenery_cached_between_frames(g, monkeypatch, no_decay):
     g.draw()
     first = g.scenery
     assert len(calls) == 1
-    # 같은 계절 안 낮 -> 저녁 -> 밤 (시간대만 바뀜): 다시 그리지 않는다
-    for _ in range(13 * 60):
+    # (K단위 갱신) 바깥 배경은 저녁·밤 그늘 단계(8.5 / 11.75 / 14.5초)가 바뀔 때만 다시 그린다.
+    # 같은 그늘 단계 안(0.5 -> 8.4초, 낮 -> 저녁 시작 포함)에서는 다시 그리지 않는다
+    while g.student.elapsed < 8.4:
         g.update(FRAME)
         g.draw()
-    assert g.get_season() == "spring" and g.get_time_of_day() == "night"
+    assert g.get_season() == "spring" and g.get_scene_shade() == 0
     assert len(calls) == 1
     assert g.scenery is first
+    # 단계마다 딱 한 번씩만 다시 그리고, 단계 안 프레임에서는 같은 그림을 다시 쓴다
+    for _ in range(int(4.6 * 60)):               # 13.0초까지: 저녁(1) -> 밤(2)
+        before = g.scenery
+        shade_before = g.get_scene_shade()
+        g.update(FRAME)
+        g.draw()
+        if g.get_scene_shade() == shade_before:
+            assert g.scenery is before
+    assert g.get_season() == "spring" and g.get_time_of_day() == "night"
+    assert [c[3] for c in calls] == [0, 1, 2]
 
 
 def test_scenery_regenerated_on_season_place_facility(g, monkeypatch, no_decay):
@@ -519,7 +530,8 @@ def test_scenery_regenerated_on_season_place_facility(g, monkeypatch, no_decay):
 
 
 def test_scenery_regenerations_bounded_over_full_run(g, monkeypatch, no_decay):
-    """240초 동안 다시 그리는 횟수 = 장소·계절 조합 수(16) 정도. 매 프레임 그리지 않는다."""
+    """240초 동안 다시 그리는 횟수 = 장소·계절 조합(16) x 그늘 단계 변화(계절당 0/1/2/1 = 4번)
+    = 64 정도(K단위 갱신, 여유 두어 80 이하). 매 프레임 그리지 않는다."""
     calls = count_make_scenery(g, monkeypatch)
     for i in range(240 * 60):
         g.update(FRAME)
@@ -527,7 +539,10 @@ def test_scenery_regenerations_bounded_over_full_run(g, monkeypatch, no_decay):
             break
         if i % 10 == 0:
             g.draw()
-    assert len(calls) <= 17
+    assert len(calls) <= 80
+    # 연달은 두 번이 같은 열쇠로 다시 그려지는 일은 없다(바뀐 것이 있을 때만 다시 그림)
+    for a, b in zip(calls, calls[1:]):
+        assert a != b
 
 
 # ============================== 8. 반투명 금지 / colorkey ==============================

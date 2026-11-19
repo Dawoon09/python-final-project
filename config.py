@@ -635,7 +635,11 @@ POPUP_HEAD_GAP = 0          # 제자 머리(점프·숨쉬기 최고점)와 맨 
                             # (글자 상자 안에 위아래 여백이 있어 0이어도 머리와 닿지 않는다)
 POPUP_BLINK_START = 0.5     # 이 시각(초)부터 깜빡이며 사라진다
 POPUP_BLINK_STEP = 0.075    # 깜빡임 한 번(보임 또는 숨김)의 길이(초)
-POPUP_OUTLINE_OFFSETS = [(1, 0), (0, 1), (1, 1)]  # 남색 그림자 글자를 찍을 위치(오른쪽·아래 1픽셀)
+POPUP_OUTLINE_OFFSETS = [(2, 1), (1, 2), (2, 2)]  # 남색 그림자 글자를 찍을 위치(오른쪽·아래 2픽셀)
+# 크림색 테두리 글자를 찍을 위치(사방 1픽셀). 남색 밤하늘 위에서도 글자 둘레가 밝게 보이고,
+# 밝은 낮 하늘 위에서는 남색 그림자가 글자를 받쳐 준다(반투명 없이 어떤 하늘에서도 읽힌다)
+POPUP_RIM_OFFSETS = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
+COLOR_POPUP_RIM = (255, 250, 236)   # 팝업 글자 테두리 색(크림)
 COLOR_POPUP_UP = COLOR_GREEN        # 늘어난 값 글자 색
 COLOR_POPUP_DOWN = COLOR_RED        # 줄어든 값 글자 색
 
@@ -1161,20 +1165,28 @@ UPGRADE_BUTTON_ENDING_Y = 516
 # 그래서 패널이 열려 있어도 오른쪽 제자 무대(제자·배경)는 그대로 보인다. 반투명 없이 도트 상자
 UPGRADE_PANEL_RECT = (STATUS_PANEL_X, PANEL_Y, STATUS_PANEL_WIDTH, 352)  # 아래 끝 468 (방침 버튼 476 위)
 UPGRADE_PANEL_TITLE = "업그레이드"
-UPGRADE_HEADER_Y = 136              # 머리 줄(제목·연구비) 가운데 y
+UPGRADE_HEADER_Y = 132              # 머리 줄(제목·연구비) 가운데 y (제목 글자 120~144)
 UPGRADE_HEADER_LEFT = 28            # 제목 글자 왼쪽 x
 UPGRADE_HEADER_RIGHT = 252          # 연구비 글자 오른쪽 끝 x
 UPGRADE_ROW_X = 24                  # 항목 줄 상자 왼쪽 x
 UPGRADE_ROW_WIDTH = 232             # 항목 줄 상자 가로 길이 -> 오른쪽 끝 256 (패널 안쪽 20~260)
-UPGRADE_ROW_TOP = 150               # 첫 항목 줄 위쪽 y
-UPGRADE_ROW_HEIGHT = 28             # 항목 줄 상자 세로 길이 (안쪽 20: 작은 글자 한 줄)
-UPGRADE_ROW_STEP = 29               # 항목 줄 사이 거리 (10줄 -> 마지막 아래 끝 439)
+UPGRADE_ROW_TOP = 166               # 첫 항목 줄 위쪽 y (머리 줄과 미니 게이지 줄 아래)
+UPGRADE_ROW_HEIGHT = 27             # 항목 줄 상자 세로 길이 (안쪽 19: 작은 글자 한 줄 높이 19)
+UPGRADE_ROW_STEP = 28               # 항목 줄 사이 거리 (10줄 -> 마지막 아래 끝 445)
+# 패널 머리 줄 아래 미니 게이지 줄(K단위): 패널이 상태 패널의 체력·멘탈 막대를 가리므로
+# 작은 막대 2개를 한 줄에 나란히 보여 준다. 길이는 표시값(E4), 색(30 미만 빨강)은 실제 값 기준
+UPGRADE_GAUGE_Y = 154               # 미니 게이지 줄 가운데 y (라벨 글자 145~164, 막대 테두리 146~162)
+# (Student 속성 이름, 라벨, 라벨 글자 왼쪽 x)
+UPGRADE_GAUGES = [(GAUGE_HEALTH, HEALTH_LABEL, 28), (GAUGE_MENTAL, MENTAL_LABEL, 144)]
+UPGRADE_GAUGE_BAR_GAP = 6           # 라벨 글자와 막대 테두리 사이 간격
+UPGRADE_GAUGE_BAR_WIDTH = 64       # 미니 막대 가로 길이(값 100일 때)
+UPGRADE_GAUGE_BAR_HEIGHT = 8        # 미니 막대 세로 길이(도트 2칸, 테두리 제외)
 UPGRADE_CURSOR_X = 28               # 고른 줄 표시 화살표 왼쪽 x
 UPGRADE_NAME_X = 48                 # 이름 글자 왼쪽 x
 UPGRADE_LEVEL_X = 148               # "Lv 0/5" 글자 왼쪽 x
 UPGRADE_COST_RIGHT = 248            # 가격 글자 오른쪽 끝 x
 UPGRADE_FOOTER_X = 28               # 바닥 줄(고른 항목 효과) 글자 왼쪽 x
-UPGRADE_FOOTER_Y = 450              # 바닥 줄 가운데 y (패널 안쪽 아래 끝 460 안)
+UPGRADE_FOOTER_Y = 455              # 바닥 줄 가운데 y (글자 446~465: 마지막 줄 아래, 패널 아래 끝 468 안)
 UPGRADE_FOOTER_TEXT = "효과: {}"     # 바닥 줄 글자 틀: 고른 줄(↑↓)의 레벨당 효과
 UPGRADE_LEVEL_TEXT = "Lv {}/{}"
 UPGRADE_COST_TEXT = "{}"                # 가격 글자(숫자만, 단위 연구비는 머리 줄에 보인다)
@@ -1209,6 +1221,11 @@ GRAD_SCHOOL_HINT_Y = 460    # 둘째 줄 가운데 y (첫 줄 RESTART_HINT_Y 428
 # 엔딩 이름이 길면(예: "대학원 12년차 수료") 큰 글씨 대신 조금 작은 글씨로 그린다
 ENDING_NAME_MAX_WIDTH = 520     # 큰 글씨 엔딩 이름이 넘으면 안 되는 가로 길이 (패널 608 안)
 ENDING_LONG_FONT_SIZE = 44      # 긴 엔딩 이름 글자 크기
+# 엔딩 화면에서 업그레이드 패널(왼쪽 x 12~268)을 열면 가운데 패널이 엔딩 이름을 가리지 않도록
+# 가운데 패널과 엔딩 글자·그림을 오른쪽 무대 자리(x 284~788, 가운데 536)로 옮겨 그린다(K단위)
+ENDING_PANEL_OPEN_RECT = (STAGE_X, MENU_PANEL_RECT[1], STAGE_WIDTH, MENU_PANEL_RECT[3])
+ENDING_OPEN_CENTER_X = STAGE_X + STAGE_WIDTH // 2      # 536
+ENDING_NAME_MAX_WIDTH_OPEN = 456  # 옮겨 그릴 때 큰 글씨 엔딩 이름의 최대 가로 길이 (패널 504 안)
 
 # ---------------------------------------------------------------
 # 22. 무대 배경 4겹 (기획서 10절 "배경", J단위)
@@ -1290,6 +1307,17 @@ SEASON_COLORS = {
                     "leaf_light": (255, 255, 255), "leaf_dark": (196, 204, 226),
                     "accent": (255, 255, 255), "snow": (255, 255, 255)},
 }
+
+# 저녁·밤 그늘(K단위): 바깥 장소의 땅·나무·건물 색을 밤 남색 쪽으로 조금 섞어 어둡게 그린다.
+# 반투명 없이 색 값 자체를 바꿔 다시 그린다. 매 프레임 섞지 않고 몇 단계로만 바꾸며,
+# 단계가 바뀔 때만 배경 그림을 새로 그린다(장소·계절·시설·단계 열쇠로 캐시).
+# 단계가 바뀌는 시각은 하늘색이 바뀌는 구간(SKY_KEYFRAMES)의 가운데쯤에 맞춘다.
+SCENE_SHADE_STEPS = [(0.0, 0), (8.5, 1), (11.75, 2), (14.5, 1)]  # (계절 안 시각(초), 그늘 단계)
+SCENE_SHADE_RATIOS = [0.0, 0.12, 0.3]   # 단계별로 밤 남색을 섞는 비율 (0 = 원래 색)
+SCENE_SHADE_COLOR = (30, 32, 74)        # 섞는 밤 남색
+SCENE_SHADE_NONE = 0                    # 그늘 없음 단계(낮, 실내)
+# 그늘을 넣는 장소: 바깥 장소만. 연구실은 실내라 불이 켜져 있으므로 넣지 않는다(창밖 하늘만 밤)
+SCENE_SHADE_PLACES = [PLACE_LAWN, PLACE_LECTURE, PLACE_LIBRARY, PLACE_CEREMONY]
 
 # 계절과 상관없는 배경 색 (이름 -> RGB)
 SCENE_COLORS = {
@@ -1525,11 +1553,16 @@ PLACE_BACK = {
         (PART_RECT, "far_dark", 34, 26, 56, 2),
         (PART_RECT, "snow", 34, 25, 56, 1),
         (PART_WINDOWS, "glass", 37, 30, 8, 3, 4, 3, 6, 5),
-        (PART_RECT, "path", 58, 45, 8, 4),                       # 앞으로 넓어지는 길
-        (PART_RECT, "path", 56, 49, 12, 5),
-        (PART_RECT, "path", 54, 54, 16, 6),
-        (PART_RECT, "path", 52, 60, 20, 8),
-        (PART_RECT, "path", 50, 68, 24, 16),
+        # 강의동 왼쪽에서 왼쪽 아래 구석으로 비스듬히 넓어지는 길.
+        # 제자(무대 가운데, 열 52~72) 바로 아래로 내려오면 몸통처럼 보여서 왼쪽으로 비켜 둔다
+        (PART_RECT, "path", 36, 45, 6, 3),
+        (PART_RECT, "path", 33, 48, 7, 3),
+        (PART_RECT, "path", 30, 51, 8, 3),
+        (PART_RECT, "path", 26, 54, 9, 4),
+        (PART_RECT, "path", 21, 58, 11, 4),
+        (PART_RECT, "path", 15, 62, 13, 5),
+        (PART_RECT, "path", 8, 67, 15, 6),
+        (PART_RECT, "path", 0, 73, 17, 11),
         (PART_SPRITE, "tree", 20, 27),
         (PART_SPRITE, "tree", 76, 27),
     ],
@@ -1604,14 +1637,15 @@ PLACE_BACK = {
 }
 PLACE_FRONT = {
     PLACE_LAWN: [
-        (PART_SPRITE, "bench", 6, 56),
-        (PART_SPRITE, "bench", 102, 64),
-        (PART_SPRITE, "flower", 30, 52),
+        # 벤치는 길·행동 소품(열 86~110, 행 62~75)과 겹치지 않는 자리에 둔다
+        (PART_SPRITE, "bench", 4, 50),
+        (PART_SPRITE, "bench", 106, 49),
+        (PART_SPRITE, "flower", 42, 52),
         (PART_SPRITE, "flower", 40, 72),
         (PART_SPRITE, "flower", 80, 56),
-        (PART_SPRITE, "flower", 94, 76),
-        (PART_SPRITE, "flower", 14, 76),
-        (PART_SPRITE, "flower", 114, 52),
+        (PART_SPRITE, "flower", 94, 78),
+        (PART_SPRITE, "flower", 26, 78),
+        (PART_SPRITE, "flower", 116, 62),
     ],
     PLACE_LECTURE: [
         (PART_SPRITE, "flower", 12, 60),

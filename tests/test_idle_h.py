@@ -1007,10 +1007,18 @@ def test_panel_texts_fit_inside_rows(g, monkeypatch, setup):
         for a, b in zip(rects, rects[1:]):
             assert a.right <= b.left, (uid, a, b)
     # 머리 줄 글자(제목·연구비)도 서로 겹치지 않는다 (J단위: 안내 문구는 빠짐)
-    header = sorted((r for t, r in texts if r.bottom <= config.UPGRADE_ROW_TOP), key=lambda r: r.left)
-    assert len(header) == 2
-    for a, b in zip(header, header[1:]):
-        assert a.right <= b.left
+    # (K단위) 머리 줄 아래 미니 게이지 줄의 라벨 "체력"·"멘탈"이 더해져 첫 줄 위 글자는 4개.
+    # 두 줄로 나뉘므로 왼쪽 순 이웃 비교 대신 모든 쌍이 겹치지 않는지 본다.
+    header_items = [(t, r) for t, r in texts if r.bottom <= config.UPGRADE_ROW_TOP]
+    assert len(header_items) == 4
+    header_texts = [t for t, _ in header_items]
+    assert config.UPGRADE_PANEL_TITLE in header_texts
+    assert config.HEALTH_LABEL in header_texts and config.MENTAL_LABEL in header_texts
+    assert any(t.startswith(config.MONEY_LABEL) for t in header_texts)
+    header = [r for _, r in header_items]
+    for i, a in enumerate(header):
+        for b in header[i + 1:]:
+            assert not a.colliderect(b), (a, b)
     # (J단위) 바닥 줄: 고른 줄 항목의 효과 설명 하나가 마지막 줄 아래, 패널 안에 있다
     last_row = g.get_upgrade_row_rect(len(config.UPGRADE_IDS) - 1)
     footer = [(t, r) for t, r in texts if r.top >= last_row.bottom]
