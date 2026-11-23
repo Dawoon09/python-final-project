@@ -25,7 +25,7 @@ import pytest  # noqa: E402
 import config  # noqa: E402
 import game as game_module  # noqa: E402
 from button import sprite_size  # noqa: E402
-from conftest import press  # noqa: E402
+from conftest import press, reach_grade  # noqa: E402
 from game import Game  # noqa: E402
 from student import Student  # noqa: E402
 
@@ -35,7 +35,12 @@ CX, CY = config.STUDENT_CENTER_X, config.STUDENT_CENTER_Y
 FRAME = 1 / 60
 H, M, K = config.GAUGE_HEALTH, config.GAUGE_MENTAL, config.GAUGE_KNOWLEDGE
 FEED, REST, STUDY = config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY
-GRADE_STARTS = [0.0, 60.0, 120.0, 180.0]
+GRADE_STARTS = [0.0, 60.0, 120.0, 180.0]   # (L단위) 이제는 n번째 60초 주기의 시작 시각
+
+
+def grade_of_old_time(elapsed):
+    """(L단위) 예전 "elapsed초 = (elapsed // 60 + 1)학년" 규칙으로 학년을 구한다(4학년까지)."""
+    return min(config.MAX_GRADE, int(elapsed // config.CYCLE_SECONDS) + config.FIRST_GRADE)
 STAGE_INNER = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH,
                           config.PANEL_HEIGHT).inflate(-2 * P, -2 * P)
 STATUS_INNER = pygame.Rect(config.STATUS_PANEL_X, config.PANEL_Y, config.STATUS_PANEL_WIDTH,
@@ -55,10 +60,12 @@ def make_game(monkeypatch):
     monkeypatch.setattr(config, "EVENT_MAX_PER_GRADE", 0)
 
     def factory(elapsed=0.0, seed=0):
+        """(L단위) 경과 시간(주기·시험 기간)은 elapsed, 학년은 예전 시간 규칙의 학년을 지식으로 맞춘다."""
         g = Game(seed=seed)
         press(g, pygame.K_RETURN)
         assert g.state == config.STATE_PLAYING
         g.student.elapsed = elapsed
+        reach_grade(g.student, grade_of_old_time(elapsed))
         return g
 
     yield factory
@@ -91,7 +98,7 @@ def gauges(g):
 
 def frozen_state(g):
     s = g.student
-    return (s.elapsed, s.decay_timer, s.health, s.mental, s.knowledge, g.cooldown,
+    return (s.elapsed, s.decay_timer, s.health, s.mental, s.knowledge, g.auto_timer,
             s.get_grade())
 
 
@@ -305,9 +312,9 @@ def test_d_unit_constants():
     assert config.EVENT_NOTICE_SLIDE_TIME == 0.15
     assert config.EVENT_DIALOG_SLIDE_TIME < config.EVENT_INPUT_DELAY
     assert tuple(config.EVENT_DIALOG_RECT) == (300, 132, 472, 264)
-    # 새 제자: 학년별 이벤트 수 0, 특성 보정 0
+    # 새 제자: (L단위) 주기별 이벤트 수는 빈 사전(없는 주기 0), 특성 보정 0
     s = Student()
-    assert s.event_counts == {1: 0, 2: 0, 3: 0, 4: 0}
+    assert s.event_counts == {} and s.get_cycle_event_count() == 0
     for bonus in (config.BONUS_FEED_HEALTH, config.BONUS_REST_MENTAL,
                   config.BONUS_REST_HEALTH, config.BONUS_STUDY_HEALTH):
         assert s.get_trait_bonus(bonus) == 0
@@ -332,19 +339,26 @@ def test_input_ignored_right_after_dialog_opens(make_game):
 
 
 def test_action_key_mash_does_not_choose(make_game, monkeypatch):
-    """행동 키 1 로 이벤트가 뜬 바로 다음 프레임에 1 을 또 눌러도 선택으로 들어가지 않는다."""
+    """행동 직후 이벤트가 뜬 바로 다음 프레임부터 키 1·2 를 연타해도 선택으로 들어가지 않는다.
+
+    (G단위) 키 1 은 이제 방침 키라서 행동은 do_action 으로 시킨다. 방침 키를 연타하던 중
+    자동 행동으로 대화창이 떠도 같은 키가 선택으로 들어가면 안 된다는 뜻은 그대로다.
+    """
     g = make_game(5.0)
     monkeypatch.setattr(config, "EVENT_MAX_PER_GRADE", 5)
     monkeypatch.setattr(config, "EVENT_CHANCE", 1.0)
     monkeypatch.setattr(g, "pick_event", lambda: event_by_id("mt_invite"))
-    press(g, pygame.K_1)
+    press(g, pygame.K_1)                     # 방침 키(공부 위주)
+    assert g.do_action(config.ACTION_FEED)   # 행동 직후 대화창
     assert g.state == config.STATE_EVENT
+    policy = g.policy
     snap = gauges(g)
     for _ in range(int(config.EVENT_INPUT_DELAY / FRAME) - 1):
         g.update(FRAME)
         press(g, pygame.K_1)
         press(g, pygame.K_2)
     assert g.state == config.STATE_EVENT and gauges(g) == snap
+    assert g.policy == policy                # 대화창 중 키 1·2 는 방침도 바꾸지 않는다
 
 
 @pytest.mark.parametrize("how", ["key1", "key2", "click0", "click1", "call0", "call1"])
@@ -965,6 +979,7 @@ def diff_set(a, b, area=STAGE_INNER):
 def student(grade, looks=(), health=80, mental=80):
     s = Student()
     s.elapsed = GRADE_STARTS[grade - 1] + 5.0
+    reach_grade(s, grade)   # (L단위) 학년은 지식으로
     s.health, s.mental = health, mental
     for look in looks:
         s.add_look(look)

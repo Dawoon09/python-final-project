@@ -78,7 +78,7 @@ def render_text(font, text, color=config.COLOR_TEXT):
 
 
 def draw_progress_bar(screen, inner, progress):
-    """버튼 안쪽(inner) 맨 아래에 쿨타임 진행 막대를 도트 단위로 그린다.
+    """사각형 inner 맨 아래에 진행 막대(자동 행동·입력 대기)를 도트 단위로 그린다.
 
     회색 홈 위에 하늘색이 왼쪽부터 progress(0~1) 비율만큼 찬다.
     길이는 PIXEL_SIZE 단위로 끊어서 한 칸씩 차오르는 도트 느낌을 낸다.
@@ -96,10 +96,10 @@ def draw_progress_bar(screen, inner, progress):
 # Button 클래스
 # ----------------------------------------------------------------
 class Button:
-    """화면에 보이는 행동 버튼 하나.
+    """화면에 보이는 버튼 하나(일과표 방침 버튼, 대화창 선택 버튼).
 
-    위치·크기와 버튼 글자를 가지고, 클릭 판정과 쿨타임 표시를 맡는다.
-    쿨타임 시간 자체는 Game이 관리하고, 버튼은 그리기 때 "지금 쿨타임 중인지"만 받는다.
+    위치·크기와 버튼 글자를 가지고, 클릭 판정과 그리기(회색·호버·선택 강조·진행 막대)를 맡는다.
+    시간과 방침 자체는 Game이 관리하고, 버튼은 그리기 때 보여 줄 상태만 받는다.
     """
 
     def __init__(self, x, y, width, height, text):
@@ -114,7 +114,7 @@ class Button:
     def get_colors(self, cooling_down):
         """버튼 색 묶음 (몸통, 위 하이라이트, 아래 그림자, 글자)을 돌려준다.
 
-        평소에는 하늘색 계열, 쿨타임 중(cooling_down=True)이면 회색 계열이다.
+        평소에는 하늘색 계열, 회색 차례(cooling_down=True, 대화창 입력 대기 중)면 회색 계열이다.
         """
         if cooling_down:
             return (config.COLOR_GRAY, config.COLOR_GRAY_LIGHT,
@@ -123,19 +123,26 @@ class Button:
                 config.COLOR_BUTTON_DARK, config.COLOR_BUTTON_TEXT)
 
     def draw(self, screen, font, cooling_down, hovered=False, press_offset=config.NO_OFFSET,
-             cooldown_progress=None):
+             cooldown_progress=None, selected=False):
         """버튼을 도트 상자로 그린다.
 
         버튼 아래에 남색 받침(도트 1칸)을 깔고, 계단형 모서리 + 남색 외곽선 +
         위 하이라이트 / 아래 그림자 줄로 입체감을 준 뒤 가운데에 글자를 쓴다.
-        쿨타임 중이면 몸통이 회색 계열로 바뀐다.
-        - hovered: 마우스가 버튼 위에 있으면 True. 쿨타임이 아닐 때만 몸통을 밝은 색으로 칠한다.
+        cooling_down이 True(대화창 입력 대기 중)면 몸통이 회색 계열로 바뀐다.
+        - hovered: 마우스가 버튼 위에 있으면 True. 회색이 아닐 때만 몸통을 밝은 색으로 칠한다.
         - press_offset: 버튼 몸통을 아래로 내려 그릴 거리(픽셀). 받침은 제자리에 있으므로
           4픽셀 내려가면 받침 위에 딱 붙어 "눌린" 것처럼 보인다.
-        - cooldown_progress: 0~1. 주어지면 버튼 안쪽 맨 아래에 쿨타임 진행 막대를 그린다.
+        - cooldown_progress: 0~1. 주어지면 버튼 안쪽 맨 아래에 진행 막대를 그린다
+          (대화창 선택 버튼의 입력 대기 표시에 쓴다).
+        - selected: 지금 고른 일과표 방침 버튼이면 True. 몸통을 노랑 계열로 밝게 강조한다
+          (반투명 없이 색만 바꾼다). 호버보다 우선한다.
         """
         fill, light, shadow, text_color = self.get_colors(cooling_down)
-        if hovered and not cooling_down:
+        if selected and not cooling_down:
+            fill = config.COLOR_POLICY_SELECTED
+            light = config.COLOR_POLICY_SELECTED_LIGHT
+            shadow = config.COLOR_POLICY_SELECTED_DARK
+        elif hovered and not cooling_down:
             fill = config.COLOR_BUTTON_BRIGHT
         # 받침은 원래 자리에, 몸통은 press_offset 만큼 내려서 그린다
         draw_cut_rect(screen, config.COLOR_OUTLINE,

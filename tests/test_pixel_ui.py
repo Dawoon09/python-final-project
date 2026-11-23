@@ -108,15 +108,14 @@ def font():
 GAME_CONSTANTS = [
     "SCREEN_WIDTH", "SCREEN_HEIGHT", "FPS", "WINDOW_TITLE", "FONT_NAME", "MS_PER_SECOND",
     "STATE_TITLE", "STATE_PLAYING", "STATE_ENDING", "START_STATE",
-    "SECONDS_PER_GRADE", "MAX_GRADE", "TOTAL_SECONDS", "EXAM_SECONDS", "FIRST_GRADE", "ZERO_TIME",
+    "MAX_GRADE", "EXAM_SECONDS", "FIRST_GRADE", "ZERO_TIME",
     "GAUGE_MIN", "GAUGE_MAX", "HEALTH_START", "MENTAL_START", "KNOWLEDGE_START",
     "HEALTH_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC_EXAM",
     "DECAY_INTERVAL", "TIME_EPSILON", "LOW_GAUGE_LIMIT",
     "FEED_HEALTH", "REST_MENTAL", "REST_KNOWLEDGE", "STUDY_HEALTH", "STUDY_MENTAL",
-    "STUDY_KNOWLEDGE", "STUDY_KNOWLEDGE_EXAM", "ACTION_COOLDOWN",
+    "STUDY_KNOWLEDGE", "STUDY_KNOWLEDGE_EXAM",  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
     "MENTAL_SMILE_MIN", "MENTAL_FLAT_MIN", "BASE_RADIUS", "RADIUS_PER_GRADE", "GLASSES_GRADE",
     "MOUTH_SMILE", "MOUTH_FLAT", "MOUTH_CRY",
-    "TOP_GRADUATE_KNOWLEDGE", "NORMAL_GRADUATE_KNOWLEDGE",
     "ENDING_LEAVE", "ENDING_TOP", "ENDING_NORMAL", "ENDING_BARELY",
     "RECORD_FILENAME", "RECORD_KEY", "RECORD_ENCODING", "BEST_RECORD_START",
     "ACTION_FEED", "ACTION_REST", "ACTION_STUDY",
@@ -124,20 +123,29 @@ GAME_CONSTANTS = [
 
 # 화면 글자 (기획서·jeja-spec 의 문구) : main 과도 같아야 한다
 UI_TEXTS = [
-    "HEALTH_LABEL", "MENTAL_LABEL", "KNOWLEDGE_LABEL", "GRADE_TEXT", "TIME_LEFT_TEXT",
-    "KNOWLEDGE_TEXT", "FEED_BUTTON_TEXT", "REST_BUTTON_TEXT", "STUDY_BUTTON_TEXT",
-    "COOLDOWN_HINT_TEXT", "EXAM_BANNER_TEXT", "TITLE_TEXT", "BEST_RECORD_TEXT",
+    "HEALTH_LABEL", "MENTAL_LABEL", "KNOWLEDGE_LABEL", "GRADE_TEXT",
+    # G단위: 행동 버튼 글자 3개·쿨타임 안내는 기획서 10절로 삭제(방침 버튼·자동 행동 안내로 바뀜)
+    "KNOWLEDGE_TEXT", "EXAM_BANNER_TEXT", "TITLE_TEXT", "BEST_RECORD_TEXT",
     "START_HINT_TEXT", "ENDING_KNOWLEDGE_TEXT", "RESTART_HINT_TEXT",
 ]
+
+
+# (L단위) 기획서 11절(시간 제한 없애기)로 없어진 상수와 화면 글자
+L_REMOVED_CONSTANTS = ["SECONDS_PER_GRADE", "TOTAL_SECONDS", "TOP_GRADUATE_KNOWLEDGE",
+                       "NORMAL_GRADUATE_KNOWLEDGE", "TIME_LEFT_TEXT"]
 
 
 def test_game_constants_same_as_main(tmp_path):
     main_cfg = load_main_config(tmp_path)
     diff = [(n, getattr(main_cfg, n), getattr(config, n)) for n in GAME_CONSTANTS + UI_TEXTS
             if getattr(main_cfg, n) != getattr(config, n)]
-    # (E단위) 사용자 승인으로 엔딩 기준만 500/300 -> 700/450 으로 바뀌었다. 그 밖에는 main 과 같아야 한다.
-    approved = [("NORMAL_GRADUATE_KNOWLEDGE", 300, 450), ("TOP_GRADUATE_KNOWLEDGE", 500, 700)]
-    assert sorted(diff) == approved
+    # 엔딩 기준은 500/300 -> 700/450(E단위) -> 1000/750(K단위)으로 바뀌었다가
+    # L단위(기획서 11절)에서 지식 기준 자체가 없어졌다(걸린 시간 240/360초). 그 밖에는 main 과 같아야 한다.
+    assert diff == []
+    # (L단위) 기획서 11절로 없어진 상수: main 에는 있었고 지금은 없어야 한다
+    for gone in L_REMOVED_CONSTANTS:
+        assert hasattr(main_cfg, gone), gone
+        assert not hasattr(config, gone), gone
     # get_base_dir (record.json 위치) 도 그대로 (docstring 제외 코드 비교)
     old = _functions(git_show("config.py"))["get_base_dir"]
     new = _functions((ROOT / "config.py").read_text(encoding="utf-8"))["get_base_dir"]
@@ -215,9 +223,13 @@ EVENT_HOOKS = {
         "self.event_counts = {grade: config.EVENT_COUNT_START for grade in config.ALL_GRADES}",
         # (E 단위) 최소 간격용 직전 이벤트 시각(새 판 None)
         "self.last_event_time = None"]},
-    "Student.feed": {"strip": [" + self.get_trait_bonus(config.BONUS_FEED_HEALTH)"]},
+    # (H단위) 업그레이드 보너스 덧셈(학식 메뉴 개선·푹신한 침대·카페)도 특성 보정처럼 걷어 낸다
+    "Student.feed": {"strip": [" + self.get_trait_bonus(config.BONUS_FEED_HEALTH)",
+                               " + self.get_upgrade_bonus(config.UPGRADE_MENU)"]},
     "Student.rest": {"strip": [" + self.get_trait_bonus(config.BONUS_REST_MENTAL)",
-                               " + self.get_trait_bonus(config.BONUS_REST_HEALTH)"],
+                               " + self.get_upgrade_bonus(config.UPGRADE_BED)",
+                               " + self.get_trait_bonus(config.BONUS_REST_HEALTH)",
+                               " + self.get_upgrade_bonus(config.UPGRADE_CAFE)"],
                      "remove": ["self.change_health(config.REST_HEALTH)"]},
     "Student.study": {"strip": [" + self.get_trait_bonus(config.BONUS_STUDY_HEALTH)"]},
     "Game.reset_round": {"remove": ["self.current_event = None"]},
@@ -279,6 +291,46 @@ def _remove_effect_hooks(fname, node):
     return node
 
 
+# (G단위) 기획서 10절(방치형 전환)이 규칙 자체를 바꾼 함수. main 과 비교하지 않고
+# 새 규칙은 test_idle_g.py 에서 확인한다.
+# - Game.is_cooling_down: 쿨타임 삭제로 함수가 없어짐
+# - Game.reset_round: 쿨타임 대신 방침·자동 행동 시계·last_action 초기화
+# - Game.make_buttons: 행동 버튼 3개 -> 방침 버튼 3개
+# - Game.do_action: 쿨타임 검사 삭제, 방침 배수, last_action
+# - Game.handle_event: 키 1/2/3·버튼 클릭 -> 방침 선택
+# - Game.update: 자동 행동 시계
+# - Student.study: 방침 배수(knowledge_ratio, cost_ratio)
+G_CHANGED = {"Game.is_cooling_down", "Game.reset_round", "Game.make_buttons", "Game.do_action",
+             "Game.handle_event", "Game.update", "Student.study"}
+
+# (H단위) 기획서 10절(연구비·업그레이드·record.json 확장)이 규칙 자체를 바꾼 함수.
+# 새 규칙은 test_idle_h.py 에서 확인한다.
+# - Student.__init__: upgrades 인자(Game 과 같은 사전을 함께 씀)
+# - Student.change_health / change_mental: 건강 관리로 소수 게이지 -> 6자리 반올림
+# - Student.decay_once / get_mental_decay: 자연 감소 x (1 - 0.1 x 건강 관리 레벨)
+# - Game.end_game: 졸업 보너스, 판이 끝나면 언제나 4개 키 저장
+# - Game.load_best_record / save_best_record: 4개 키 형식 read_record_file / save_record 의 래퍼
+H_CHANGED = {"Student.__init__", "Student.change_health", "Student.change_mental",
+             "Student.decay_once", "Student.get_mental_decay", "Game.end_game",
+             "Game.load_best_record", "Game.save_best_record"}
+
+# (I단위) 기획서 10절(졸업 후 대학원)이 규칙 자체를 바꾼 함수.
+# 새 규칙은 test_idle_i.py 에서 확인한다(학부 240초 규칙이 그대로인지도 거기서 다시 본다).
+# - Student.update: 대학원에서는 240초에서 멈추지 않고 흐르며 60초마다 년차가 오른다
+# - Student.is_time_over: 대학원에서는 언제나 False(체력·멘탈 0으로만 끝남)
+# - Student.is_exam_period: 대학원 년차마다 마지막 15초(학년 안 시간을 get_time_in_grade로 계산)
+# - Student.get_ending: 대학원에서 0이 되면 "대학원 n년차 수료"
+# - Student.get_grade_time_left: 대학원이면 지금 년차의 남은 시간(get_time_in_grade 사용)
+I_CHANGED = {"Student.update", "Student.is_time_over", "Student.is_exam_period",
+             "Student.get_ending", "Student.get_grade_time_left"}
+
+# (L단위) 기획서 11절(시간 제한 없애기)이 규칙 자체를 바꾼 함수. 새 규칙은 test_idle_l.py 에서 확인한다.
+# - judge_ending: 지식 -> 졸업까지 걸린 시간(초)
+# - Student.get_grade: 경과 시간 -> 진급으로 오른 학년(self.grade)
+# - Student.get_graduation_ending: 지식 -> graduation_time, 졸업 전이면 None
+L_CHANGED = {"judge_ending", "Student.get_grade", "Student.get_graduation_ending"}
+
+
 @pytest.mark.parametrize("name", ["student.py", "game.py", "button.py"])
 def test_logic_functions_unchanged_from_main(name):
     """그리기 외 함수(게이지·쿨타임·학년·엔딩·기록·입력)는 main 과 docstring 빼고 똑같다.
@@ -292,7 +344,8 @@ def test_logic_functions_unchanged_from_main(name):
     new = _functions((ROOT / name).read_text(encoding="utf-8"))
     changed = []
     for fname, node in old.items():
-        if _is_drawing(fname) or fname == "Game.__init__":
+        if (_is_drawing(fname) or fname == "Game.__init__" or fname in G_CHANGED
+                or fname in H_CHANGED or fname in I_CHANGED or fname in L_CHANGED):
             continue
         assert fname in new, f"{name}: {fname} 이 사라짐"
         new_node = _remove_event_hooks(fname, new[fname])
@@ -304,12 +357,15 @@ def test_logic_functions_unchanged_from_main(name):
 
 
 def test_do_action_effects_start_after_action_before_ending_check():
-    """do_action: before 저장은 행동 전, start_action_effects 는 쿨타임 설정 뒤·check_ending 앞."""
+    """do_action: before 저장은 행동 전, start_action_effects 는 last_action 기록 뒤·check_ending 앞.
+
+    G단위: 쿨타임 설정 줄이 없어져 그 자리를 last_action 기록으로 본다.
+    """
     node = _functions((ROOT / "game.py").read_text(encoding="utf-8"))["Game.do_action"]
     lines = [ast.unparse(s) for s in node.body]
     i_before = lines.index("before = self.get_gauge_values()")
     i_if = next(i for i, s in enumerate(lines) if s.startswith("if name == config.ACTION_FEED"))
-    i_cool = lines.index("self.cooldown = config.ACTION_COOLDOWN")
+    i_cool = lines.index("self.last_action = name")
     i_fx = lines.index("self.start_action_effects(name, before)")
     # (C 단위) 휴학 판정 뒤, 휴학이 아닐 때만 이벤트 판정. 그다음 return True 로 끝난다
     i_end = lines.index(ROLL_AFTER_ENDING)
@@ -324,10 +380,15 @@ def test_game_init_only_adds_backdrop():
     new = _functions((ROOT / "game.py").read_text(encoding="utf-8"))["Game.__init__"]
     old_lines = [ast.unparse(s) for s in old.body[1:]]
     new_lines = [ast.unparse(s) for s in new.body[1:]]
+    # (H단위) 최고 기록만 읽던 줄이 최고 기록·연구비·명성·업그레이드를 함께 읽는 줄로 바뀌었다
+    new_lines = ["self.best_record = self.load_best_record()" if line == "self.load_record()"
+                 else line for line in new_lines]
     extra = [line for line in new_lines if line not in old_lines]
     assert [line for line in new_lines if line in old_lines] == old_lines
     assert extra == [
         "self.rng = random.Random(seed)",   # (C 단위) 이벤트 전용 난수 생성기
+        # (I 단위) 긴 엔딩 이름("대학원 12년차 수료")용 44px 글꼴
+        "self.ending_font = pygame.font.SysFont(config.FONT_NAME, config.ENDING_LONG_FONT_SIZE)",
         "self.backdrop = self.make_backdrop()",
         "self.popup_font = pygame.font.SysFont(config.FONT_NAME, config.POPUP_FONT_SIZE, "
         "bold=config.POPUP_FONT_BOLD)",
@@ -338,18 +399,39 @@ def test_game_init_only_adds_backdrop():
         "self.notice_font = pygame.font.SysFont(config.FONT_NAME, config.EVENT_NOTICE_FONT_SIZE)",
         "self.mouse_pos = None",
         "self.blink_time = config.ZERO_TIME",
+        # (H 단위) 졸업 보너스·업그레이드 패널 상태
+        "self.graduation_bonus = config.MONEY_START",
+        "self.upgrade_panel_open = False",
+        "self.upgrade_cursor = config.UPGRADE_CURSOR_START",
         "self.choice_buttons = self.make_choice_buttons()",
+        # (H 단위) [업그레이드 U] 버튼 2개(게임/엔딩)
+        "self.upgrade_button = Button(config.UPGRADE_BUTTON_X, config.UPGRADE_BUTTON_Y, "
+        "config.BUTTON_WIDTH, config.BUTTON_HEIGHT, config.UPGRADE_BUTTON_TEXT)",
+        "self.ending_upgrade_button = Button(config.UPGRADE_BUTTON_X, "
+        "config.UPGRADE_BUTTON_ENDING_Y, config.BUTTON_WIDTH, config.BUTTON_HEIGHT, "
+        "config.UPGRADE_BUTTON_TEXT)",
+        # (J 단위) 무대 배경 캐시(장소·계절·시설 열쇠)와 한 번만 그려 두는 해·달·행동 소품
+        "self.scenery = None",
+        "self.scenery_key = None",
+        "self.sky_objects = {config.TIME_DAY: self.make_sprite_surface(config.SUN_SPRITE, "
+        "config.SUN_COLORS), config.TIME_EVENING: self.make_sprite_surface(config.SUN_SPRITE, "
+        "config.EVENING_SUN_COLORS), config.TIME_NIGHT: "
+        "self.make_sprite_surface(config.MOON_SPRITE, config.MOON_COLORS)}",
+        "self.prop_surfaces = {name: self.make_sprite_surface(grid, config.PROP_COLORS) "
+        "for name, grid in config.PROP_SPRITES.items()}",
     ]
     # (C 단위) 인자는 record_path=None, seed=None 둘
     assert [a.arg for a in new.args.args] == ["self", "record_path", "seed"]
     assert [ast.unparse(d) for d in new.args.defaults] == ["None", "None"]
 
 
-def test_action_keys_unchanged():
+def test_policy_keys_1_2_3():
+    """G단위: 키 1/2/3은 행동 대신 방침(공부 위주/균형/휴식 위주)이다(기획서 10절)."""
     import game as game_module
-    assert game_module.ACTION_KEYS == {pygame.K_1: config.ACTION_FEED,
-                                       pygame.K_2: config.ACTION_REST,
-                                       pygame.K_3: config.ACTION_STUDY}
+    assert not hasattr(game_module, "ACTION_KEYS")
+    assert game_module.POLICY_KEYS == {pygame.K_1: config.POLICY_STUDY_FOCUS,
+                                       pygame.K_2: config.POLICY_BALANCED,
+                                       pygame.K_3: config.POLICY_REST_FOCUS}
 
 
 # ======================= 2. config.py 인코딩·한글 문자열 =======================
@@ -374,20 +456,31 @@ def test_config_is_valid_utf8_without_broken_chars():
     ("ENDING_TOP", "수석 졸업"),
     ("ENDING_NORMAL", "무사 졸업"),
     ("ENDING_BARELY", "아슬아슬 졸업"),
-    ("FEED_BUTTON_TEXT", "학식 먹이기 [1]"),
-    ("REST_BUTTON_TEXT", "쉬게 하기 [2]"),
-    ("STUDY_BUTTON_TEXT", "공부시키기 [3]"),
     ("EXAM_BANNER_TEXT", "시험 기간! 공부 효과 2배, 멘탈 감소 2배"),
     ("START_HINT_TEXT", "Enter를 눌러 시작"),
     ("RESTART_HINT_TEXT", "R을 눌러 다시 하기"),
-    ("COOLDOWN_HINT_TEXT", "누른 뒤 1초 동안 회색 (쿨타임)"),
     ("GRADE_TEXT", "{}학년"),
-    ("TIME_LEFT_TEXT", "남은 시간 {}초"),
+    # (L단위) TIME_LEFT_TEXT "남은 시간 {}초" 삭제 -> 목표 글자·경과 시간 (기획서 11절 화면)
+    ("NEXT_GRADE_TEXT", "다음 학년까지 지식 {}"),
+    ("GRADUATION_GOAL_TEXT", "졸업까지 지식 {}"),
+    ("ELAPSED_TEXT", "경과 {}"),
+    ("TIME_TEXT", "{}분 {}초"),
+    ("ENDING_TIME_TEXT", "졸업까지 {}"),
     ("BEST_RECORD_TEXT", "최고 기록: 지식 {}"),
     ("ENDING_KNOWLEDGE_TEXT", "누적 지식 {}"),
 ])
 def test_korean_strings_match_spec(name, expected):
     assert getattr(config, name) == expected
+
+
+@pytest.mark.parametrize("policy, expected", [
+    (config.POLICY_STUDY_FOCUS, "공부 위주 [1]"),
+    (config.POLICY_BALANCED, "균형 [2]"),
+    (config.POLICY_REST_FOCUS, "휴식 위주 [3]"),
+])
+def test_policy_button_texts_match_spec(policy, expected):
+    """G단위: 행동 버튼 글자 대신 방침 버튼 글자(기획서 10절 화면)."""
+    assert config.POLICIES[policy][config.POLICY_TEXT] == expected
 
 
 def test_korean_strings_appear_in_spec_document():
@@ -511,26 +604,36 @@ def test_cooldown_gray_palette():
     assert not _is_grayish(config.COLOR_BUTTON)
 
 
-def test_cooldown_all_buttons_gray_then_back(game):
+def _policy_button_colors(game):
+    points = {n: (b.rect.left + 2 * P, b.rect.centery + config.BUTTON_PRESS_OFFSET)
+              for n, b in game.buttons.items()}
+    return {n: color(game.screen, *pt) for n, pt in points.items()}
+
+
+def test_policy_buttons_never_gray_selected_yellow(game):
+    """G단위: 쿨타임 회색은 없어졌다. 행동 뒤에도 방침 버튼은 회색이 되지 않고,
+    고른 방침만 노랑(COLOR_POLICY_SELECTED), 나머지는 하늘색이다.
+    (눌림 연출로 몸통이 4px 내려가도 같은 색이 나오도록 BUTTON_PRESS_OFFSET 만큼 아래 점을 본다.)
+    """
     press(game, pygame.K_RETURN)
     game.draw()
-    points = {n: (b.rect.left + 2 * P, b.rect.centery) for n, b in game.buttons.items()}
-    assert all(color(game.screen, *pt) == config.COLOR_BUTTON for pt in points.values())
-    press(game, pygame.K_3)
+    expected = {n: (config.COLOR_POLICY_SELECTED if n == config.POLICY_BALANCED
+                    else config.COLOR_BUTTON) for n in config.POLICY_ORDER}
+    assert _policy_button_colors(game) == expected
+    assert game.do_action(config.ACTION_STUDY)
     game.draw()
-    assert all(color(game.screen, *pt) == config.COLOR_GRAY for pt in points.values())
-    for _ in range(59):
+    assert _policy_button_colors(game) == expected
+    for _ in range(60):
         game.update(1 / 60)
     game.draw()
-    assert all(color(game.screen, *pt) == config.COLOR_GRAY for pt in points.values())
-    game.update(1 / 60)
-    game.draw()
-    assert all(color(game.screen, *pt) == config.COLOR_BUTTON for pt in points.values())
+    assert _policy_button_colors(game) == expected
 
 
-def _student(elapsed, health=80, mental=80):
+def _student(knowledge, health=80, mental=80):
+    """(L단위) 누적 지식 knowledge까지 공부한 제자(진급 판정으로 학년을 맞춘다)."""
     s = Student()
-    s.elapsed = elapsed
+    s.knowledge = knowledge
+    s.promote()
     s.health, s.mental = health, mental
     return s
 
@@ -547,10 +650,11 @@ def _face_bbox(surf):
     return min(xs), min(ys), max(xs) + 1, max(ys) + 1
 
 
-@pytest.mark.parametrize("elapsed, radius", [(0, 40), (60, 50), (120, 60), (180, 70), (240, 70)])
-def test_face_diameter_is_twice_radius(surface, elapsed, radius):
+@pytest.mark.parametrize("knowledge, radius", [(0, 40), (200, 50), (450, 60), (750, 70),
+                                              (1100, 70)])
+def test_face_diameter_is_twice_radius(surface, knowledge, radius):
     """실제로 그려진 얼굴(머리카락 포함)의 가로·세로 = 2 x 반지름, 중심 = 제자 무대 가운데."""
-    s = _student(elapsed)
+    s = _student(knowledge)
     assert s.get_radius() == radius
     surface.fill(config.COLOR_BG)
     s.draw(surface)
@@ -560,10 +664,10 @@ def test_face_diameter_is_twice_radius(surface, elapsed, radius):
     assert (left + right) // 2 == CX and (top + bottom) // 2 == CY
 
 
-@pytest.mark.parametrize("elapsed", [0, 60, 120, 180])
-def test_dark_circles_fully_visible_under_glasses(surface, elapsed):
+@pytest.mark.parametrize("knowledge", [0, 200, 450, 750])
+def test_dark_circles_fully_visible_under_glasses(surface, knowledge):
     """체력 30 미만 다크서클이 안경에 가리지 않고 양쪽 모두 온전히 보인다(2칸 x 2개)."""
-    s = _student(elapsed, health=29)
+    s = _student(knowledge, health=29)
     cell = s.get_radius() // config.FACE_CELL_DIVISOR
     surface.fill(config.COLOR_BG)
     s.draw(surface)
@@ -578,29 +682,29 @@ def test_dark_circles_fully_visible_under_glasses(surface, elapsed):
 
 @pytest.mark.parametrize("health", [30, 100])
 def test_no_dark_circle_color_when_healthy(surface, health):
-    for elapsed in (0, 120):
+    for knowledge in (0, 450):
         surface.fill(config.COLOR_BG)
-        _student(elapsed, health=health).draw(surface)
+        _student(knowledge, health=health).draw(surface)
         assert not any(color(surface, x, y) == config.COLOR_DARK_CIRCLE
                        for x in range(CX - 70, CX + 70) for y in range(CY - 70, CY + 70))
 
 
-@pytest.mark.parametrize("elapsed, glasses", [(0, False), (59.9, False), (60, False),
-                                              (119.9, False), (120, True), (180, True)])
-def test_glasses_lens_glass_color_only_with_glasses(surface, elapsed, glasses):
+@pytest.mark.parametrize("knowledge, glasses", [(0, False), (199, False), (200, False),
+                                                (449, False), (450, True), (750, True)])
+def test_glasses_lens_glass_color_only_with_glasses(surface, knowledge, glasses):
     surface.fill(config.COLOR_BG)
-    _student(elapsed).draw(surface)
+    _student(knowledge).draw(surface)
     found = any(color(surface, x, y) == config.COLOR_GLASS
                 for x in range(CX - 70, CX + 70) for y in range(CY - 70, CY + 70))
     assert found is glasses
 
 
 def test_three_mouths_produce_three_different_images(surface):
-    for elapsed in (0, 120, 180):
+    for knowledge in (0, 450, 750):
         images = set()
         for mental in (60, 59, 29):
             surface.fill(config.COLOR_BG)
-            _student(elapsed, mental=mental).draw(surface)
+            _student(knowledge, mental=mental).draw(surface)
             images.add(pygame.image.tobytes(surface, "RGB"))
         assert len(images) == 3
 
@@ -750,9 +854,9 @@ def test_gauges_inside_status_panel():
     assert config.HEALTH_BAR_Y + config.BAR_HEIGHT + P < config.MENTAL_LABEL_Y
 
 
-@pytest.mark.parametrize("elapsed", [0, 60, 120, 180])
-def test_student_and_shadow_inside_stage(elapsed):
-    r = _student(elapsed).get_radius()
+@pytest.mark.parametrize("knowledge", [0, 200, 450, 750])
+def test_student_and_shadow_inside_stage(knowledge):
+    r = _student(knowledge).get_radius()
     inner = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH,
                         config.PANEL_HEIGHT).inflate(-2 * P, -2 * P)
     assert inner.contains(pygame.Rect(CX - r, CY - r, 2 * r, 2 * r))
@@ -774,25 +878,33 @@ def test_texts_fit_in_boxes(font):
     ew, _ = sprite_size(config.EXCLAIM_SPRITE, P)
     assert banner.left + config.EXAM_ICON_MARGIN + ew < text.left
     assert text.right < banner.right - config.EXAM_ICON_MARGIN - ew
-    # 쿨타임 안내는 버튼 아래(받침 포함)이고 화면 안
-    hint = _text_rect(font, config.COOLDOWN_HINT_TEXT,
-                      midtop=(config.COOLDOWN_HINT_X, config.COOLDOWN_HINT_Y))
-    assert hint.top >= config.BUTTON_Y + config.BUTTON_HEIGHT + P
+    # G단위: 쿨타임 안내 대신 자동 행동 진행 막대 + 안내. 막대는 버튼 아래(받침 포함),
+    # 안내는 막대 아래이고 화면 안
+    bar = pygame.Rect(config.BUTTON_START_X, config.AUTO_BAR_Y,
+                      config.POLICY_AREA_WIDTH, config.AUTO_BAR_HEIGHT)
+    assert bar.top >= config.BUTTON_Y + config.BUTTON_HEIGHT + P
+    small = pygame.font.SysFont(config.FONT_NAME, config.SMALL_FONT_SIZE)
+    hint = _text_rect(small, config.AUTO_HINT_TEXT, midtop=(bar.centerx, config.AUTO_HINT_Y))
+    assert hint.top >= bar.bottom
     assert hint.bottom <= config.SCREEN_HEIGHT
 
 
 def test_info_bar_texts_fit_and_do_not_overlap(font):
+    """(L단위) 정보바: 학년 | 목표 글자("다음 학년까지 지식 n", INFO_GOAL_X부터) | 연구비·지식.
+
+    예전 "남은 시간 60초"(INFO_TIME_X 가운데) 자리가 목표 글자로 바뀌었다. 자세한 경우는 test_idle_l.py.
+    """
     inner = pygame.Rect(config.INFO_BOX_X, config.INFO_BOX_Y, config.INFO_BOX_WIDTH,
                         config.INFO_BOX_HEIGHT).inflate(-2 * P, -2 * P)
     grade = _text_rect(font, "4학년", midleft=(config.INFO_BAR_MARGIN, config.INFO_TEXT_CENTER_Y))
-    time_left = _text_rect(font, "남은 시간 60초",
-                           center=(config.INFO_TIME_X, config.INFO_TEXT_CENTER_Y))
+    goal = _text_rect(font, config.NEXT_GRADE_TEXT.format(300),
+                      midleft=(config.INFO_GOAL_X, config.INFO_TEXT_CENTER_Y))
     knowledge = _text_rect(font, "지식 99999",
                            midright=(config.SCREEN_WIDTH - config.INFO_BAR_MARGIN,
                                      config.INFO_TEXT_CENTER_Y))
-    for r in (grade, time_left, knowledge):
+    for r in (grade, goal, knowledge):
         assert inner.contains(r), r
-    assert grade.right < time_left.left and time_left.right < knowledge.left
+    assert grade.right < goal.left and goal.right < knowledge.left
 
 
 def test_title_screen_layout_no_overlap(game):
@@ -863,6 +975,9 @@ def test_cap_only_on_graduation_and_cloud_only_on_leave(game):
 def test_cap_and_cloud_colors_not_used_in_game_screen(game):
     press(game, pygame.K_RETURN)
     game.student.elapsed = 230.0
+    game.student.knowledge = config.GRADE_GOALS[-1]   # (L단위) 4학년(졸업식장)은 지식으로
+    game.check_promotion()
+    assert game.student.get_grade() == config.MAX_GRADE
     game.draw()
     pixels = {color(game.screen, x, y) for x in range(config.SCREEN_WIDTH)
               for y in range(config.SCREEN_HEIGHT)}
@@ -879,8 +994,10 @@ def test_button_class_still_button_only():
     methods = {n for n in vars(Button) if not n.startswith("__")}
     assert methods == {"is_clicked", "get_colors", "draw"}
     params = inspect.signature(Button.draw).parameters
+    # G단위: 고른 방침 강조용 selected=False 인자가 끝에 하나 늘었다
     assert list(params) == ["self", "screen", "font", "cooling_down", "hovered",
-                            "press_offset", "cooldown_progress"]
+                            "press_offset", "cooldown_progress", "selected"]
+    assert params["selected"].default is False
     assert params["hovered"].default is False
     assert params["press_offset"].default == config.NO_OFFSET == 0
     assert params["cooldown_progress"].default is None

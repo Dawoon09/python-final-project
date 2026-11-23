@@ -32,12 +32,17 @@ START_STATE = STATE_TITLE
 # ---------------------------------------------------------------
 # 3. 시간
 # ---------------------------------------------------------------
-SECONDS_PER_GRADE = 60                      # 학년당 시간(초)
+# 기획서 11절: 판에 시간 제한이 없다. 학년은 누적 지식으로 오르고,
+# 60초 "주기"는 계절·낮밤·시험 기간·이벤트 횟수를 세는 보기용 시계로만 쓴다.
+CYCLE_SECONDS = 60                          # 주기 하나의 길이(초): 봄·여름·가을·겨울 한 바퀴
+CYCLE_INDEX_START = 1                       # 첫 주기 번호 (0~60초 = 1번 주기)
 MAX_GRADE = 4                               # 마지막 학년
-TOTAL_SECONDS = SECONDS_PER_GRADE * MAX_GRADE  # 전체 시간 240초
-EXAM_SECONDS = 15                           # 각 학년 마지막 15초가 시험 기간
+EXAM_SECONDS = 15                           # 각 주기 마지막 15초(45~60초)가 시험 기간
 FIRST_GRADE = 1                             # 처음 학년
-ZERO_TIME = 0.0                             # 시간 값의 시작값·하한(초): 타이머 초기값, 쿨타임 하한
+GRADE_STEP = 1                              # 진급 목표를 넘을 때마다 오르는 학년
+PROMOTION_COUNT_START = 0                   # 한 번 판정에서 오른 횟수(진급 수)의 시작값
+SECONDS_PER_MINUTE = 60                     # "3분 12초"처럼 보일 때 1분 = 60초
+ZERO_TIME = 0.0                             # 시간 값의 시작값·하한(초): 타이머 초기값·하한
 
 # ---------------------------------------------------------------
 # 4. 게이지
@@ -58,7 +63,7 @@ TIME_EPSILON = 1e-9             # 소수 덧셈 오차 허용치 (0.1을 10번 �
 LOW_GAUGE_LIMIT = 30        # 이 값 미만이면 막대가 빨간색, 체력은 다크서클
 
 # ---------------------------------------------------------------
-# 5. 행동 증감량과 쿨타임
+# 5. 행동 증감량과 자동 행동 (방치형: 쿨타임 대신 자동 행동 간격)
 # ---------------------------------------------------------------
 FEED_HEALTH = 20            # 학식 먹이기: 체력 +20
 
@@ -70,7 +75,32 @@ STUDY_MENTAL = -8           # 공부시키기: 멘탈 -8
 STUDY_KNOWLEDGE = 10        # 공부시키기: 지식 +10
 STUDY_KNOWLEDGE_EXAM = 20   # 시험 기간 공부시키기: 지식 +20
 
-ACTION_COOLDOWN = 1.0       # 행동 후 쿨타임(초), 세 행동이 함께 쓴다
+# 방치형 전환(기획서 10절): 행동 쿨타임은 없앴다. 대신 제자가 이 간격마다 스스로 행동한다.
+AUTO_ACTION_INTERVAL = 2.0  # 자동 행동 간격(초, 게임 시간). 게임 시작 후 첫 행동도 2초 뒤
+
+# 일과표 방침 이름 (Game.set_policy 에 넘기는 값)
+POLICY_STUDY_FOCUS = "study_focus"  # 공부 위주
+POLICY_BALANCED = "balanced"        # 균형
+POLICY_REST_FOCUS = "rest_focus"    # 휴식 위주
+POLICY_START = POLICY_BALANCED      # 새 게임의 시작 방침
+POLICY_ORDER = [POLICY_STUDY_FOCUS, POLICY_BALANCED, POLICY_REST_FOCUS]  # 버튼·키 1/2/3 순서
+
+# 방침 사전의 키
+POLICY_THRESHOLD = "threshold"            # 회복 기준: 체력이나 멘탈이 이 값 미만이면 회복한다
+POLICY_KNOWLEDGE_RATIO = "knowledge_ratio"  # 공부 지식 배수
+POLICY_COST_RATIO = "cost_ratio"          # 공부 체력·멘탈 소모 배수
+POLICY_TEXT = "text"                      # 방침 버튼 글자
+
+# 방침 3가지 (기획서 10절 표)
+POLICIES = {
+    POLICY_STUDY_FOCUS: {POLICY_THRESHOLD: 30, POLICY_KNOWLEDGE_RATIO: 1.4,
+                         POLICY_COST_RATIO: 1.6, POLICY_TEXT: "공부 위주 [1]"},
+    POLICY_BALANCED: {POLICY_THRESHOLD: 50, POLICY_KNOWLEDGE_RATIO: 1.0,
+                      POLICY_COST_RATIO: 1.0, POLICY_TEXT: "균형 [2]"},
+    POLICY_REST_FOCUS: {POLICY_THRESHOLD: 70, POLICY_KNOWLEDGE_RATIO: 0.8,
+                        POLICY_COST_RATIO: 0.7, POLICY_TEXT: "휴식 위주 [3]"},
+}
+NO_RATIO = 1.0              # 배수를 곱하지 않을 때의 값(×1.0). Student.study 의 기본값
 
 # ---------------------------------------------------------------
 # 6. 표정 기준
@@ -93,8 +123,12 @@ MOUTH_CRY = "cry"           # 우는 입 (입꼬리가 내려간 ∩자)
 # ---------------------------------------------------------------
 # 8. 엔딩 기준
 # ---------------------------------------------------------------
-TOP_GRADUATE_KNOWLEDGE = 700    # 지식 700 이상: 수석 졸업 (랜덤 이벤트 반영, 기획서 2절)
-NORMAL_GRADUATE_KNOWLEDGE = 450  # 지식 450 이상 699 이하: 무사 졸업, 미만: 아슬아슬 졸업
+# 진급과 졸업 (기획서 11절): 누적 지식이 목표 "이상"이 되면 진급한다. 학년은 내려가지 않는다.
+GRADE_GOALS = [200, 450, 750]   # 2학년·3학년·4학년 진급 목표(누적 지식)
+GRADUATION_KNOWLEDGE = 1100     # 4학년에서 누적 지식 1100 이상이면 졸업
+# 졸업 등급은 졸업까지 걸린 게임 시간(대화창 정지 시간은 빼고 센다)으로 정한다
+TOP_GRADUATE_SECONDS = 200      # 200초 이하: 수석 졸업
+NORMAL_GRADUATE_SECONDS = 360   # 200초 초과 360초 이하: 무사 졸업, 초과: 아슬아슬 졸업
 
 ENDING_LEAVE = "휴학"
 ENDING_TOP = "수석 졸업"
@@ -107,6 +141,12 @@ ENDING_BARELY = "아슬아슬 졸업"
 RECORD_FILENAME = "record.json"  # 최고 기록을 저장할 파일 이름
 RECORD_KEY = "best_knowledge"    # record.json 안에서 최고 지식을 담는 키: {"best_knowledge": 520}
 RECORD_ENCODING = "utf-8"        # record.json 을 읽고 쓸 때 쓰는 글자 인코딩
+# 방치형(기획서 10절): 최고 기록과 함께 연구비·명성·업그레이드 레벨도 저장한다
+# {"best_knowledge": 520, "money": 340, "fame": 0, "upgrades": {"menu": 1, ...}}
+# 예전 형식({"best_knowledge": n})이나 깨진 파일도 읽을 수 있고, 없는 값은 0으로 본다.
+RECORD_MONEY_KEY = "money"       # 연구비
+RECORD_FAME_KEY = "fame"         # 명성
+RECORD_UPGRADES_KEY = "upgrades"  # 업그레이드 레벨 {업그레이드 id: 레벨}
 
 
 def get_base_dir():
@@ -170,16 +210,16 @@ COLOR_RED_DARK = (178, 50, 70)
 COLOR_BAR_BG = (232, 222, 208)          # 게이지 막대의 빈 부분 색
 COLOR_BAR_BG_SHADE = (216, 204, 188)    # 빈 부분 맨 위 줄(안쪽 그림자)
 
-# 버튼: 평소 하늘색, 밝은색(마우스 올림용), 쿨타임 회색
+# 버튼: 평소 하늘색, 밝은색(마우스 올림용), 회색(대화창 입력 대기)
 COLOR_BUTTON = (130, 188, 238)          # 평소 버튼 몸통
 COLOR_BUTTON_LIGHT = (196, 226, 252)    # 버튼 위 하이라이트 줄
 COLOR_BUTTON_DARK = (92, 146, 206)      # 버튼 아래 그림자 줄
 COLOR_BUTTON_BRIGHT = (200, 234, 255)   # 밝은 버튼 몸통 (마우스를 올렸을 때 쓸 색, 평소색과 한눈에 구분)
 COLOR_BUTTON_TEXT = COLOR_OUTLINE       # 버튼 글자 색
-COLOR_GRAY = (184, 182, 194)            # 쿨타임 중 버튼 몸통
+COLOR_GRAY = (184, 182, 194)            # 회색 버튼 몸통 (입력 대기 중)
 COLOR_GRAY_LIGHT = (214, 212, 222)
 COLOR_GRAY_DARK = (148, 146, 162)
-COLOR_BUTTON_TEXT_COOL = (78, 74, 104)  # 쿨타임 중 버튼 글자 색 (회색 몸통 위에서도 읽히게 진하게)
+COLOR_BUTTON_TEXT_COOL = (78, 74, 104)  # 회색 버튼 글자 색 (회색 몸통 위에서도 읽히게 진하게)
 
 COLOR_INFO_BAR = COLOR_MINT             # 상단 정보바 몸통
 
@@ -380,18 +420,38 @@ ORIGIN = (0, 0)             # 창 왼쪽 위 꼭짓점. 사각형을 만든 뒤 
 SCREEN_CENTER_X = SCREEN_WIDTH // 2  # 화면 가운데 x
 HALF = 2                    # 절반을 구할 때 나누는 값
 
-# 상단 정보바: 왼쪽 "N학년", 가운데 "남은 시간 N초", 오른쪽 "지식 N" (Game이 그린다)
+# 상단 정보바: 왼쪽 "N학년", 그 오른쪽 "다음 학년까지 지식 N", 오른쪽 "연구비 N  지식 N" (Game이 그린다)
 INFO_BOX_X = 12             # 정보바 상자 왼쪽 x
 INFO_BOX_Y = 8              # 정보바 상자 위쪽 y
 INFO_BOX_WIDTH = SCREEN_WIDTH - INFO_BOX_X * 2  # 정보바 상자 가로 길이(좌우 여백 같게)
 INFO_BOX_HEIGHT = 44        # 정보바 상자 세로 길이
 INFO_BAR_HEIGHT = INFO_BOX_Y + INFO_BOX_HEIGHT + PIXEL_SIZE  # 정보바 구역 전체 높이(그림자 포함, 56)
 INFO_TEXT_CENTER_Y = INFO_BOX_Y + INFO_BOX_HEIGHT // 2  # 정보바 글자의 세로 가운데
-INFO_TIME_X = SCREEN_WIDTH // 2  # "남은 시간" 글자의 가운데 x (화면 가운데)
 INFO_BAR_MARGIN = 32        # 정보바 글자와 창 가장자리 사이 여백
+# 목표 글자의 왼쪽 x. 가장 긴 학년 글자("대학원 12년차", 약 142px)가 32~174를 쓰므로 그 오른쪽에 둔다.
+# 가장 긴 목표 글자(약 248px) -> 200~448, 오른쪽 "연구비 12345  지식 1234"(약 250px)는 518부터라 겹치지 않는다
+INFO_GOAL_X = 200
 GRADE_TEXT = "{}학년"            # 학년 글자 틀
-TIME_LEFT_TEXT = "남은 시간 {}초"  # 현재 학년 남은 시간 글자 틀
 KNOWLEDGE_TEXT = "{} {}"         # 지식 글자 틀: "지식 120"
+NEXT_GRADE_TEXT = "다음 학년까지 지식 {}"     # 1~3학년 목표 글자
+GRADUATION_GOAL_TEXT = "졸업까지 지식 {}"     # 4학년 목표 글자
+NEXT_GRAD_YEAR_TEXT = "다음 년차까지 지식 {}"  # 대학원 목표 글자
+
+# 목표 진행 막대 (정보바 바로 아래 왼쪽, 상태 패널 위). 시험 기간 배너는 그 오른쪽(무대 위)에 뜬다
+GOAL_BOX_X = 12             # 목표 상자 왼쪽 x (상태 패널과 같은 줄)
+GOAL_BOX_Y = 64             # 목표 상자 위쪽 y (정보바 구역 56 아래)
+GOAL_BOX_WIDTH = 256        # 목표 상자 가로 길이 (상태 패널과 같다) -> 오른쪽 끝 268
+GOAL_BOX_HEIGHT = 40        # 목표 상자 세로 길이 -> 아래 끝 104 (+그림자 1칸), 패널(116)과 겹치지 않음
+GOAL_LABEL_TEXT = "목표"     # 막대 앞 글자
+GOAL_LABEL_GAP = 8          # 글자와 막대 사이 간격
+GOAL_BAR_PAD = 8            # 상자 안쪽 왼쪽·오른쪽 여백
+GOAL_BAR_HEIGHT = 16        # 막대 세로 길이(도트 4칸)
+GOAL_PROGRESS_MIN = 0.0     # 진행률 최솟값 (목표 시작점 아래로 지식이 줄면 0)
+GOAL_PROGRESS_MAX = 1.0     # 진행률 최댓값
+
+# 경과 시간 ("경과 3분 12초"): 오른쪽 아래, [업그레이드 U] 버튼 밑 (자동 행동 막대와 같은 높이)
+ELAPSED_TEXT = "경과 {}"
+TIME_TEXT = "{}분 {}초"      # 시간 글자 틀: "3분 12초"
 
 # 가운데 구역: 왼쪽 상태 패널(게이지) + 오른쪽 제자 무대
 PANEL_Y = 116               # 두 패널의 위쪽 y (시험 기간 배너 아래)
@@ -423,39 +483,41 @@ MENTAL_LABEL = "멘탈"
 KNOWLEDGE_LABEL = "지식"
 
 # ---------------------------------------------------------------
-# 13. 행동 버튼 (화면 아래쪽에 가로로 3개)
+# 13. 방침 버튼 (화면 아래쪽 왼편에 가로로 3개, 오른편은 [업그레이드 U] 자리로 비워 둔다)
 # ---------------------------------------------------------------
-# 행동 이름 (Game.do_action 에 넘기는 값)
+# 행동 이름 (Game.do_action 에 넘기는 값, Game.choose_auto_action 이 돌려주는 값)
 ACTION_FEED = "feed"        # 학식 먹이기
 ACTION_REST = "rest"        # 쉬게 하기
 ACTION_STUDY = "study"      # 공부시키기
 
-# 버튼 글자 (jeja-spec 3절, 기획서 화면 예시)
-FEED_BUTTON_TEXT = "학식 먹이기 [1]"
-REST_BUTTON_TEXT = "쉬게 하기 [2]"
-STUDY_BUTTON_TEXT = "공부시키기 [3]"
-
-BUTTON_COUNT = 3            # 행동 버튼 개수
-BUTTON_WIDTH = 232          # 버튼 하나의 가로 길이
+BUTTON_COUNT = 3            # 방침 버튼 개수
+BUTTON_WIDTH = 176          # 버튼 하나의 가로 길이
 BUTTON_HEIGHT = 52          # 버튼 하나의 세로 길이 (아래 남색 받침 1칸은 별도)
-BUTTON_GAP = 24             # 버튼 사이 간격
+BUTTON_GAP = 16             # 버튼 사이 간격
 BUTTON_Y = 476              # 버튼 위쪽 y
-# 버튼 3개를 가운데 정렬했을 때 첫 버튼의 왼쪽 x: (800 - (232*3 + 24*2)) / 2 = 28
-BUTTON_START_X = (SCREEN_WIDTH - (BUTTON_WIDTH * BUTTON_COUNT
-                                  + BUTTON_GAP * (BUTTON_COUNT - 1))) // 2
+BUTTON_START_X = 24         # 첫 버튼의 왼쪽 x
+# 방침 버튼 3개가 차지하는 가로 길이: 176*3 + 16*2 = 560 (x 24 ~ 584).
+# 오른쪽 x 600 ~ 776 은 나중에 [업그레이드 U] 버튼(H단위)이 들어갈 자리다.
+POLICY_AREA_WIDTH = BUTTON_WIDTH * BUTTON_COUNT + BUTTON_GAP * (BUTTON_COUNT - 1)
 
-# 버튼 아래 쿨타임 안내 문구
-COOLDOWN_HINT_TEXT = "누른 뒤 1초 동안 회색 (쿨타임)"
-COOLDOWN_HINT_Y = 546       # 안내 문구 위쪽 y
-COOLDOWN_HINT_X = SCREEN_WIDTH // 2  # 안내 문구 가운데 x (화면 가운데)
+# 고른 방침 버튼 색: 노랑 계열로 밝게 강조 (평소 하늘색과 한눈에 구분, 반투명 없이)
+COLOR_POLICY_SELECTED = (255, 220, 104)        # 몸통 (시험 배너 노랑과 같은 색)
+COLOR_POLICY_SELECTED_LIGHT = (255, 238, 170)  # 위 하이라이트 줄
+COLOR_POLICY_SELECTED_DARK = (232, 184, 64)    # 아래 그림자 줄
+
+# 버튼 아래 자동 행동 진행 막대 (다음 자동 행동까지 남은 시간)
+AUTO_BAR_Y = 540            # 진행 막대 상자 위쪽 y
+AUTO_BAR_HEIGHT = 16        # 진행 막대 상자 세로 길이 (외곽선 1칸 + 막대 2칸)
+AUTO_HINT_TEXT = "다음 자동 행동까지"   # 진행 막대 아래 안내 문구
+AUTO_HINT_Y = 566           # 안내 문구 위쪽 y
 
 # ---------------------------------------------------------------
 # 14. 시험 기간 배너 (상단 정보바 바로 아래, 패널 위)
 # ---------------------------------------------------------------
 EXAM_BANNER_TEXT = "시험 기간! 공부 효과 2배, 멘탈 감소 2배"
-EXAM_BANNER_X = 12          # 배너 왼쪽 x
+EXAM_BANNER_X = 284         # 배너 왼쪽 x (무대와 같은 줄. 왼쪽은 목표 진행 막대 자리)
 EXAM_BANNER_Y = 64          # 배너 위쪽 y (정보바 구역 56 아래)
-EXAM_BANNER_WIDTH = SCREEN_WIDTH - EXAM_BANNER_X * 2  # 배너 가로 길이(좌우 여백 같게)
+EXAM_BANNER_WIDTH = 504     # 배너 가로 길이 (무대와 같다) -> 오른쪽 끝 788
 EXAM_BANNER_HEIGHT = 40     # 배너 세로 길이 -> 아래 끝 104 (+그림자 1칸), 패널(116)과 겹치지 않음
 EXAM_ICON_MARGIN = 24       # 배너 양 끝에서 느낌표 아이콘까지 거리
 
@@ -495,6 +557,8 @@ ENDING_STARS = [
 ENDING_NAME_Y = 136         # 엔딩 이름 가운데 y
 ENDING_KNOWLEDGE_TEXT = "누적 지식 {}"  # 누적 지식 글자 틀
 ENDING_KNOWLEDGE_Y = 356    # 누적 지식 가운데 y
+ENDING_TIME_TEXT = "졸업까지 {}"   # 졸업 엔딩에서 걸린 시간 글자 틀: "졸업까지 3분 52초"
+ENDING_TIME_Y = 320         # 걸린 시간 가운데 y (학사모 아래 끝 296과 누적 지식 배지 사이)
 RESTART_HINT_TEXT = "R을 눌러 다시 하기"
 RESTART_HINT_Y = 428        # 다시 하기 안내 가운데 y
 
@@ -514,12 +578,12 @@ NO_CHANGE = 0               # 게이지 변화량이 0 (늘지도 줄지도 않�
 BLINK_SHOW = 0              # 깜빡임 차례 번호 % 2 가 이 값이면 "보임"
 BLINK_HIDE = 1              # 깜빡임 차례 번호 % 2 가 이 값이면 "숨김"
 
-# E1 버튼 호버·눌림·쿨타임 진행 막대
+# E1 버튼 호버·눌림·진행 막대 (자동 행동 막대, 대화창 입력 대기 막대)
 BUTTON_PRESS_OFFSET = 4     # 행동이 실행되면 버튼이 내려가는 거리(픽셀) = 받침 1칸
 BUTTON_PRESS_TIME = 0.12    # 버튼이 눌린 채로 있는 시간(초)
-COOLDOWN_BAR_HEIGHT = PIXEL_SIZE * 2   # 쿨타임 진행 막대 세로 길이(도트 2칸, 버튼 안쪽 맨 아래)
+COOLDOWN_BAR_HEIGHT = PIXEL_SIZE * 2   # 진행 막대 세로 길이(도트 2칸, 상자 안쪽 맨 아래)
 COLOR_COOLDOWN_TRACK = COLOR_GRAY_DARK  # 진행 막대의 아직 안 찬 부분
-COLOR_COOLDOWN_FILL = COLOR_BUTTON      # 진행 막대의 찬 부분 (다시 쓸 수 있게 되는 하늘색)
+COLOR_COOLDOWN_FILL = COLOR_BUTTON      # 진행 막대의 찬 부분 (하늘색)
 
 # E2 행동별 파티클 (random 대신 정해진 표를 차례로 쓴다)
 PARTICLE_COUNT = 10         # 행동 한 번에 나오는 파티클 수 (8~12개)
@@ -602,7 +666,11 @@ POPUP_HEAD_GAP = 0          # 제자 머리(점프·숨쉬기 최고점)와 맨 
                             # (글자 상자 안에 위아래 여백이 있어 0이어도 머리와 닿지 않는다)
 POPUP_BLINK_START = 0.5     # 이 시각(초)부터 깜빡이며 사라진다
 POPUP_BLINK_STEP = 0.075    # 깜빡임 한 번(보임 또는 숨김)의 길이(초)
-POPUP_OUTLINE_OFFSETS = [(1, 0), (0, 1), (1, 1)]  # 남색 그림자 글자를 찍을 위치(오른쪽·아래 1픽셀)
+POPUP_OUTLINE_OFFSETS = [(2, 1), (1, 2), (2, 2)]  # 남색 그림자 글자를 찍을 위치(오른쪽·아래 2픽셀)
+# 크림색 테두리 글자를 찍을 위치(사방 1픽셀). 남색 밤하늘 위에서도 글자 둘레가 밝게 보이고,
+# 밝은 낮 하늘 위에서는 남색 그림자가 글자를 받쳐 준다(반투명 없이 어떤 하늘에서도 읽힌다)
+POPUP_RIM_OFFSETS = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
+COLOR_POPUP_RIM = (255, 250, 236)   # 팝업 글자 테두리 색(크림)
 COLOR_POPUP_UP = COLOR_GREEN        # 늘어난 값 글자 색
 COLOR_POPUP_DOWN = COLOR_RED        # 줄어든 값 글자 색
 
@@ -633,12 +701,13 @@ COLOR_HINT_DIM = COLOR_TEXT_SOFT   # 화살표가 숨었을 때의 안내 글자
 # ---------------------------------------------------------------
 # 발생 규칙 수치
 EVENT_CHANCE = 0.25                 # 행동이 실제로 실행된 직후 이벤트가 뜰 확률
-EVENT_GUARANTEE_INTERVAL = 11.25    # 최소 보장 구간 길이(초): 학년 안 0~45초를 4구간으로 나눈다
-EVENT_MIN_PER_GRADE = 4             # 학년당 최소 보장 이벤트 수 (보장 구간 개수)
-EVENT_MAX_PER_GRADE = 5             # 학년당 최대 이벤트 수
+EVENT_GUARANTEE_INTERVAL = 11.25    # 최소 보장 구간 길이(초): 60초 주기 안 0~45초를 4구간으로 나눈다
+# (이름은 예전 그대로 _PER_GRADE지만 기획서 11절부터는 "60초 주기당" 횟수다)
+EVENT_MIN_PER_GRADE = 4             # 주기당 최소 보장 이벤트 수 (보장 구간 개수)
+EVENT_MAX_PER_GRADE = 5             # 주기당 최대 이벤트 수
 EVENT_CHOICE_RATIO = 0.5            # 선택지형 후보가 있을 때 선택지형을 고를 확률
 EVENT_NOTICE_TIME = 2.0             # 자동형 알림 배너가 보이는 시간(초)
-# 최소 간격: 확률로 뜨는 이벤트는 직전 이벤트(같은 판, 학년이 바뀌어도 이어서 셈) 이후
+# 최소 간격: 확률로 뜨는 이벤트는 직전 이벤트(같은 판, 주기·학년이 바뀌어도 이어서 셈) 이후
 # 게임 시간이 이만큼 지나야 뜰 수 있다. 최소 보장으로 뜨는 이벤트는 예외.
 # 대화창이 떠 있는 동안은 게임 시간이 멈추므로 간격에 들어가지 않는다.
 EVENT_MIN_GAP = 8.0
@@ -653,8 +722,8 @@ ALL_GRADES = [1, 2, 3, 4]           # 모든 학년 (자동형 이벤트가 나�
 CHOICE_FIRST = 0                    # 첫 번째 선택지 번호(리스트 위치)
 CHOICE_SECOND = 1                   # 두 번째 선택지 번호(리스트 위치)
 CHOICE_NUMBER_START = 1             # 화면에 보이는 선택지 번호는 1부터 센다: "[1] …", "[2] …"
-EVENT_COUNT_STEP = 1                # 이벤트가 한 번 나올 때 학년 이벤트 수가 늘어나는 양
-EVENT_COUNT_START = 0               # 학년별 이벤트 수의 시작값 (새 판에서는 0번)
+EVENT_COUNT_STEP = 1                # 이벤트가 한 번 나올 때 그 주기 이벤트 수가 늘어나는 양
+EVENT_COUNT_START = 0               # 주기별 이벤트 수의 시작값 (아직 안 나온 주기는 0번)
 
 # 특성 (얻으면 그 판 끝까지 유지). 값은 화면 배지에 쓸 이름이다
 TRAIT_FITNESS = "체력 단련"          # 학식 먹이기 체력 +20 -> +25
@@ -1023,3 +1092,766 @@ LOOK_SPRITES = {
 }
 LOOKS_BEHIND = [LOOK_GUITAR]
 LOOKS_FRONT = [LOOK_HEADBAND, LOOK_HEART_PIN, LOOK_SUNGLASSES, LOOK_COFFEE]
+
+# ---------------------------------------------------------------
+# 19. 재화(연구비·명성)와 업그레이드 (기획서 10절, H단위)
+# ---------------------------------------------------------------
+MONEY_START = 0             # 연구비 기본값 (record.json 에 없으면 0)
+FAME_START = 0              # 명성 기본값 (record.json 에 없으면 0)
+LEVEL_START = 0             # 업그레이드 레벨 기본값 (사지 않았으면 0)
+LEVEL_STEP = 1              # 업그레이드를 한 번 사면 오르는 레벨
+FAME_MONEY_BONUS = 0.1      # 명성 1당 연구비 획득 배수 +0.1: 배수 = 1 + 0.1 x 명성
+MONEY_EPSILON = 1e-9        # 내림(int) 전에 더하는 아주 작은 값 (1.6 x 80 = 127.999… 처럼 곱셈 결과가 정수 바로 아래로 나오는 소수 오차 방지)
+GAUGE_DECIMALS = 6          # 체력·멘탈을 이 자리에서 반올림해 소수 오차가 쌓이지 않게 한다
+
+# 졸업 보너스 (x 명성 배수, 내림). 휴학이면 없음
+GRADUATION_BONUS = {ENDING_TOP: 200, ENDING_NORMAL: 100, ENDING_BARELY: 50}
+
+# 업그레이드 가격 = 내림(기본 가격 x 2.0 ^ 현재 레벨)
+UPGRADE_COST_GROWTH = 2.0
+
+# 업그레이드 id
+UPGRADE_MENU = "menu"                   # 학식 메뉴 개선
+UPGRADE_BED = "bed"                     # 푹신한 침대
+UPGRADE_BOOK = "reference_book"         # 참고서
+UPGRADE_TIME = "time_management"        # 시간 관리
+UPGRADE_HEALTH_CARE = "health_care"     # 건강 관리
+UPGRADE_LIBRARY = "library"             # 도서관
+UPGRADE_CAFE = "cafe"                   # 카페
+UPGRADE_GYM = "gym"                     # 헬스장
+UPGRADE_CHARM = "lucky_charm"           # 행운 부적
+UPGRADE_SCHOLARSHIP = "scholarship"     # 장학금 제도
+
+# 업그레이드 dict 키
+UPGRADE_ID = "id"
+UPGRADE_NAME = "name"               # 패널에 보일 이름
+UPGRADE_CATEGORY = "category"       # 분류 (행동 효율 / 자동화 속도 / 시설 / 이벤트)
+UPGRADE_MAX_LEVEL = "max_level"     # 최대 레벨
+UPGRADE_BASE_COST = "base_cost"     # 기본 가격
+UPGRADE_PER_LEVEL = "per_level"     # 레벨 1당 효과 크기 (효과 = 레벨 x 이 값)
+UPGRADE_EFFECT_TEXT = "effect"      # 패널에 보일 효과 설명
+
+# 업그레이드 10종 (기획서 10절 표 순서). 시설·장학금은 최대 레벨 1이라 "레벨 x 효과"로 똑같이 계산한다
+UPGRADES = [
+    {UPGRADE_ID: UPGRADE_MENU, UPGRADE_NAME: "학식 메뉴 개선", UPGRADE_CATEGORY: "행동 효율",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 240, UPGRADE_PER_LEVEL: 4,
+     UPGRADE_EFFECT_TEXT: "학식 체력 +4"},
+    {UPGRADE_ID: UPGRADE_BED, UPGRADE_NAME: "푹신한 침대", UPGRADE_CATEGORY: "행동 효율",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 240, UPGRADE_PER_LEVEL: 4,
+     UPGRADE_EFFECT_TEXT: "휴식 멘탈 +4"},
+    {UPGRADE_ID: UPGRADE_BOOK, UPGRADE_NAME: "참고서", UPGRADE_CATEGORY: "행동 효율",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 360, UPGRADE_PER_LEVEL: 2,
+     UPGRADE_EFFECT_TEXT: "공부 지식 +2"},
+    {UPGRADE_ID: UPGRADE_TIME, UPGRADE_NAME: "시간 관리", UPGRADE_CATEGORY: "자동화 속도",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 450, UPGRADE_PER_LEVEL: 0.2,
+     UPGRADE_EFFECT_TEXT: "행동 간격 -0.2초"},
+    {UPGRADE_ID: UPGRADE_HEALTH_CARE, UPGRADE_NAME: "건강 관리", UPGRADE_CATEGORY: "자동화 속도",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 450, UPGRADE_PER_LEVEL: 0.1,
+     UPGRADE_EFFECT_TEXT: "자연 감소 -10%"},
+    {UPGRADE_ID: UPGRADE_LIBRARY, UPGRADE_NAME: "도서관", UPGRADE_CATEGORY: "시설",
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 900, UPGRADE_PER_LEVEL: 3,
+     UPGRADE_EFFECT_TEXT: "공부 지식 +3"},
+    {UPGRADE_ID: UPGRADE_CAFE, UPGRADE_NAME: "카페", UPGRADE_CATEGORY: "시설",
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 900, UPGRADE_PER_LEVEL: 5,
+     UPGRADE_EFFECT_TEXT: "휴식 때 체력 +5"},
+    {UPGRADE_ID: UPGRADE_GYM, UPGRADE_NAME: "헬스장", UPGRADE_CATEGORY: "시설",
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 900, UPGRADE_PER_LEVEL: 2,
+     UPGRADE_EFFECT_TEXT: "공부 체력 소모 -2"},
+    {UPGRADE_ID: UPGRADE_CHARM, UPGRADE_NAME: "행운 부적", UPGRADE_CATEGORY: "이벤트",
+     UPGRADE_MAX_LEVEL: 3, UPGRADE_BASE_COST: 600, UPGRADE_PER_LEVEL: 0.05,
+     UPGRADE_EFFECT_TEXT: "이벤트 확률 +5%p"},
+    {UPGRADE_ID: UPGRADE_SCHOLARSHIP, UPGRADE_NAME: "장학금 제도", UPGRADE_CATEGORY: "이벤트",
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 750, UPGRADE_PER_LEVEL: 30,
+     UPGRADE_EFFECT_TEXT: "장학금 이벤트 추가"},
+]
+UPGRADE_IDS = [upgrade[UPGRADE_ID] for upgrade in UPGRADES]          # 패널 순서
+UPGRADES_BY_ID = {upgrade[UPGRADE_ID]: upgrade for upgrade in UPGRADES}
+
+# 장학금 제도를 사면 자동형 후보에 들어가는 이벤트 (연구비 +30 x 학년, 게이지 변화 없음)
+EVENT_MONEY_PER_GRADE = "money_per_grade"   # 이벤트 dict 키: 학년당 연구비
+SCHOLARSHIP_EVENT = {
+    EVENT_ID: "scholarship", EVENT_KIND: EVENT_KIND_AUTO, EVENT_GRADES: ALL_GRADES,
+    EVENT_REQUIRES: None, EVENT_TITLE: "장학금을 받았다", EVENT_EFFECTS: {},
+    EVENT_MONEY_PER_GRADE: UPGRADES_BY_ID[UPGRADE_SCHOLARSHIP][UPGRADE_PER_LEVEL],
+}
+
+# ---------------------------------------------------------------
+# 20. 업그레이드 화면 (버튼·패널·정보바·타이틀 글자)
+# ---------------------------------------------------------------
+MONEY_LABEL = "연구비"
+MONEY_TEXT = "{} {}"                # 정보바·패널의 연구비 글자: "연구비 340"
+INFO_ITEM_GAP = 28                  # 정보바에서 연구비 글자와 지식 글자 사이 간격
+TITLE_WALLET_TEXT = "명성 {} · 연구비 {}"  # 타이틀 화면 최고 기록 아래 글자
+TITLE_WALLET_Y = 364                # 그 글자 가운데 y (최고 기록 배지 아래, 시작 안내 위)
+GRADUATION_BONUS_TEXT = "졸업 보너스: 연구비 +{}"  # 엔딩 화면 누적 지식 아래 글자
+GRADUATION_BONUS_Y = 398            # 그 글자 가운데 y
+
+# [업그레이드 U] 버튼: 게임 화면에서는 방침 버튼 오른쪽(x 600~776),
+# 엔딩 화면에서는 가운데 패널(아래 끝 496) 아래 같은 x 자리
+UPGRADE_BUTTON_TEXT = "업그레이드 U"
+UPGRADE_BUTTON_X = BUTTON_START_X + POLICY_AREA_WIDTH + BUTTON_GAP   # 600
+UPGRADE_BUTTON_Y = BUTTON_Y                                          # 476
+UPGRADE_BUTTON_ENDING_Y = 516
+# 경과 시간 글자 가운데: [업그레이드 U] 버튼 가운데 x, 자동 행동 진행 막대 가운데 y
+ELAPSED_CENTER_X = UPGRADE_BUTTON_X + BUTTON_WIDTH // 2   # 688
+ELAPSED_CENTER_Y = AUTO_BAR_Y + AUTO_BAR_HEIGHT // 2      # 548
+
+# 업그레이드 패널 (J단위에서 배치 변경): 왼쪽 상태 패널 자리(x 12~268, y 116~468)에 겹쳐 그린다.
+# 그래서 패널이 열려 있어도 오른쪽 제자 무대(제자·배경)는 그대로 보인다. 반투명 없이 도트 상자
+UPGRADE_PANEL_RECT = (STATUS_PANEL_X, PANEL_Y, STATUS_PANEL_WIDTH, 352)  # 아래 끝 468 (방침 버튼 476 위)
+UPGRADE_PANEL_TITLE = "업그레이드"
+UPGRADE_HEADER_Y = 132              # 머리 줄(제목·연구비) 가운데 y (제목 글자 120~144)
+UPGRADE_HEADER_LEFT = 28            # 제목 글자 왼쪽 x
+UPGRADE_HEADER_RIGHT = 252          # 연구비 글자 오른쪽 끝 x
+UPGRADE_ROW_X = 24                  # 항목 줄 상자 왼쪽 x
+UPGRADE_ROW_WIDTH = 232             # 항목 줄 상자 가로 길이 -> 오른쪽 끝 256 (패널 안쪽 20~260)
+UPGRADE_ROW_TOP = 166               # 첫 항목 줄 위쪽 y (머리 줄과 미니 게이지 줄 아래)
+UPGRADE_ROW_HEIGHT = 27             # 항목 줄 상자 세로 길이 (안쪽 19: 작은 글자 한 줄 높이 19)
+UPGRADE_ROW_STEP = 28               # 항목 줄 사이 거리 (10줄 -> 마지막 아래 끝 445)
+# 패널 머리 줄 아래 미니 게이지 줄(K단위): 패널이 상태 패널의 체력·멘탈 막대를 가리므로
+# 작은 막대 2개를 한 줄에 나란히 보여 준다. 길이는 표시값(E4), 색(30 미만 빨강)은 실제 값 기준
+UPGRADE_GAUGE_Y = 154               # 미니 게이지 줄 가운데 y (라벨 글자 145~164, 막대 테두리 146~162)
+# (Student 속성 이름, 라벨, 라벨 글자 왼쪽 x)
+UPGRADE_GAUGES = [(GAUGE_HEALTH, HEALTH_LABEL, 28), (GAUGE_MENTAL, MENTAL_LABEL, 144)]
+UPGRADE_GAUGE_BAR_GAP = 6           # 라벨 글자와 막대 테두리 사이 간격
+UPGRADE_GAUGE_BAR_WIDTH = 64       # 미니 막대 가로 길이(값 100일 때)
+UPGRADE_GAUGE_BAR_HEIGHT = 8        # 미니 막대 세로 길이(도트 2칸, 테두리 제외)
+UPGRADE_CURSOR_X = 28               # 고른 줄 표시 화살표 왼쪽 x
+UPGRADE_NAME_X = 48                 # 이름 글자 왼쪽 x
+UPGRADE_LEVEL_X = 148               # "Lv 0/5" 글자 왼쪽 x
+UPGRADE_COST_RIGHT = 248            # 가격 글자 오른쪽 끝 x
+UPGRADE_FOOTER_X = 28               # 바닥 줄(고른 항목 효과) 글자 왼쪽 x
+UPGRADE_FOOTER_Y = 454              # 바닥 줄 가운데 y (글자 445~464: 마지막 줄 아래 끝 445부터, 꼬리까지 외곽선 안)
+UPGRADE_FOOTER_TEXT = "효과: {}"     # 바닥 줄 글자 틀: 고른 줄(↑↓)의 레벨당 효과
+UPGRADE_LEVEL_TEXT = "Lv {}/{}"
+UPGRADE_COST_TEXT = "{}"                # 가격 글자(숫자만, 단위 연구비는 머리 줄에 보인다)
+UPGRADE_MAX_TEXT = "MAX"
+UPGRADE_CURSOR_START = 0            # 패널을 처음 열었을 때 고른 줄 번호
+UPGRADE_CURSOR_STEP = 1             # ↑↓ 한 번에 움직이는 줄 수
+# 항목 줄 색: 살 수 있음(민트) / 살 수 없음(회색) / 마우스 올림(밝은 하늘)
+COLOR_UPGRADE_ROW = COLOR_MINT_LIGHT
+COLOR_UPGRADE_ROW_LIGHT = COLOR_WHITE
+COLOR_UPGRADE_ROW_HOVER = COLOR_BUTTON_BRIGHT
+COLOR_UPGRADE_ROW_OFF = COLOR_GRAY
+COLOR_UPGRADE_ROW_OFF_LIGHT = COLOR_GRAY_LIGHT
+COLOR_UPGRADE_TEXT_OFF = COLOR_BUTTON_TEXT_COOL
+COLOR_UPGRADE_CURSOR = COLOR_PINK_DARK  # 고른 줄 화살표 색
+
+# ---------------------------------------------------------------
+# 21. 졸업 후: 환생과 대학원 (기획서 10절, I단위)
+# ---------------------------------------------------------------
+GRAD_YEAR_UNDERGRAD = 0     # 대학원 년차 값: 0이면 학부(1~4학년)
+GRAD_FIRST_YEAR = 1         # 대학원에 들어가면 1년차부터
+GRAD_YEAR_STEP = 1          # 년차 목표를 넘을 때마다 대학원 년차가 오르는 양 (끝없이)
+# 대학원 n년차 -> n+1년차 목표(누적 지식) = 졸업 지식 1100 + (400 + 100 x (k-1))를 k = 1..n까지 더한 값
+# -> 1년차 1500, 2년차 2000, 3년차 2600 … (기획서 11절)
+GRAD_GOAL_FIRST_STEP = 400  # 1년차에 더 모아야 하는 지식
+GRAD_GOAL_STEP_GROWTH = 100  # 해마다 더 모아야 하는 지식이 늘어나는 양
+# 대학원 자연 감소 배수 = 1 + 0.5 x n + 1.0 x c
+#   n = 대학원 년차, c = 대학원에 들어간 뒤 다 채운 60초 주기 수 (대학원에서만 시간 압박)
+GRAD_DECAY_BONUS = 0.5      # 년차 하나마다 더하는 자연 감소 배수
+GRAD_CYCLE_DECAY_BONUS = 1.0  # 대학원에서 60초 주기를 하나 다 채울 때마다 더하는 자연 감소 배수
+GRAD_CYCLES_NONE = 0        # 학부이거나 대학원 진입 시각이 없을 때의 대학원 주기 수
+GRAD_MONEY_BONUS = 1.0      # n년차 연구비 획득 배수 = 1 + 1.0 x n
+FAME_STEP = 1               # 졸업한 판에서 환생하면 오르는 명성
+
+GRAD_YEAR_TEXT = "대학원 {}년차"        # 정보바 왼쪽 글자 (학부는 GRADE_TEXT)
+PROMOTION_TEXT = "{}학년 진급!"          # 진급 알림 글자 (2초, 자동형 알림과 같은 모양)
+GRAD_PROMOTION_TEXT = "대학원 {}년차!"   # 대학원 년차가 오를 때 알림 글자
+PROMOTION_NOTICE_RIGHT = 780             # 진급 알림 상자 오른쪽 끝 x (무대 안쪽 오른쪽 위 구석)
+ENDING_GRAD_TEXT = "대학원 {}년차 수료"  # 대학원에서 체력·멘탈 0이 되면 엔딩 이름
+REINCARNATE_HINT_TEXT = "R: 환생 (명성 +1)"   # 졸업·수료 엔딩 안내 첫 줄
+GRAD_SCHOOL_HINT_TEXT = "C: 대학원 진학"      # 졸업 엔딩 안내 둘째 줄
+GRAD_SCHOOL_HINT_Y = 460    # 둘째 줄 가운데 y (첫 줄 RESTART_HINT_Y 428 아래, 패널 아래 끝 496 안)
+
+# 엔딩 이름이 길면(예: "대학원 12년차 수료") 큰 글씨 대신 조금 작은 글씨로 그린다
+ENDING_NAME_MAX_WIDTH = 520     # 큰 글씨 엔딩 이름이 넘으면 안 되는 가로 길이 (패널 608 안)
+ENDING_LONG_FONT_SIZE = 44      # 긴 엔딩 이름 글자 크기
+# 엔딩 화면에서 업그레이드 패널(왼쪽 x 12~268)을 열면 가운데 패널이 엔딩 이름을 가리지 않도록
+# 가운데 패널과 엔딩 글자·그림을 오른쪽 무대 자리(x 284~788, 가운데 536)로 옮겨 그린다(K단위)
+ENDING_PANEL_OPEN_RECT = (STAGE_X, MENU_PANEL_RECT[1], STAGE_WIDTH, MENU_PANEL_RECT[3])
+ENDING_OPEN_CENTER_X = STAGE_X + STAGE_WIDTH // 2      # 536
+ENDING_NAME_MAX_WIDTH_OPEN = 456  # 옮겨 그릴 때 큰 글씨 엔딩 이름의 최대 가로 길이 (패널 504 안)
+
+# ---------------------------------------------------------------
+# 22. 무대 배경 4겹 (기획서 10절 "배경", J단위)
+#   1) 장소(학년) 2) 하늘(계절·시간대) 3) 행동 소품(마지막 자동 행동) 4) 시설(산 시설)
+#   배경은 제자 무대 안쪽(x 288~784, y 120~456)에 그리고, 제자·파티클·팝업·알림보다 먼저 그린다.
+#   좌표는 무대 안쪽 왼쪽 위를 (0, 0)으로 하는 도트 칸(4 x 4 픽셀) 단위다(가로 124칸, 세로 84칸).
+# ---------------------------------------------------------------
+# 계절: 60초 주기 안 0~15초 봄, 15~30초 여름, 30~45초 가을, 45~60초 겨울(시험 기간) (기획서 11절)
+SEASON_SPRING = "spring"
+SEASON_SUMMER = "summer"
+SEASON_AUTUMN = "autumn"
+SEASON_WINTER = "winter"
+SEASONS = [SEASON_SPRING, SEASON_SUMMER, SEASON_AUTUMN, SEASON_WINTER]  # 주기 안 순서
+SEASON_SECONDS = CYCLE_SECONDS // len(SEASONS)   # 계절 하나의 길이 15초 (= 시험 기간 길이)
+INDEX_STEP = 1                     # 목록에서 다음 칸까지의 거리 (마지막 칸 번호 = 길이 - 1)
+SINGLE_COUNT = 1                   # 사각형 조각 하나를 그릴 때의 개수
+
+# 시간대: 계절 15초 안에서 낮(0~9초) -> 저녁(9~12초) -> 밤(12~15초)
+TIME_DAY = "day"
+TIME_EVENING = "evening"
+TIME_NIGHT = "night"
+DAY_END = 9.0                      # 계절 안에서 낮이 끝나는 시각(초)
+EVENING_END = 12.0                 # 계절 안에서 저녁이 끝나는 시각(초). 그 뒤 15초까지 밤
+
+# 하늘색이 부드럽게 바뀌는 기준점: (계절 안 시각(초), 시간대 색, 몇 계절 뒤의 색인지)
+# 두 기준점 사이는 직선으로 섞는다(선형 보간). 낮색은 7.5초까지 그대로 -> 9.5초 저녁색
+# -> 11초까지 그대로 -> 12.5초 밤색 -> 14초까지 그대로 -> 15초에 "다음 계절의 낮색".
+# 그래서 계절·학년이 바뀌는 순간에도 하늘색이 끊기지 않는다(밤 -> 다음 날 아침).
+SKY_KEYFRAMES = [
+    (0.0, TIME_DAY, 0),
+    (7.5, TIME_DAY, 0),
+    (9.5, TIME_EVENING, 0),
+    (11.0, TIME_EVENING, 0),
+    (12.5, TIME_NIGHT, 0),
+    (14.0, TIME_NIGHT, 0),
+    (15.0, TIME_DAY, 1),
+]
+# 계절별 하늘색 {시간대: RGB}. 파스텔 레트로 팔레트
+SKY_COLORS = {
+    SEASON_SPRING: {TIME_DAY: (178, 222, 246), TIME_EVENING: (250, 196, 172),
+                    TIME_NIGHT: (64, 66, 124)},
+    SEASON_SUMMER: {TIME_DAY: (132, 202, 246), TIME_EVENING: (252, 172, 132),
+                    TIME_NIGHT: (46, 54, 112)},
+    SEASON_AUTUMN: {TIME_DAY: (192, 214, 236), TIME_EVENING: (242, 162, 122),
+                    TIME_NIGHT: (58, 52, 102)},
+    SEASON_WINTER: {TIME_DAY: (214, 226, 242), TIME_EVENING: (214, 184, 206),
+                    TIME_NIGHT: (40, 44, 86)},
+}
+
+# 장소 id (학년별, 대학원은 연구실)
+PLACE_LAWN = "lawn"                # 1학년 캠퍼스 잔디
+PLACE_LECTURE = "lecture"          # 2학년 강의동
+PLACE_LIBRARY = "library"          # 3학년 도서관 앞
+PLACE_CEREMONY = "ceremony"        # 4학년 졸업식장
+PLACE_LAB = "lab"                  # 대학원 연구실 (실내, 창문으로 하늘이 보인다)
+PLACE_BY_GRADE = {1: PLACE_LAWN, 2: PLACE_LECTURE, 3: PLACE_LIBRARY, 4: PLACE_CEREMONY}
+
+# 배경 그림을 미리 그려 두는 Surface에서 "비어 있음(하늘이 비침)"을 뜻하는 색.
+# 이 색은 set_colorkey로 통째로 빼고 붙인다(반투명 아님). 다른 그림에는 쓰지 않는 자홍색
+COLOR_KEY = (255, 0, 255)
+SCENE_CELL = PIXEL_SIZE            # 배경 도트 1칸 크기(픽셀)
+
+# 계절별 땅·나무 색. snow는 겨울에만 있는 눈(지붕·창틀 위). None이면 그리지 않는다
+SEASON_COLORS = {
+    SEASON_SPRING: {"ground": (156, 214, 146), "ground_light": (190, 232, 172),
+                    "ground_dark": (118, 182, 116), "leaf": (246, 178, 200),
+                    "leaf_light": (253, 214, 226), "leaf_dark": (222, 136, 168),
+                    "accent": (253, 206, 222), "snow": None},
+    SEASON_SUMMER: {"ground": (116, 198, 116), "ground_light": (152, 222, 142),
+                    "ground_dark": (76, 158, 94), "leaf": (90, 178, 106),
+                    "leaf_light": (142, 212, 132), "leaf_dark": (58, 138, 82),
+                    "accent": (255, 220, 104), "snow": None},
+    SEASON_AUTUMN: {"ground": (210, 190, 124), "ground_light": (228, 208, 152),
+                    "ground_dark": (176, 146, 94), "leaf": (242, 152, 82),
+                    "leaf_light": (250, 192, 122), "leaf_dark": (202, 106, 62),
+                    "accent": (226, 88, 84), "snow": None},
+    SEASON_WINTER: {"ground": (236, 240, 248), "ground_light": (255, 255, 255),
+                    "ground_dark": (204, 210, 228), "leaf": (240, 244, 252),
+                    "leaf_light": (255, 255, 255), "leaf_dark": (196, 204, 226),
+                    "accent": (255, 255, 255), "snow": (255, 255, 255)},
+}
+
+# 저녁·밤 그늘(K단위): 바깥 장소의 땅·나무·건물 색을 밤 남색 쪽으로 조금 섞어 어둡게 그린다.
+# 반투명 없이 색 값 자체를 바꿔 다시 그린다. 매 프레임 섞지 않고 몇 단계로만 바꾸며,
+# 단계가 바뀔 때만 배경 그림을 새로 그린다(장소·계절·시설·단계 열쇠로 캐시).
+# 단계가 바뀌는 시각은 하늘색이 바뀌는 구간(SKY_KEYFRAMES)의 가운데쯤에 맞춘다.
+SCENE_SHADE_STEPS = [(0.0, 0), (8.5, 1), (11.75, 2), (14.5, 1)]  # (계절 안 시각(초), 그늘 단계)
+SCENE_SHADE_RATIOS = [0.0, 0.12, 0.3]   # 단계별로 밤 남색을 섞는 비율 (0 = 원래 색)
+SCENE_SHADE_COLOR = (30, 32, 74)        # 섞는 밤 남색
+SCENE_SHADE_NONE = 0                    # 그늘 없음 단계(낮, 실내)
+# 그늘을 넣는 장소: 바깥 장소만. 연구실은 실내라 불이 켜져 있으므로 넣지 않는다(창밖 하늘만 밤)
+SCENE_SHADE_PLACES = [PLACE_LAWN, PLACE_LECTURE, PLACE_LIBRARY, PLACE_CEREMONY]
+
+# 계절과 상관없는 배경 색 (이름 -> RGB)
+SCENE_COLORS = {
+    "outline": COLOR_OUTLINE,
+    "white": COLOR_WHITE,
+    "key": COLOR_KEY,
+    "far": (206, 212, 236), "far_dark": (172, 180, 216),          # 먼 건물
+    "glass": (204, 230, 250), "glass_dark": (132, 168, 214),      # 창문 유리
+    "path": (234, 222, 198), "path_dark": (212, 196, 170),        # 길·광장 바닥
+    "wood": (198, 152, 110), "wood_dark": (150, 104, 78),         # 나무(목재)
+    "brick": (236, 178, 152), "brick_dark": (204, 140, 120),      # 벽돌 건물
+    "roof": (150, 108, 128),                                      # 지붕
+    "stone": (238, 234, 226), "stone_dark": (204, 198, 192),      # 돌 건물
+    "door": (150, 104, 78),
+    "banner": COLOR_PINK, "banner_light": COLOR_PINK_LIGHT,       # 졸업식 현수막
+    "gold": (250, 210, 96),     # 금색 장식 (엔딩 학사모 술 색과 겹치지 않게 조금 다르게)
+    "flag_mint": COLOR_MINT, "flag_sky": COLOR_SKY,
+    "balloon_pink": COLOR_PINK_DARK, "balloon_sky": COLOR_SKY_DARK,
+    "wall": (236, 232, 220), "wall_dark": (214, 206, 190),        # 연구실 벽
+    "floor": (214, 178, 140), "floor_dark": (186, 146, 110),      # 연구실 바닥
+    "board": (250, 250, 246), "board_frame": (160, 160, 182),     # 화이트보드
+    "book_pink": COLOR_PINK, "book_mint": COLOR_MINT_DARK, "book_sky": COLOR_SKY_DARK,
+    "book_yellow": COLOR_YELLOW,
+    "plant": (96, 172, 112), "pot": (226, 150, 120),
+    "lamp": (250, 236, 170),
+    "cafe_wall": (252, 236, 214), "gym_wall": (178, 210, 244), "gym_dark": (110, 150, 210),
+    "cup": COLOR_WHITE, "coffee": (150, 100, 70),
+}
+
+# 배경 조각 종류
+PART_RECT = "rect"        # ("rect", 색 이름, 열, 행, 가로 칸, 세로 칸)
+PART_WINDOWS = "windows"  # ("windows", 색 이름, 열, 행, 가로 개수, 세로 개수, 가로 칸, 세로 칸, 가로 간격, 세로 간격)
+PART_SPRITE = "sprite"    # ("sprite", 스프라이트 이름, 열, 행)
+
+# 배경 스프라이트: 이름 -> (문자열 격자, {글자: 색 이름}). "." 은 비어 있음
+SCENE_SPRITES = {
+    "tree": ([                                   # 나무 (잎 색이 계절 따라 바뀐다)
+        "....oooooo....",
+        "..ooLLLLLLoo..",
+        ".oLLllLLLLLLo.",
+        ".oLllLLLLaLdo.",
+        "oLLlLLLLLLLLLo",
+        "oLaLLLLLLLLdLo",
+        "oLLLLLLLdLLLLo",
+        "oLdLLLLaLLLLdo",
+        ".oLLLLdLLLLLo.",
+        ".oLLLLLLLLLdo.",
+        "..oddLLLLddo..",
+        "...ooddddoo...",
+        ".....oTto.....",
+        ".....oTto.....",
+        ".....oTto.....",
+        ".....oTto.....",
+        ".....oTto.....",
+        "....ooTtoo....",
+    ], {"o": "outline", "L": "leaf", "l": "leaf_light", "d": "leaf_dark", "a": "accent",
+        "T": "wood", "t": "wood_dark"}),
+    "bush": ([                                   # 작은 덤불
+        "..oooooo..",
+        ".oLLlLLLo.",
+        "oLlLLLaLLo",
+        "oLLLLLLLdo",
+        "oooooooooo",
+    ], {"o": "outline", "L": "leaf", "l": "leaf_light", "d": "leaf_dark", "a": "accent"}),
+    "bench": ([                                  # 벤치 (겨울에는 위에 눈)
+        "ssssssssssssss",
+        "oooooooooooooo",
+        "oWWWWWWWWWWWWo",
+        "oooooooooooooo",
+        "oWWWWWWWWWWWWo",
+        "oooooooooooooo",
+        ".o..........o.",
+        ".o..........o.",
+    ], {"o": "outline", "W": "wood", "s": "snow"}),
+    "flower": ([                                 # 꽃 (겨울에는 눈덩이)
+        ".a.",
+        "aya",
+        ".g.",
+    ], {"a": "accent", "y": "gold", "g": "leaf_dark"}),
+    "lamp": ([                                   # 가로등
+        "oooo",
+        "oYYo",
+        "oYYo",
+        "oooo",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        ".oo.",
+        "oooo",
+    ], {"o": "outline", "Y": "lamp"}),
+    "book": ([                                   # 도서관 박공의 펼친 책 표시
+        ".oo..oo.",
+        "oWWooWWo",
+        "oWWooWWo",
+        "oooooooo",
+    ], {"o": "outline", "W": "white"}),
+    "cap": ([                                    # 현수막 가운데 학사모
+        "...oo...",
+        ".oooooo.",
+        "oooooooo",
+        ".oooooy.",
+        "..oooo.y",
+    ], {"o": "outline", "y": "gold"}),
+    "balloon_pink": ([                           # 풍선 (분홍)
+        ".oooo.",
+        "oBWBBo",
+        "oBBBBo",
+        "oBBBBo",
+        ".oBBo.",
+        "..oo..",
+        "...o..",
+        "..o...",
+        "...o..",
+        "..o...",
+    ], {"o": "outline", "B": "balloon_pink", "W": "white"}),
+    "balloon_sky": ([                            # 풍선 (하늘)
+        ".oooo.",
+        "oBWBBo",
+        "oBBBBo",
+        "oBBBBo",
+        ".oBBo.",
+        "..oo..",
+        "...o..",
+        "..o...",
+        "...o..",
+        "..o...",
+    ], {"o": "outline", "B": "balloon_sky", "W": "white"}),
+    "chair": ([                                  # 졸업식 의자
+        "oooo..",
+        "oCCo..",
+        "oCCo..",
+        "oCCooo",
+        "oCCCCo",
+        "oooooo",
+        "o....o",
+        "o....o",
+    ], {"o": "outline", "C": "far_dark"}),
+    "plant": ([                                  # 연구실 화분
+        "..o..o..",
+        ".oPo.oPo",
+        "oPPooPPo",
+        ".oPPPPo.",
+        "..oPPo..",
+        "...oo...",
+        ".oooooo.",
+        ".oRRRRo.",
+        ".oRRRRo.",
+        "..oRRo..",
+        "..oooo..",
+    ], {"o": "outline", "P": "plant", "R": "pot"}),
+    # 시설 3개 (가로 16칸, 세로 18칸). s는 겨울 지붕 눈
+    "library": ([
+        "......ssss......",
+        "......oooo......",
+        "....ooRRRRoo....",
+        "..ooRRRRRRRRoo..",
+        "ooRRRRRRRRRRRRoo",
+        "oooooooooooooooo",
+        "oSSSSSoBBoSSSSSo",
+        "oSSSSSoBBoSSSSSo",
+        "oooooooooooooooo",
+        "oScSScSSSScSScSo",
+        "oScSScSooScSScSo",
+        "oScSScoDDoScSSco",
+        "oScSScoDDoScSSco",
+        "oScSScoDDoScSSco",
+        "oScSScoDDoScSSco",
+        "oooooooooooooooo",
+        "oSSSSSSSSSSSSSSo",
+        "oooooooooooooooo",
+    ], {"o": "outline", "R": "roof", "S": "stone", "c": "stone_dark", "B": "book_sky",
+        "D": "door", "s": "snow"}),
+    "cafe": ([
+        "ssssssssssssssss",
+        "oooooooooooooooo",
+        "oWWWWWWWWWWWWWWo",
+        "oWWWWoCCoWWWWWWo",
+        "oWWWWoKKooWWWWWo",
+        "oWWWWoKKoWWWWWWo",
+        "oWWWWWooWWWWWWWo",
+        "oooooooooooooooo",
+        "oPWPWPWPWPWPWPWo",
+        "oPWPWPWPWPWPWPWo",
+        ".oooooooooooooo.",
+        ".oWWWWWWWWWWWWo.",
+        ".oGGGGGWoDDDDWo.",
+        ".oGGGGGWoDDDDWo.",
+        ".oGGGGGWoDDDDWo.",
+        ".oWWWWWWoDDDDWo.",
+        ".oWWWWWWoDDDDWo.",
+        ".oooooooooooooo.",
+    ], {"o": "outline", "W": "cafe_wall", "C": "cup", "K": "coffee", "P": "banner",
+        "G": "glass", "D": "door", "s": "snow"}),
+    "gym": ([
+        "ssssssssssssssss",
+        "oooooooooooooooo",
+        "oNNNNNNNNNNNNNNo",
+        "oNooNNNNNNNNooNo",
+        "oNooooooooooooNo",
+        "oNooNNNNNNNNooNo",
+        "oNNNNNNNNNNNNNNo",
+        "oooooooooooooooo",
+        "oBBBBBBBBBBBBBBo",
+        "oBGGGBGGGBGGGBBo",
+        "oBGGGBGGGBGGGBBo",
+        "oBBBBBBBBBBBBBBo",
+        "oBGGGBBoDDDDoBBo",
+        "oBGGGBBoDDDDoBBo",
+        "oBBBBBBoDDDDoBBo",
+        "oBBBBBBoDDDDoBBo",
+        "oBBBBBBoDDDDoBBo",
+        "oooooooooooooooo",
+    ], {"o": "outline", "N": "gym_dark", "B": "gym_wall", "G": "glass", "D": "door",
+        "s": "snow"}),
+}
+
+GROUND_ROW = 45                     # 바깥 장소의 땅이 시작하는 행 (무대 안쪽 y 180, 화면 y 300)
+OUTDOOR_GROUND = [                  # 바깥 장소 공통 땅(계절 색)
+    (PART_RECT, "ground", 0, GROUND_ROW, 124, 39),
+    (PART_RECT, "ground_light", 0, GROUND_ROW, 124, 1),
+    (PART_WINDOWS, "ground_dark", 4, 50, 8, 4, 2, 1, 16, 9),   # 풀잎 무늬
+]
+
+# 장소별 배경 조각: back(시설보다 뒤), front(시설보다 앞, 주로 땅 위 물건)
+PLACE_BACK = {
+    PLACE_LAWN: OUTDOOR_GROUND + [
+        (PART_RECT, "far", 34, 28, 56, 17),                      # 먼 강의동
+        (PART_RECT, "far_dark", 34, 26, 56, 2),
+        (PART_RECT, "snow", 34, 25, 56, 1),
+        (PART_WINDOWS, "glass", 37, 30, 8, 3, 4, 3, 6, 5),
+        # 강의동 왼쪽에서 왼쪽 아래 구석으로 비스듬히 넓어지는 길.
+        # 제자(무대 가운데, 열 52~72) 바로 아래로 내려오면 몸통처럼 보여서 왼쪽으로 비켜 둔다
+        (PART_RECT, "path", 36, 45, 6, 3),
+        (PART_RECT, "path", 33, 48, 7, 3),
+        (PART_RECT, "path", 30, 51, 8, 3),
+        (PART_RECT, "path", 26, 54, 9, 4),
+        (PART_RECT, "path", 21, 58, 11, 4),
+        (PART_RECT, "path", 15, 62, 13, 5),
+        (PART_RECT, "path", 8, 67, 15, 6),
+        (PART_RECT, "path", 0, 73, 17, 11),
+        (PART_SPRITE, "tree", 20, 27),
+        (PART_SPRITE, "tree", 76, 27),
+    ],
+    PLACE_LECTURE: OUTDOOR_GROUND + [
+        (PART_RECT, "path", 18, 45, 88, 6),                      # 건물 앞 광장
+        (PART_RECT, "path_dark", 18, 45, 88, 1),
+        (PART_RECT, "brick", 22, 10, 80, 35),                    # 강의동 벽돌 건물
+        (PART_RECT, "brick_dark", 22, 42, 80, 3),
+        (PART_RECT, "roof", 20, 7, 84, 3),
+        (PART_RECT, "snow", 20, 6, 84, 1),
+        (PART_WINDOWS, "glass", 26, 13, 9, 2, 6, 5, 8, 9),
+        (PART_WINDOWS, "glass_dark", 26, 17, 9, 2, 6, 1, 8, 9),
+        (PART_RECT, "outline", 55, 31, 14, 14),                  # 현관
+        (PART_RECT, "door", 56, 32, 12, 13),
+        (PART_RECT, "glass", 57, 34, 4, 6),
+        (PART_RECT, "glass", 63, 34, 4, 6),
+        (PART_WINDOWS, "brick_dark", 22, 10, 2, 1, 2, 32, 78, 0),  # 양 끝 기둥
+        (PART_SPRITE, "bush", 24, 40),
+        (PART_SPRITE, "bush", 90, 40),
+    ],
+    PLACE_LIBRARY: OUTDOOR_GROUND + [
+        (PART_RECT, "path", 22, 45, 80, 8),                      # 앞마당
+        (PART_RECT, "stone", 26, 18, 72, 27),                    # 도서관 본관
+        (PART_RECT, "stone_dark", 22, 16, 80, 2),                # 박공(계단 모양 지붕)
+        (PART_RECT, "stone", 30, 13, 64, 3),
+        (PART_RECT, "stone", 40, 10, 44, 3),
+        (PART_RECT, "stone", 52, 7, 20, 3),
+        (PART_RECT, "snow", 52, 6, 20, 1),
+        (PART_RECT, "snow", 40, 9, 12, 1),
+        (PART_RECT, "snow", 72, 9, 12, 1),
+        (PART_SPRITE, "book", 58, 10),
+        (PART_WINDOWS, "stone_dark", 28, 19, 8, 1, 3, 26, 9, 0),  # 기둥
+        (PART_WINDOWS, "glass_dark", 33, 23, 7, 1, 3, 10, 9, 0),  # 긴 창
+        (PART_RECT, "stone_dark", 20, 45, 84, 2),                # 계단
+        (PART_RECT, "stone", 18, 47, 88, 2),
+        (PART_RECT, "stone_dark", 18, 49, 88, 1),
+        (PART_SPRITE, "lamp", 20, 31),
+        (PART_SPRITE, "lamp", 100, 31),
+    ],
+    PLACE_CEREMONY: OUTDOOR_GROUND + [
+        (PART_RECT, "wood_dark", 22, 8, 2, 37),                  # 현수막 기둥
+        (PART_RECT, "wood_dark", 100, 8, 2, 37),
+        (PART_RECT, "outline", 23, 7, 78, 12),                   # 현수막
+        (PART_RECT, "banner", 24, 8, 76, 10),
+        (PART_RECT, "banner_light", 24, 8, 76, 1),
+        (PART_WINDOWS, "gold", 28, 12, 6, 1, 2, 2, 6, 0),
+        (PART_WINDOWS, "gold", 62, 12, 6, 1, 2, 2, 6, 0),
+        (PART_SPRITE, "cap", 58, 10),
+        (PART_WINDOWS, "flag_mint", 26, 19, 7, 1, 3, 3, 12, 0),  # 깃발 줄
+        (PART_WINDOWS, "flag_sky", 32, 19, 6, 1, 3, 3, 12, 0),
+        (PART_RECT, "outline", 29, 37, 66, 8),                   # 단상
+        (PART_RECT, "wood", 30, 38, 64, 7),
+        (PART_RECT, "wood_dark", 30, 43, 64, 2),
+        (PART_RECT, "banner", 54, 38, 16, 4),
+        (PART_SPRITE, "balloon_pink", 12, 18),
+        (PART_SPRITE, "balloon_sky", 106, 20),
+    ],
+    PLACE_LAB: [
+        (PART_RECT, "wall", 0, 0, 124, 62),                      # 벽
+        (PART_RECT, "wall_dark", 0, 56, 124, 6),
+        (PART_RECT, "floor", 0, 62, 124, 22),                    # 바닥
+        (PART_RECT, "floor_dark", 0, 62, 124, 1),
+        (PART_WINDOWS, "floor_dark", 6, 63, 8, 1, 1, 21, 16, 0),
+        (PART_RECT, "wood", 68, 6, 44, 32),                      # 창틀
+        (PART_RECT, "key", 70, 8, 19, 28),                       # 창유리(하늘이 비친다)
+        (PART_RECT, "key", 91, 8, 19, 28),
+        (PART_RECT, "ground", 70, 30, 19, 6),                    # 창밖 땅
+        (PART_RECT, "ground", 91, 30, 19, 6),
+        (PART_RECT, "ground_light", 70, 30, 40, 1),
+        (PART_SPRITE, "bush", 72, 25),
+    ],
+}
+PLACE_FRONT = {
+    PLACE_LAWN: [
+        # 벤치는 길·행동 소품(열 86~110, 행 62~75)과 겹치지 않는 자리에 둔다
+        (PART_SPRITE, "bench", 4, 50),
+        (PART_SPRITE, "bench", 106, 49),
+        (PART_SPRITE, "flower", 42, 52),
+        (PART_SPRITE, "flower", 40, 72),
+        (PART_SPRITE, "flower", 80, 56),
+        (PART_SPRITE, "flower", 94, 78),
+        (PART_SPRITE, "flower", 26, 78),
+        (PART_SPRITE, "flower", 116, 62),
+    ],
+    PLACE_LECTURE: [
+        (PART_SPRITE, "flower", 12, 60),
+        (PART_SPRITE, "flower", 30, 74),
+        (PART_SPRITE, "flower", 96, 58),
+        (PART_SPRITE, "flower", 110, 76),
+    ],
+    PLACE_LIBRARY: [
+        (PART_SPRITE, "flower", 8, 62),
+        (PART_SPRITE, "flower", 26, 76),
+        (PART_SPRITE, "flower", 100, 60),
+        (PART_SPRITE, "flower", 114, 74),
+    ],
+    PLACE_CEREMONY: [
+        (PART_SPRITE, "chair", 4, 64),                           # 왼쪽 의자 줄
+        (PART_SPRITE, "chair", 12, 64),
+        (PART_SPRITE, "chair", 20, 64),
+        (PART_SPRITE, "chair", 28, 64),
+        (PART_SPRITE, "chair", 4, 75),
+        (PART_SPRITE, "chair", 12, 75),
+        (PART_SPRITE, "chair", 20, 75),
+        (PART_SPRITE, "chair", 28, 75),
+        (PART_SPRITE, "chair", 90, 75),                          # 오른쪽 의자 줄
+        (PART_SPRITE, "chair", 98, 75),
+        (PART_SPRITE, "chair", 106, 75),
+        (PART_SPRITE, "chair", 114, 75),
+    ],
+    PLACE_LAB: [
+        (PART_RECT, "wood", 89, 6, 2, 32),                       # 창 가운데 살
+        (PART_RECT, "wood_dark", 66, 38, 48, 2),                 # 창턱
+        (PART_RECT, "snow", 68, 37, 44, 1),
+        (PART_RECT, "wood_dark", 4, 12, 24, 50),                 # 책장
+        (PART_RECT, "wood", 6, 14, 20, 46),
+        (PART_WINDOWS, "wood_dark", 6, 25, 1, 3, 20, 1, 0, 12),
+        (PART_WINDOWS, "book_pink", 7, 16, 3, 4, 2, 9, 6, 12),
+        (PART_WINDOWS, "book_sky", 9, 17, 3, 4, 2, 8, 6, 12),
+        (PART_WINDOWS, "book_yellow", 11, 18, 3, 4, 2, 7, 6, 12),
+        (PART_RECT, "board_frame", 32, 10, 32, 20),              # 화이트보드
+        (PART_RECT, "board", 33, 11, 30, 18),
+        (PART_RECT, "book_sky", 36, 14, 12, 1),
+        (PART_RECT, "book_sky", 36, 17, 16, 1),
+        (PART_RECT, "book_pink", 36, 20, 9, 1),
+        (PART_RECT, "book_mint", 50, 23, 2, 4),
+        (PART_RECT, "book_mint", 53, 21, 2, 6),
+        (PART_RECT, "book_mint", 56, 18, 2, 9),
+        (PART_RECT, "board_frame", 38, 30, 20, 1),
+        (PART_SPRITE, "plant", 114, 51),
+    ],
+}
+
+# 시설: 업그레이드 id -> 스프라이트 이름. 레벨 1 이상이면 무대 뒤쪽에 건물이 생긴다
+FACILITY_SPRITES = {
+    UPGRADE_LIBRARY: "library",
+    UPGRADE_CAFE: "cafe",
+    UPGRADE_GYM: "gym",
+}
+FACILITY_IDS = [UPGRADE_LIBRARY, UPGRADE_CAFE, UPGRADE_GYM]
+FACILITY_OWNED_LEVEL = 1           # 이 레벨 이상이면 시설이 있다
+# 시설 자리: 장소 -> {업그레이드 id: (왼쪽 x 픽셀, 아래 끝 y 픽셀, 도트 칸 크기)} (무대 안쪽 기준)
+# 바깥 장소는 땅 시작선(y 180) 위 양옆, 연구실은 창밖에 작게(칸 2픽셀) 보인다
+OUTDOOR_FACILITY_SLOTS = {
+    UPGRADE_LIBRARY: (4, GROUND_ROW * SCENE_CELL, SCENE_CELL),
+    UPGRADE_CAFE: (360, GROUND_ROW * SCENE_CELL, SCENE_CELL),
+    UPGRADE_GYM: (428, GROUND_ROW * SCENE_CELL, SCENE_CELL),
+}
+LAB_FACILITY_CELL = 2
+FACILITY_SLOTS = {
+    PLACE_LAWN: OUTDOOR_FACILITY_SLOTS,
+    PLACE_LECTURE: OUTDOOR_FACILITY_SLOTS,
+    PLACE_LIBRARY: OUTDOOR_FACILITY_SLOTS,
+    PLACE_CEREMONY: OUTDOOR_FACILITY_SLOTS,
+    PLACE_LAB: {
+        UPGRADE_LIBRARY: (318, 124, LAB_FACILITY_CELL),
+        UPGRADE_CAFE: (368, 124, LAB_FACILITY_CELL),
+        UPGRADE_GYM: (402, 124, LAB_FACILITY_CELL),
+    },
+}
+
+# 해·달·별 (하늘 겹, 매 프레임 그린다). 위치는 무대 안쪽 기준 픽셀
+SUN_SPRITE = [
+    "..YYYY..",
+    ".YyyYYY.",
+    "YyyYYYYY",
+    "YyYYYYYY",
+    "YYYYYYYY",
+    "YYYYYYYY",
+    ".YYYYYY.",
+    "..YYYY..",
+]
+MOON_SPRITE = [
+    "..MMM...",
+    ".MMm....",
+    "MMm.....",
+    "MMm.....",
+    "MMm.....",
+    "MMMm....",
+    ".MMMMMM.",
+    "..MMMM..",
+]
+SUN_COLORS = {"Y": (255, 220, 104), "y": (255, 244, 196)}           # 낮 해
+EVENING_SUN_COLORS = {"Y": (246, 140, 96), "y": (252, 196, 150)}    # 저녁 해(노을)
+MOON_COLORS = {"M": (255, 244, 196), "m": (226, 214, 160)}
+COLOR_STAR_NIGHT = (255, 244, 196)  # 밤하늘 별 도트
+# 장소 -> {시간대: 해·달 왼쪽 위 (x, y)}. 연구실은 창유리 안쪽에 보이게
+OUTDOOR_SKY_POS = {TIME_DAY: (440, 16), TIME_EVENING: (440, 64), TIME_NIGHT: (440, 16)}
+SKY_OBJECT_POS = {
+    PLACE_LAWN: OUTDOOR_SKY_POS,
+    PLACE_LECTURE: OUTDOOR_SKY_POS,
+    PLACE_LIBRARY: OUTDOOR_SKY_POS,
+    PLACE_CEREMONY: OUTDOOR_SKY_POS,
+    PLACE_LAB: {TIME_DAY: (288, 40), TIME_EVENING: (288, 80), TIME_NIGHT: (288, 40)},
+}
+STAR_POSITIONS = [(40, 20), (120, 44), (200, 12), (260, 56), (332, 24), (396, 100),
+                  (152, 84), (476, 104), (64, 96), (300, 92), (336, 44), (380, 56),
+                  (420, 72), (424, 40)]
+
+# 행동 소품: 마지막 자동 행동 -> 스프라이트. 다음 행동 전까지 제자 오른쪽 땅에 보인다
+PROP_SPRITES = {
+    ACTION_STUDY: [                    # 책상과 책
+        "....oooooo.......oo...",
+        "....oPPPPo......oYYo..",
+        "...oooooooo....oYYo...",
+        "...oSSSSSSo...oYYo....",
+        "...oooooooo..ooo......",
+        "oooooooooooooooooooooo",
+        "oWWWWWWWWWWWWWWWWWWWWo",
+        "oooooooooooooooooooooo",
+        ".oDo..............oDo.",
+        ".oDo..............oDo.",
+        ".oDo..............oDo.",
+        ".oDo..............oDo.",
+        ".ooo..............ooo.",
+    ],
+    ACTION_REST: [                     # 이불과 베개
+        "..........oooooooooooooo",
+        "oooooo...oSSSSSSSSSSSSSo",
+        "oCCCCCo.oSSsSSSSsSSSSsSo",
+        "oCCCCCCooSSSSSSSSSSSSSSo",
+        "oCCCCCCCoSSSsSSSSsSSSSso",
+        "oooooooooooooooooooooooo",
+        "oWWWWWWWWWWWWWWWWWWWWWWo",
+        "oooooooooooooooooooooooo",
+    ],
+    ACTION_FEED: [                     # 식판 (밥·국·반찬)
+        "...ooo......ooo...",
+        "..oCCCo....oAAAo..",
+        ".oCCCCCo..oAAAAAo.",
+        ".oCCCCCo..oAAAAAo.",
+        "..ooooo....ooooo..",
+        "oooooooooooooooooo",
+        "oTGGoTTTTTTTToRRTo",
+        "oTGGoTTTTTTTToRRTo",
+        "oooooooooooooooooo",
+    ],
+}
+PROP_COLORS = {
+    "o": COLOR_OUTLINE, "P": COLOR_PINK, "S": COLOR_SKY, "s": COLOR_SKY_LIGHT,
+    "Y": COLOR_YELLOW, "W": (198, 152, 110), "D": (150, 104, 78),
+    "C": COLOR_WHITE, "A": COLOR_APRICOT, "T": COLOR_MINT, "G": (120, 196, 120),
+    "R": COLOR_PINK_DARK,
+}
+PROP_X = 344                        # 소품 왼쪽 x (무대 안쪽 기준, 제자 오른쪽)
+PROP_BOTTOM = 300                   # 소품 아래 끝 y (무대 안쪽 기준)
