@@ -113,11 +113,11 @@ def test_idle_end_to_end_real_loop(monkeypatch, isolated_record_path):
     # 업그레이드: 학식 메뉴 개선 240 을 연구비로 샀다
     assert config.UPGRADE_MENU in g.upgrades and g.upgrades[config.UPGRADE_MENU] == 1
     assert log["money_before_buy"][0] >= 240
-    # 방치(자동 행동)로 지식 1100 졸업, 등급은 걸린 시간(240초 이하 수석 / 360초 이하 무사)
+    # 방치(자동 행동)로 지식 1100 졸업, 등급은 걸린 시간(200초 이하 수석 / 360초 이하 무사, 11절 A안)
     ending, knowledge, money, bonus, seconds = log["graduated"]
     assert ending in (config.ENDING_TOP, config.ENDING_NORMAL, config.ENDING_BARELY)
     assert knowledge >= config.GRADUATION_KNOWLEDGE
-    assert ending == (config.ENDING_TOP if seconds <= 240 else
+    assert ending == (config.ENDING_TOP if seconds <= 200 else
                       config.ENDING_NORMAL if seconds <= 360 else config.ENDING_BARELY)
     assert bonus == config.GRADUATION_BONUS[ending]          # 명성 0
     # 대학원 2년차에서 끝 -> "대학원 2년차 수료"
@@ -182,15 +182,16 @@ def test_upgrade_tables_match_config(source):
         assert row[0] == u[config.UPGRADE_CATEGORY]
         assert int(row[3]) == u[config.UPGRADE_MAX_LEVEL], row
         assert int(row[4]) == u[config.UPGRADE_BASE_COST], row
-        if source == "spec":
-            listed = [int(x) for x in row[5].split("/")]
-            assert listed == game_costs(u[config.UPGRADE_ID]), row
+        # (11절 A안) README 표에도 레벨별 가격 칸이 생겨 둘 다 Game 계산(×2.0)과 대조한다
+        listed = [int(x) for x in row[5].split("/")]
+        assert listed == game_costs(u[config.UPGRADE_ID]), row
     pygame.quit()
 
 
-def test_total_cost_45990_matches_game():
-    assert "45,990" in spec10()
-    assert sum(sum(game_costs(uid)) for uid in config.UPGRADE_IDS) == 45990
+def test_total_cost_61590_matches_game():
+    """(11절 A안, 가격 증가 ×2.0) 전부 최고 레벨 합계 61,590 이 기획서·README·Game 계산에서 같다."""
+    assert "61,590" in spec10() and "61,590" in readme()
+    assert sum(sum(game_costs(uid)) for uid in config.UPGRADE_IDS) == 61590
     pygame.quit()
 
 
@@ -213,19 +214,24 @@ def test_policy_tables_match_config(source):
 
 def test_key_numbers_in_spec_and_readme():
     s, r = spec10(), readme()
-    # 졸업 기준 (L단위, 기획서 11절: 걸린 시간 240/360초, 졸업 지식 1100. README 문구는
-    # 아직 11절 미반영이라 test_final.py::test_readme_describes_no_time_limit 에서 따로 본다)
-    assert "| 수석 졸업 | 240초 이하 |" in s and "| 아슬아슬 졸업 | 360초 초과 |" in s
-    assert "| 졸업 | 1100 |" in s
-    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (240, 360)
+    s11 = s.split("## 11.")[1]
+    # 졸업 기준 (L단위, 기획서 11절 A안: 걸린 시간 200/360초, 졸업 지식 1100)
+    for text in (s11, r):
+        assert "| 수석 졸업 | 200초 이하" in text and "| 아슬아슬 졸업 | 360초 초과" in text
+        assert "| 무사 졸업 | 200초 초과 360초 이하" in text
+        assert "| 졸업 | 1100 |" in text
+    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (200, 360)
     assert config.GRADUATION_KNOWLEDGE == 1100
-    # 가격 증가율
-    assert "기본 가격 × **1.8**^(현재 레벨)" in s and "기본 가격 × 1.8^(현재 레벨)" in r
-    assert config.UPGRADE_COST_GROWTH == 1.8
-    # 대학원 배수 (자연 감소 0.5, 연구비 0.25)
-    assert "×(1 + **0.5**n)" in s and "×(1 + 0.25n)" in s
-    assert "×(1 + 0.5n)" in r and "×(1 + 0.25n)" in r
-    assert (config.GRAD_DECAY_BONUS, config.GRAD_MONEY_BONUS) == (0.5, 0.25)
+    # 가격 증가율 (11절 A안: 1.8 -> 2.0)
+    assert "기본 가격 × **2.0**^(현재 레벨)" in s and "기본 가격 × 2.0^(현재 레벨)" in r
+    assert config.UPGRADE_COST_GROWTH == 2.0
+    # 대학원 배수 (11절 A안: 자연 감소 1 + 0.5n + 1.0c, 연구비 1 + 1.0n)
+    for text in (s11, r):
+        assert "×(1 + 0.5n + 1.0c)" in text
+    assert "연구비 ×(1 + **1.0**n)" in s11 and "×(1 + 1.0n)" in r
+    assert (config.GRAD_DECAY_BONUS, config.GRAD_CYCLE_DECAY_BONUS, config.GRAD_MONEY_BONUS) \
+        == (0.5, 1.0, 1.0)
+
     # 졸업 보너스, 명성, 자동 행동 간격, 이벤트 확률
     for text in (s, r):
         assert "수석 +200, 무사 +100, 아슬아슬 +50" in text

@@ -102,16 +102,22 @@ def to_grad(game, knowledge=500):
     assert game.grad_year == 1
 
 
-def grad_student(year=1):
+def grad_student(year=1, cycles=None):
     """졸업한 Student 를 대학원 year 년차로 만든다(감소 없이 값만 맞춤).
 
     (L단위) 240초에 지식 1100으로 졸업 -> 대학원 진학 -> 년차 목표(1500, 2000 …)까지 지식을 넣어
     진급 판정으로 년차를 올린다. 경과 시간은 (4 + year - 1)번째 60초 주기의 시작으로 둔다.
+    (11절 A안) 대학원 진입 시각(grad_entry_time)은 240초다. cycles 를 주면 경과 시간을
+    240 + 60 x cycles 로 둬서 대학원 주기 수 c = cycles 가 된다(기본은 예전처럼 year - 1).
+    년차 배수만 보는 테스트는 cycles=0 으로 c 항을 뺀다.
     """
+    if cycles is None:
+        cycles = year - 1
     s = Student()
     graduate(s, 240.0)
     assert s.enter_grad_school()
-    s.elapsed = 240.0 + (year - 1) * config.CYCLE_SECONDS
+    assert s.grad_entry_time == 240.0
+    s.elapsed = 240.0 + cycles * config.CYCLE_SECONDS
     if year > config.GRAD_FIRST_YEAR:
         s.knowledge = s.get_grad_goal(year - 1)
         s.promote()
@@ -145,8 +151,11 @@ def texts_of(made):
 
 
 def spec_money(gain, fame, year):
-    """기획서: 내림(오른 양 x (1 + 0.1 x 명성) x (1 + 0.25 x 년차)) 를 정수 산술로 정확히."""
-    return gain * (10 + fame) * (4 + year) // 40
+    """기획서: 내림(오른 양 x (1 + 0.1 x 명성) x (1 + 1.0 x 년차)) 를 정수 산술로 정확히.
+
+    (11절 A안) 대학원 연구비 배수 0.25 -> 1.0. 예전 식은 gain * (10 + fame) * (4 + year) // 40.
+    """
+    return gain * (10 + fame) * (1 + year) // 10
 
 
 # ======================= config 수치 =======================
@@ -154,8 +163,10 @@ def spec_money(gain, fame, year):
 def test_constants():
     assert config.GRAD_YEAR_UNDERGRAD == 0
     assert config.GRAD_FIRST_YEAR == 1
-    assert config.GRAD_DECAY_BONUS == 0.5    # K단위 승인(예전 0.25). 연구비 배수는 0.25 그대로
-    assert config.GRAD_MONEY_BONUS == 0.25
+    assert config.GRAD_DECAY_BONUS == 0.5    # K단위 승인(예전 0.25)
+    assert config.GRAD_CYCLE_DECAY_BONUS == 1.0   # 11절 A안: 대학원 주기 하나마다 +1.0
+    assert config.GRAD_CYCLES_NONE == 0
+    assert config.GRAD_MONEY_BONUS == 1.0    # 11절 A안 승인(K단위 0.25 -> 1.0)
     assert config.FAME_STEP == 1
     assert config.GRAD_YEAR_TEXT.format(3) == "대학원 3년차"
     assert config.ENDING_GRAD_TEXT.format(2) == "대학원 2년차 수료"
@@ -434,9 +445,10 @@ def test_exam_study_bonus_in_grad(no_decay):
 # ======================= 자연 감소 배수 =======================
 
 # K단위: n년차 자연 감소 배수 = 1 + 0.5 x n (예전 0.25)
+# (11절 A안) 배수 = 1 + 0.5n + 1.0c. 년차 항만 보려고 c = 0(cycles=0)으로 둔다. c 항은 test_idle_grad_cycle.py
 @pytest.mark.parametrize("year, ratio", [(1, 1.5), (2, 2.0), (3, 2.5), (4, 3.0)])
 def test_grad_decay_ratio(year, ratio):
-    s = grad_student(year)
+    s = grad_student(year, cycles=0)
     assert s.get_grad_decay_ratio() == pytest.approx(ratio)
     assert s.get_health_decay() == pytest.approx(ratio)
     assert s.get_mental_decay() == pytest.approx(ratio)
@@ -452,7 +464,7 @@ def test_undergrad_decay_ratio_is_one():
 @pytest.mark.parametrize("year, care, ratio", [(1, 2, 1.2), (2, 2, 1.6), (3, 5, 1.25),
                                                (1, 5, 0.75), (2, 1, 1.8)])
 def test_grad_decay_with_health_care(year, care, ratio):
-    s = grad_student(year)
+    s = grad_student(year, cycles=0)        # (11절 A안) c = 0: 주기 안 50초로 옮겨도 c 는 0
     s.upgrades[CARE] = care
     assert s.get_health_decay() == pytest.approx(ratio)
     assert s.get_mental_decay() == pytest.approx(ratio)
@@ -469,7 +481,7 @@ def test_grad_actual_decay_one_second():
 
 
 def test_grad_decay_in_year2_exam():
-    s = grad_student(2)
+    s = grad_student(2, cycles=0)           # (11절 A안) c = 0: 46초 동안 대학원 주기를 다 채우지 않는다
     s.health = s.mental = 100                 # K단위: 2년차 배수 2.0 이라 80 으로는 46초 안에 0이 된다
     s.update(46.0)
     # 년차 안 1~44초 시각의 감소: 평소, 45·46초 시각의 감소: 시험 기간(멘탈 x2)
@@ -479,14 +491,18 @@ def test_grad_decay_in_year2_exam():
 
 
 def test_decay_after_year_promotion_uses_new_year():
-    """(L단위) 지식으로 2년차가 되면 다음 감소부터 2년차 배수(2.0)를 쓴다."""
+    """(L단위) 지식으로 2년차가 되면 다음 감소부터 2년차 배수(2.0)를 쓴다.
+
+    (11절 A안) 예전 299.5 -> 300초는 진입(240초) 뒤 주기 하나를 채워 c = 1 이 되므로,
+    c = 0 인 279.5 -> 280초로 옮겨 년차 항만 본다.
+    """
     s = grad_student(1)
-    s.elapsed = 299.5
+    s.elapsed = 279.5
     s.decay_timer = 0.5
     s.health = s.mental = 80
     s.knowledge = 1500
     s.promote()
-    s.update(0.5)                     # 300초 시각의 감소 -> 2년차, 시험 기간 아님
+    s.update(0.5)                     # 280초 시각의 감소 -> 2년차, 시험 기간 아님, c = 0
     assert s.grad_year == 2
     assert s.health == pytest.approx(78.0)   # 2년차 배수 2.0 (1년차였다면 1.5)
     assert s.mental == pytest.approx(78.0)
@@ -500,7 +516,7 @@ def test_decay_after_year_promotion_uses_new_year():
 def test_money_multiplier_floor(g, fame, year, gain):
     g.fame = fame
     g.grad_year = year
-    assert g.get_grad_money_multiplier() == pytest.approx(1 + 0.25 * year)
+    assert g.get_grad_money_multiplier() == pytest.approx(1 + 1.0 * year)   # 11절 A안
     before = g.student.knowledge
     g.student.knowledge = before + gain
     money = g.money
@@ -514,7 +530,8 @@ def test_grad_study_earns_with_multiplier(g):
     to_grad(g, 500)
     money = g.money
     g.do_action(STUDY)                       # 1년차 0초: 평소 공부 +10
-    assert g.money == money + spec_money(10, 2, 1)   # 10 x 1.2 x 1.25 = 15
+    assert g.money == money + spec_money(10, 2, 1)   # 10 x 1.2 x 2.0 = 24 (11절 A안)
+    assert spec_money(10, 2, 1) == 24
 
 
 def test_grad_ending_no_bonus(g):
@@ -739,12 +756,13 @@ def test_undergrad_cycle_index_and_time():
 def test_undergrad_graduation_still_works(g, no_decay):
     """(L단위) 4학년에서 지식이 1100에 닿는 순간 졸업. 시간이 흐르는 것만으로는 졸업하지 않는다."""
     g.student.knowledge = config.GRADUATION_KNOWLEDGE - 1
-    g.update(239.99)
+    g.update(199.99)                          # (11절 A안) 수석 200초 이하에 맞춰 240 -> 200초
     assert g.state == config.STATE_PLAYING and g.student.get_grade() == 4
     g.student.knowledge = config.GRADUATION_KNOWLEDGE
     g.update(0.01)
     assert g.ending == config.ENDING_TOP and g.grad_year == 0
-    assert g.student.graduation_time == pytest.approx(240.0)
+    assert g.student.graduation_time == pytest.approx(200.0)
+
 
 
 # ======================= 화면: 정보바·엔딩 안내·긴 이름 =======================

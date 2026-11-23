@@ -42,8 +42,11 @@ SPEC_TABLE = {
 
 
 def spec_cost(base, level):
-    """기획서 가격 = 내림(기본 가격 x 1.8^레벨). 정수 산술로 정확히 계산한다(18^L / 10^L)."""
-    return base * 18 ** level // 10 ** level
+    """기획서 가격 = 내림(기본 가격 x 2.0^레벨). 정수 산술로 정확히 계산한다(2^L).
+
+    (11절 A안) K단위 1.8 -> 2.0. 예전 식은 base * 18 ** level // 10 ** level 이었다.
+    """
+    return base * 2 ** level
 
 
 def levels(**kw):
@@ -131,7 +134,7 @@ def test_upgrade_table_matches_spec():
 
 
 def test_money_constants():
-    assert config.UPGRADE_COST_GROWTH == 1.8   # K단위 승인(예전 1.6)
+    assert config.UPGRADE_COST_GROWTH == 2.0   # 11절 A안 승인(1.6 -> K단위 1.8 -> 2.0)
     assert config.FAME_MONEY_BONUS == 0.1
     assert config.GRADUATION_BONUS == {config.ENDING_TOP: 200, config.ENDING_NORMAL: 100,
                                        config.ENDING_BARELY: 50}
@@ -450,12 +453,13 @@ def test_cost_every_level_and_max(g, uid):
 
 
 def test_known_cost_values(g):
-    # 기획서 10절 표의 "레벨별 가격" 열 그대로
-    expect = {MENU: [240, 432, 777, 1399, 2519], BED: [240, 432, 777, 1399, 2519],
-              BOOK: [360, 648, 1166, 2099, 3779],
-              TIME: [450, 810, 1458, 2624, 4723], CARE: [450, 810, 1458, 2624, 4723],
+    # 기획서 10절 표의 "레벨별 가격" 열 그대로 (11절 A안, ×2.0)
+    expect = {MENU: [240, 480, 960, 1920, 3840], BED: [240, 480, 960, 1920, 3840],
+              BOOK: [360, 720, 1440, 2880, 5760],
+              TIME: [450, 900, 1800, 3600, 7200], CARE: [450, 900, 1800, 3600, 7200],
               LIB: [900], CAFE: [900], GYM: [900],
-              CHARM: [600, 1080, 1944], SCHOL: [750]}
+              CHARM: [600, 1200, 2400], SCHOL: [750]}
+    assert sum(sum(c) for c in expect.values()) == 61590   # 전부 최고 레벨 합계(기획서 10절)
     for uid, costs in expect.items():
         for level, cost in enumerate(costs):
             g.upgrades[uid] = level
@@ -1067,7 +1071,9 @@ def test_panel_row_texts_show_level_cost_and_max(g, monkeypatch):
     g.upgrade_panel_open = True
     texts = [t for t, _ in draw_and_collect(g, "draw_upgrade_panel", monkeypatch)]
     # (J단위 재배치) 좁은 왼쪽 패널이라 가격은 숫자만("777") 쓴다. 단위는 머리 줄 "연구비 N"
-    assert "Lv 2/5" in texts and "777" in texts   # 240 x 1.8^2 = 777.6 -> 777
+    assert "Lv 2/5" in texts and "960" in texts   # 240 x 2.0^2 = 960 (11절 A안)
+    assert "777" not in texts                      # 예전 ×1.8 가격이 아니다
+
     assert "Lv 1/1" in texts and "MAX" in texts
     assert config.MONEY_TEXT.format("연구비", 0) in texts
 

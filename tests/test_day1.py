@@ -119,7 +119,9 @@ def test_student_start_values():
         ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
         ("MAX_GRADE", 4),
         # 졸업 기준: E단위 500/300 -> 700/450 -> K단위 1000/750 -> L단위(기획서 11절) 걸린 시간 240/360초
-        ("TOP_GRADUATE_SECONDS", 240), ("NORMAL_GRADUATE_SECONDS", 360),
+        # -> 11절 A안 밸런스(2026-11-23) 200/360초
+        ("TOP_GRADUATE_SECONDS", 200), ("NORMAL_GRADUATE_SECONDS", 360),
+
         ("GRADUATION_KNOWLEDGE", 1100), ("GRADE_GOALS", [200, 450, 750]),
         ("RECORD_FILENAME", "record.json"),
     ],

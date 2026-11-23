@@ -451,7 +451,7 @@ class Game:
         return int(value + config.MONEY_EPSILON)
 
     def get_grad_money_multiplier(self):
-        """대학원 연구비 배수 = 1 + 0.25 x 대학원 년차 를 돌려준다(학부는 1)."""
+        """대학원 연구비 배수 = 1 + 1.0 x 대학원 년차 를 돌려준다(학부는 1)."""
         return config.NO_RATIO + config.GRAD_MONEY_BONUS * self.grad_year
 
     def get_money_multiplier(self):
@@ -473,7 +473,7 @@ class Game:
         return earned
 
     def get_upgrade_cost(self, upgrade_id):
-        """업그레이드 upgrade_id의 다음 레벨 가격 = 내림(기본 가격 x 1.8 ^ 지금 레벨)을 돌려준다.
+        """업그레이드 upgrade_id의 다음 레벨 가격 = 내림(기본 가격 x 2.0 ^ 지금 레벨)을 돌려준다.
 
         최고 레벨이어도 같은 식으로 계산한 값을 돌려준다(살 수 있는지는 can_buy_upgrade가 본다).
         """

@@ -11,7 +11,7 @@
       점무늬(대화 상태에서만, 대화창 안 미덮음, 밀도 무관), 하트 핀 위치, 미리보기 글자 대비
 - 문서 일치: 기획서 2절 표·jeja-spec 5절·README·config 가 1000/750
 
-(L단위, 기획서 11절) 졸업 등급은 걸린 시간(240/360초), 졸업은 4학년에서 지식 1100,
+(L단위, 기획서 11절) 졸업 등급은 걸린 시간(200/360초, 11절 A안 밸런스로 수석 240 -> 200), 졸업은 4학년에서 지식 1100,
 이벤트 최소 4·최대 5회는 60초 주기마다 센다(event_counts 키 = 주기 번호). 위 (b)·밸런스 항목은 새 규칙으로 바꿨다.
 """
 
@@ -113,8 +113,8 @@ def rng_draws(monkeypatch, g, value=0.0):
 
 def test_e_constants():
     assert config.EVENT_MIN_GAP == 8.0
-    # (L단위) 지식 1000/750 -> 걸린 시간 240/360초
-    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (240, 360)
+    # (L단위) 지식 1000/750 -> 걸린 시간 200/360초 (11절 A안: 수석 240 -> 200)
+    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (200, 360)
     assert config.PAUSE_DOT_STEP == 12 == P * 3
     assert config.EVENT_NOTICE_FONT_SIZE == 16
     assert config.EVENT_NOTICE_TEXT_MAX_WIDTH == 160
@@ -427,13 +427,14 @@ def test_gap_reduces_chance_events():
     pygame.quit()
 
 
-# ======================= 3. 엔딩 기준 (L단위: 걸린 시간 240/360초) =======================
+# ======================= 3. 엔딩 기준 (L단위: 걸린 시간 200/360초) =======================
 
 @pytest.mark.parametrize("seconds, ending", [
-    (0, config.ENDING_TOP), (240, config.ENDING_TOP), (240.0001, config.ENDING_NORMAL),
+    (0, config.ENDING_TOP), (200, config.ENDING_TOP), (200.0001, config.ENDING_NORMAL),
+    (240, config.ENDING_NORMAL),
     (360, config.ENDING_NORMAL), (360.0001, config.ENDING_BARELY), (5000, config.ENDING_BARELY),
 ])
-def test_judge_ending_240_360(seconds, ending):
+def test_judge_ending_200_360(seconds, ending):
     """(L단위, 예전 1000/750 지식 경계) 졸업 등급은 걸린 시간으로 정한다."""
     assert judge_ending(seconds) == ending
     s = Student()
@@ -444,7 +445,7 @@ def test_judge_ending_240_360(seconds, ending):
 
 
 @pytest.mark.parametrize("start, ending", [
-    (240.0 - DT, config.ENDING_TOP), (240.0, config.ENDING_NORMAL),
+    (200.0 - DT, config.ENDING_TOP), (200.0, config.ENDING_NORMAL),
     (360.0 - DT, config.ENDING_NORMAL), (360.0, config.ENDING_BARELY),
 ])
 def test_graduation_flow_boundaries_events_on(make_game, start, ending):
@@ -461,13 +462,13 @@ def test_graduation_flow_boundaries_events_on(make_game, start, ending):
 
 
 @pytest.mark.parametrize("start, elapsed, ending", [
-    (1084, 238.5, None), (1085, 238.5, config.ENDING_TOP),
+    (1084, 198.5, None), (1085, 198.5, config.ENDING_TOP),
     (1085, 300.0, config.ENDING_NORMAL), (1085, 400.0, config.ENDING_BARELY),
 ])
 def test_event_knowledge_crosses_graduation_goal(make_game, monkeypatch, start, elapsed, ending):
     """(L단위) 4학년에서 학식 + 자동형 '교수님께 칭찬'(지식 +15)으로 졸업 목표 1100을 넘으면 그 순간 졸업.
 
-    1084 + 15 = 1099 는 못 넘어 계속 논다. 등급은 그 시각(238.5 수석 / 300 무사 / 400 아슬아슬).
+    1084 + 15 = 1099 는 못 넘어 계속 논다. 등급은 그 시각(198.5 수석 / 300 무사 / 400 아슬아슬).
     """
     monkeypatch.setattr(config, "EVENT_CHANCE", 1.0)
     g = make_game(13)
@@ -491,7 +492,8 @@ BALANCE_SEEDS = range(20)
 
 
 @pytest.mark.parametrize("interval, expected", [
-    (1.5, config.ENDING_TOP),
+    (1.0, config.ENDING_TOP),
+    (1.5, config.ENDING_NORMAL),
     (2.0, config.ENDING_NORMAL),
     (2.5, config.ENDING_BARELY),
     (3.0, config.ENDING_BARELY),
@@ -507,6 +509,8 @@ def test_balance_with_events(interval, expected):
     (L단위) 등급이 졸업까지 걸린 시간으로 바뀐 뒤 검수팀 실측(시드 20개, 졸업 시각): 1.0초 20 수석(143~166초),
     1.5초 19 수석 + 1 무사(218~245초), 2.0초 20 무사(292~354초), 2.5초 19 아슬아슬 + 1 휴학,
     3.0초 17 아슬아슬 + 3 휴학, 4.0초 14 아슬아슬 + 6 휴학. 기대 엔딩은 K단위와 같다.
+    (11절 A안, 수석 240 -> 200초) 1.5초 간격 졸업 시각 218~245초는 이제 무사라서, 수석 사례는
+    1.0초 간격(143~166초)으로 옮기고 1.5초는 무사를 기대한다.
     """
     counts = {}
     for seed in BALANCE_SEEDS:
@@ -870,7 +874,8 @@ def test_config_and_game_code_use_constants():
         # (L단위) 진급 목표·졸업 지식·졸업 시간 숫자도 config 상수로만 쓴다
         old_and_new = {500, 300, 700, 450, 1000, 750, 200, 1100, 240, 360, 400, 1500, 2000}
         assert not nums & old_and_new, (name, nums & old_and_new)
-    assert game_module.config.TOP_GRADUATE_SECONDS == 240
+    assert game_module.config.TOP_GRADUATE_SECONDS == 200
+
 
 
 def test_code_docstrings_mention_new_ending_criteria():

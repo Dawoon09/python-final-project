@@ -127,8 +127,8 @@ MOUTH_CRY = "cry"           # 우는 입 (입꼬리가 내려간 ∩자)
 GRADE_GOALS = [200, 450, 750]   # 2학년·3학년·4학년 진급 목표(누적 지식)
 GRADUATION_KNOWLEDGE = 1100     # 4학년에서 누적 지식 1100 이상이면 졸업
 # 졸업 등급은 졸업까지 걸린 게임 시간(대화창 정지 시간은 빼고 센다)으로 정한다
-TOP_GRADUATE_SECONDS = 240      # 240초 이하: 수석 졸업
-NORMAL_GRADUATE_SECONDS = 360   # 240초 초과 360초 이하: 무사 졸업, 초과: 아슬아슬 졸업
+TOP_GRADUATE_SECONDS = 200      # 200초 이하: 수석 졸업
+NORMAL_GRADUATE_SECONDS = 360   # 200초 초과 360초 이하: 무사 졸업, 초과: 아슬아슬 졸업
 
 ENDING_LEAVE = "휴학"
 ENDING_TOP = "수석 졸업"
@@ -1107,8 +1107,8 @@ GAUGE_DECIMALS = 6          # 체력·멘탈을 이 자리에서 반올림해 �
 # 졸업 보너스 (x 명성 배수, 내림). 휴학이면 없음
 GRADUATION_BONUS = {ENDING_TOP: 200, ENDING_NORMAL: 100, ENDING_BARELY: 50}
 
-# 업그레이드 가격 = 내림(기본 가격 x 1.8 ^ 현재 레벨)
-UPGRADE_COST_GROWTH = 1.8
+# 업그레이드 가격 = 내림(기본 가격 x 2.0 ^ 현재 레벨)
+UPGRADE_COST_GROWTH = 2.0
 
 # 업그레이드 id
 UPGRADE_MENU = "menu"                   # 학식 메뉴 개선
@@ -1247,8 +1247,12 @@ GRAD_YEAR_STEP = 1          # 년차 목표를 넘을 때마다 대학원 년차
 # -> 1년차 1500, 2년차 2000, 3년차 2600 … (기획서 11절)
 GRAD_GOAL_FIRST_STEP = 400  # 1년차에 더 모아야 하는 지식
 GRAD_GOAL_STEP_GROWTH = 100  # 해마다 더 모아야 하는 지식이 늘어나는 양
-GRAD_DECAY_BONUS = 0.5      # n년차 체력·멘탈 자연 감소 배수 = 1 + 0.5 x n
-GRAD_MONEY_BONUS = 0.25     # n년차 연구비 획득 배수 = 1 + 0.25 x n
+# 대학원 자연 감소 배수 = 1 + 0.5 x n + 1.0 x c
+#   n = 대학원 년차, c = 대학원에 들어간 뒤 다 채운 60초 주기 수 (대학원에서만 시간 압박)
+GRAD_DECAY_BONUS = 0.5      # 년차 하나마다 더하는 자연 감소 배수
+GRAD_CYCLE_DECAY_BONUS = 1.0  # 대학원에서 60초 주기를 하나 다 채울 때마다 더하는 자연 감소 배수
+GRAD_CYCLES_NONE = 0        # 학부이거나 대학원 진입 시각이 없을 때의 대학원 주기 수
+GRAD_MONEY_BONUS = 1.0      # n년차 연구비 획득 배수 = 1 + 1.0 x n
 FAME_STEP = 1               # 졸업한 판에서 환생하면 오르는 명성
 
 GRAD_YEAR_TEXT = "대학원 {}년차"        # 정보바 왼쪽 글자 (학부는 GRADE_TEXT)

@@ -120,7 +120,8 @@ def set_health(value):
 
 @pytest.mark.parametrize("seconds, knowledge, ending", [
     # E단위 700/450, K단위 1000/750 (지식) -> L단위: 걸린 시간 240/360초 (기획서 11절)
-    (200.0, config.GRADUATION_KNOWLEDGE + 20, config.ENDING_TOP),
+    # -> 11절 A안 200/360초. 강제 졸업 시각에 프레임 몇 개가 더해지므로 수석 사례는 150초로 둔다.
+    (150.0, config.GRADUATION_KNOWLEDGE + 20, config.ENDING_TOP),
     (300.0, config.GRADUATION_KNOWLEDGE, config.ENDING_NORMAL),
     (400.0, config.GRADUATION_KNOWLEDGE + 120, config.ENDING_BARELY),
 ])
@@ -288,7 +289,7 @@ def test_no_numeric_literals_other_than_0_1(name):
     ("MENTAL_SMILE_MIN", 60), ("MENTAL_FLAT_MIN", 30),
     ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
     # L단위(기획서 11절): 졸업 등급은 걸린 시간, 진급 목표 200/450/750, 졸업 지식 1100
-    ("TOP_GRADUATE_SECONDS", 240), ("NORMAL_GRADUATE_SECONDS", 360),
+    ("TOP_GRADUATE_SECONDS", 200), ("NORMAL_GRADUATE_SECONDS", 360),   # 11절 A안: 수석 240 -> 200
     ("GRADE_GOALS", [200, 450, 750]), ("GRADUATION_KNOWLEDGE", 1100),
     ("ENDING_LEAVE", "휴학"), ("ENDING_TOP", "수석 졸업"),
     ("ENDING_NORMAL", "무사 졸업"), ("ENDING_BARELY", "아슬아슬 졸업"),
@@ -362,17 +363,20 @@ def test_readme_mentions(text):
     assert text in _readme(), text
 
 
-@pytest.mark.xfail(strict=True, reason="README가 아직 기획서 11절(시간 제한 없음)을 반영하지 않음 "
-                                       "- 검수 보고 '낮음' 항목. README를 고치면 이 표시를 지운다")
 @pytest.mark.parametrize("old, new", [
     ("240초(1~4학년, 학년당 60초)", "누적 지식"),
     ("60초마다 학년이 오르고", "200"),
-    ("수석 졸업(1000 이상)", "240초"),
+    ("수석 졸업(1000 이상)", "200초"),
 ])
 def test_readme_describes_no_time_limit(old, new):
-    """(L단위) README가 예전 시간 제한 규칙을 말하지 않고 새 규칙(지식 진급·걸린 시간 등급)을 설명한다."""
+    """(L단위) README가 예전 시간 제한 규칙을 말하지 않고 새 규칙(지식 진급·걸린 시간 등급)을 설명한다.
+
+    (11절 A안) 수석 기준은 200초다. 팀장 결정으로 README에는 "240초"가 어디에도 남지 않는다.
+    """
     text = _readme()
     assert old not in text and new in text
+    assert "240초" not in text
+
 
 
 @pytest.mark.parametrize("name", ["main.py", "config.py", "student.py", "button.py",

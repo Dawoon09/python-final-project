@@ -442,19 +442,21 @@ def test_large_dt_leave_before_action_at_same_time(g, monkeypatch):
 def test_large_dt_graduation_stops_actions(g, monkeypatch):
     """(L단위) 큰 dt 안에서 자동 공부로 졸업 목표(1100)에 닿으면 그 시각에 끝나고 뒤 행동은 없다.
 
-    4학년 1090, 236.5초(시험 기간, 공부 +20) -> 237초 자동 공부로 1110 -> 졸업(237초, 수석).
+    4학년 1090, 176.5초(시험 기간, 공부 +20) -> 177초 자동 공부로 1110 -> 졸업(177초, 수석).
+    (11절 A안) 수석 기준 200초에 맞춰 236.5초 -> 176.5초(주기 3의 시험 기간)로 옮겼다.
     """
     reach_grade(g.student, 4)
     g.student.knowledge = config.GRADUATION_KNOWLEDGE - 10
-    g.student.elapsed = 236.5
+    g.student.elapsed = 176.5
     g.auto_timer = 0.5
     g.student.health = g.student.mental = 100
     log = record_actions(g, monkeypatch)
     g.update(100.0)
     assert g.state == config.STATE_ENDING and g.ending == config.ENDING_TOP
-    assert [t for t, _ in log] == pytest.approx([237.0])
-    assert g.student.elapsed == pytest.approx(237.0)
-    assert g.student.graduation_time == pytest.approx(237.0)
+    assert [t for t, _ in log] == pytest.approx([177.0])
+    assert g.student.elapsed == pytest.approx(177.0)
+    assert g.student.graduation_time == pytest.approx(177.0)
+
 
 
 # ======================= 8. 이벤트는 자동 행동 직후에만 판정 =======================

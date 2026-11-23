@@ -3,7 +3,7 @@
 완료 기준: 처음부터 끝까지 한 판을 플레이할 수 있음.
 
 (L단위, 기획서 11절) 판에 시간 제한이 없다. 졸업은 4학년에서 누적 지식 1100 이상이 되는 순간이고,
-등급은 졸업까지 걸린 시간(240초 이하 수석 / 360초 이하 무사 / 초과 아슬아슬)으로 정한다.
+등급은 졸업까지 걸린 시간(200초 이하 수석 / 360초 이하 무사 / 초과 아슬아슬, 11절 A안)으로 정한다.
 시험 기간은 60초 주기의 마지막 15초다. 240초 제한을 전제로 한 테스트는 새 규칙으로 바꿨다.
 """
 
@@ -93,8 +93,8 @@ def test_config_values():
     assert config.EXAM_SECONDS == 15
     assert config.MENTAL_DECAY_PER_SEC_EXAM == 2 and config.MENTAL_DECAY_PER_SEC == 1
     assert config.STUDY_KNOWLEDGE_EXAM == 20 and config.STUDY_KNOWLEDGE == 10
-    # (L단위) 졸업 기준: 지식 1000/750 -> 걸린 시간 240/360초, 졸업 지식 1100
-    assert config.TOP_GRADUATE_SECONDS == 240 and config.NORMAL_GRADUATE_SECONDS == 360
+    # (L단위) 졸업 기준: 지식 1000/750 -> 걸린 시간 200/360초(11절 A안, 수석 240 -> 200), 졸업 지식 1100
+    assert config.TOP_GRADUATE_SECONDS == 200 and config.NORMAL_GRADUATE_SECONDS == 360
     assert config.GRADUATION_KNOWLEDGE == 1100
     assert (config.ENDING_LEAVE, config.ENDING_TOP, config.ENDING_NORMAL,
             config.ENDING_BARELY) == ("휴학", "수석 졸업", "무사 졸업", "아슬아슬 졸업")
@@ -191,11 +191,11 @@ def test_ending_r_fully_resets(playing_game):
 def test_ending_r_after_graduation_resets(playing_game):
     g = playing_game
     s = g.student
-    # (L단위) 4학년에서 지식이 졸업 목표 이상이면 다음 판정(update)에서 졸업, 240초 -> 수석
-    s.elapsed, s.health, s.mental, s.knowledge = 239.5, 100, 100, config.GRADUATION_KNOWLEDGE + 100
+    # (L단위) 4학년에서 지식이 졸업 목표 이상이면 다음 판정(update)에서 졸업, 200초 -> 수석(11절 A안)
+    s.elapsed, s.health, s.mental, s.knowledge = 199.5, 100, 100, config.GRADUATION_KNOWLEDGE + 100
     g.update(0.5)
     assert g.ending == config.ENDING_TOP
-    assert s.graduation_time == 240
+    assert s.graduation_time == 200
     press(g, pygame.K_r)
     s = g.student
     assert g.state == config.STATE_PLAYING
@@ -365,7 +365,7 @@ def test_student_get_ending():
     assert s.get_ending() is None
     s.elapsed = 10000.0
     assert s.get_ending() is None
-    s.elapsed = 240.0
+    s.elapsed = 200.0   # 11절 A안: 수석은 200초 이하
     s.knowledge = config.GRADUATION_KNOWLEDGE
     s.promote()
     assert s.get_ending() == config.ENDING_TOP
@@ -376,9 +376,10 @@ def test_student_get_ending():
 # ======================= 기능 12: 졸업 엔딩 =======================
 
 @pytest.mark.parametrize("seconds, ending", [
-    # (L단위) 졸업 등급은 걸린 시간으로: 240 이하 수석, 360 이하 무사, 초과 아슬아슬
-    (0, config.ENDING_TOP), (100.0, config.ENDING_TOP), (239.999, config.ENDING_TOP),
-    (240, config.ENDING_TOP), (240.0001, config.ENDING_NORMAL), (300, config.ENDING_NORMAL),
+    # (L단위) 졸업 등급은 걸린 시간으로: 200 이하 수석, 360 이하 무사, 초과 아슬아슬 (11절 A안)
+    (0, config.ENDING_TOP), (100.0, config.ENDING_TOP), (199.999, config.ENDING_TOP),
+    (200, config.ENDING_TOP), (200.0001, config.ENDING_NORMAL), (239.999, config.ENDING_NORMAL),
+    (240, config.ENDING_NORMAL), (300, config.ENDING_NORMAL),
     (360, config.ENDING_NORMAL), (360.0001, config.ENDING_BARELY), (361, config.ENDING_BARELY),
     (100000, config.ENDING_BARELY),
 ])
@@ -393,7 +394,8 @@ def test_judge_ending_boundaries(seconds, ending):
 
 
 @pytest.mark.parametrize("elapsed, ending", [
-    (200.0, config.ENDING_TOP), (239.0, config.ENDING_TOP), (241.0, config.ENDING_NORMAL),
+    (150.0, config.ENDING_TOP), (199.0, config.ENDING_TOP), (201.0, config.ENDING_NORMAL),
+    (241.0, config.ENDING_NORMAL),
     (359.0, config.ENDING_NORMAL), (361.0, config.ENDING_BARELY),
 ])
 def test_graduation_in_game_flow(playing_game, elapsed, ending):
@@ -411,16 +413,20 @@ def test_graduation_in_game_flow(playing_game, elapsed, ending):
 
 
 def test_graduation_after_exam_study_crosses_goal(playing_game):
-    """(L단위) 시험 기간 공부(+20)로 졸업 목표를 넘기면 그 순간 졸업(1090 -> 1110)."""
+    """(L단위) 시험 기간 공부(+20)로 졸업 목표를 넘기면 그 순간 졸업(1090 -> 1110).
+
+    (11절 A안) 수석이 200초 이하가 되어 시각을 주기 4의 225초 -> 주기 3의 시험 기간 165초로 옮겼다.
+    """
     g = playing_game
     s = g.student
-    s.elapsed, s.health, s.mental = 225.0, 100, 100
+    s.elapsed, s.health, s.mental = 165.0, 100, 100
     reach_grade(s, 4)
     s.knowledge = config.GRADUATION_KNOWLEDGE - 10
     assert s.is_exam_period()
     g.do_action(config.ACTION_STUDY)
     assert s.knowledge == config.GRADUATION_KNOWLEDGE + 10
-    assert g.ending == config.ENDING_TOP and s.graduation_time == 225.0
+    assert g.ending == config.ENDING_TOP and s.graduation_time == 165.0
+
 
 
 def test_no_graduation_by_time_alone(playing_game):

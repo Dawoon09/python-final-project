@@ -2,7 +2,8 @@
 
 - 진급: 누적 지식 200/450/750 이상이면 2/3/4학년, 4학년에서 1100 이상이면 졸업. 여러 목표를 한 번에
   넘으면 그만큼 오르고, 학년은 내려가지 않는다. 체력·멘탈 0이면 휴학이 졸업보다 먼저다.
-- 졸업 등급: 걸린 게임 시간(대화창 정지 제외) 240초 이하 수석 / 360초 이하 무사 / 초과 아슬아슬.
+- 졸업 등급: 걸린 게임 시간(대화창 정지 제외) 200초 이하 수석 / 360초 이하 무사 / 초과 아슬아슬.
+  (11절 A안 밸런스로 수석 240 -> 200초. 수석 경계 테스트는 200/200.0001초로 옮겼다.)
 - 60초 주기: 계절·낮밤·시험 기간·이벤트 최소 4·최대 5회는 주기 기준(주기 번호 = 경과 // 60 + 1).
 - 대학원: 년차 목표 누적 1500 / 2000 / 2600 / 3300 …, 진학해도 시계는 이어진다. 이미 넘었으면 바로 오른다.
 - 화면: 정보바 "다음 학년까지 지식 n" / "졸업까지 지식 n", 목표 진행 막대, 경과 시간, 진급 알림(무대 오른쪽 위),
@@ -123,7 +124,7 @@ def bbox(points):
 def test_l_constants_match_spec():
     assert config.GRADE_GOALS == [200, 450, 750]
     assert config.GRADUATION_KNOWLEDGE == 1100
-    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (240, 360)
+    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (200, 360)   # 11절 A안
     assert config.CYCLE_SECONDS == 60 and config.EXAM_SECONDS == 15
     assert config.CYCLE_INDEX_START == 1
     assert (config.GRAD_GOAL_FIRST_STEP, config.GRAD_GOAL_STEP_GROWTH) == (400, 100)
@@ -387,17 +388,17 @@ def test_dropout_beats_graduation_on_choice(g):
 # ======================= 4. 졸업 시각과 등급 =======================
 
 @pytest.mark.parametrize("seconds, ending", [
-    (0.0, TOP), (240, TOP), (240.0000000001, TOP), (240.0001, NORMAL), (300, NORMAL),
+    (0.0, TOP), (200, TOP), (200.0000000001, TOP), (200.0001, NORMAL), (240, NORMAL), (300, NORMAL),
     (360, NORMAL), (360.0001, BARELY), (3600, BARELY),
 ])
 def test_judge_ending_time_boundaries(seconds, ending):
     assert judge_ending(seconds) == ending
 
 
-@pytest.mark.parametrize("frames, ending", [(240 * 60, TOP), (240 * 60 + 1, NORMAL),
+@pytest.mark.parametrize("frames, ending", [(200 * 60, TOP), (200 * 60 + 1, NORMAL),
                                             (360 * 60, NORMAL), (360 * 60 + 1, BARELY)])
 def test_graduation_time_after_60fps_frames(g, frames, ending):
-    """1/60초 프레임을 쌓은 소수 오차(239.9999…)에서도 경계 240/360초가 맞게 판정된다."""
+    """1/60초 프레임을 쌓은 소수 오차(199.9999…)에서도 경계 200/360초가 맞게 판정된다."""
     for _ in range(frames - 1):
         g.student.health = g.student.mental = 100
         g.update(FRAME)
@@ -409,7 +410,8 @@ def test_graduation_time_after_60fps_frames(g, frames, ending):
     assert g.ending == ending
 
 
-@pytest.mark.parametrize("seconds, ending", [(240.0, TOP), (300.0, NORMAL), (400.0, BARELY)])
+@pytest.mark.parametrize("seconds, ending", [(200.0, TOP), (240.0, NORMAL), (300.0, NORMAL),
+                                             (400.0, BARELY)])
 @pytest.mark.parametrize("fame", [0, 2])
 def test_bonus_by_time_grade(g, seconds, ending, fame):
     g.fame = fame
@@ -426,17 +428,21 @@ def test_bonus_by_time_grade(g, seconds, ending, fame):
 
 
 def test_graduation_time_excludes_dialog_pause(g):
-    """대화창이 30초 떠 있어도 게임 시간은 멈추므로 졸업 시각에 들어가지 않는다."""
+    """대화창이 30초 떠 있어도 게임 시간은 멈추므로 졸업 시각에 들어가지 않는다.
+
+    (11절 A안) 수석 200초에 맞춰 199초에서 시작(30초를 셌다면 229초로 무사가 된다).
+    """
     reach_grade(g.student, 4)
     g.student.knowledge = 1090
-    g.student.elapsed = 239.0
+    g.student.elapsed = 199.0
     g.student.health = g.student.mental = 100
     g.start_event(event_by_id("job_fair"))
     for _ in range(30 * 60):
         g.update(FRAME)
-    assert g.student.elapsed == 239.0
+    assert g.student.elapsed == 199.0
     assert g.choose_option(config.CHOICE_SECOND)          # 대학원 상담: 지식 +10 -> 1100
-    assert g.ending == TOP and g.student.graduation_time == 239.0
+    assert g.ending == TOP and g.student.graduation_time == 199.0
+
 
 
 def test_best_record_is_cumulative_knowledge(g):

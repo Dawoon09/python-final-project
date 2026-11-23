@@ -864,9 +864,10 @@ def test_leave_by_study_action_clears_effects(game, attr, value):
 
 
 def test_graduation_clears_effects(game):
-    """(L단위) 4학년에서 졸업 목표에 닿으면 졸업하고 연출이 비워진다(240초 -> 수석)."""
+    """(L단위) 4학년에서 졸업 목표에 닿으면 졸업하고 연출이 비워진다(200초 -> 수석, 11절 A안)."""
     reach_grade(game.student, 4)
-    game.student.elapsed = 239.5
+    game.student.elapsed = 199.5
+
     game.do_action(config.ACTION_FEED)
     assert game.particles
     game.student.knowledge = config.GRADUATION_KNOWLEDGE

@@ -14,8 +14,8 @@ def clamp(value, low, high):
 def judge_ending(seconds):
     """졸업까지 걸린 게임 시간 seconds(초)로 졸업 엔딩 이름을 돌려준다(기획서 11절).
 
-    240초 이하 "수석 졸업", 240초 초과 360초 이하 "무사 졸업", 360초 초과 "아슬아슬 졸업".
-    소수 덧셈 오차(239.9999… 등)는 TIME_EPSILON 만큼 봐준다.
+    200초 이하 "수석 졸업", 200초 초과 360초 이하 "무사 졸업", 360초 초과 "아슬아슬 졸업".
+    소수 덧셈 오차(199.9999… 등)는 TIME_EPSILON 만큼 봐준다.
     (휴학은 체력·멘탈로 정하므로 여기서 다루지 않는다.)
     """
     if seconds <= config.TOP_GRADUATE_SECONDS + config.TIME_EPSILON:
@@ -58,6 +58,7 @@ class Student:
         self.grad_year = config.GRAD_YEAR_UNDERGRAD  # 대학원 년차. 0이면 학부(1~4학년)
         self.grade = config.FIRST_GRADE  # 지금까지 오른 학년(1~4). 지식이 줄어도 내려가지 않는다
         self.graduation_time = None  # 졸업한 순간의 경과 시간(초). 아직 졸업 전이면 None
+        self.grad_entry_time = None  # 대학원에 들어간 순간의 경과 시간(초). 학부면 None
 
     # ------------------------------------------------------------
     # 진급과 졸업 (기획서 11절, L단위): 학년은 누적 지식으로 오른다
@@ -187,11 +188,24 @@ class Student:
         if self.is_in_grad_school() or self.is_dropped_out() or not self.has_graduated():
             return False
         self.grad_year = config.GRAD_FIRST_YEAR
+        self.grad_entry_time = self.elapsed
         return True
 
+    def get_grad_cycles(self):
+        """대학원에 들어간 뒤 다 채운 60초 주기 수를 돌려준다(학부거나 들어간 시각이 없으면 0)."""
+        if not self.is_in_grad_school() or self.grad_entry_time is None:
+            return config.GRAD_CYCLES_NONE
+        spent = self.elapsed - self.grad_entry_time + config.TIME_EPSILON
+        return int(max(config.ZERO_TIME, spent) // config.CYCLE_SECONDS)
+
     def get_grad_decay_ratio(self):
-        """대학원 n년차의 자연 감소 배수 = 1 + 0.5 x n 을 돌려준다(학부는 1)."""
-        return config.NO_RATIO + config.GRAD_DECAY_BONUS * self.grad_year
+        """대학원 자연 감소 배수 = 1 + 0.5 x n + 1.0 x c 를 돌려준다(학부는 1).
+
+        n은 대학원 년차, c는 대학원에 들어간 뒤 다 채운 60초 주기 수다(get_grad_cycles).
+        학부에는 시간 제한이 없고, 대학원에서만 오래 버틸수록 체력·멘탈이 빨리 준다.
+        """
+        return (config.NO_RATIO + config.GRAD_DECAY_BONUS * self.grad_year
+                + config.GRAD_CYCLE_DECAY_BONUS * self.get_grad_cycles())
 
     # ------------------------------------------------------------
     # 게이지 값 바꾸기
@@ -255,7 +269,7 @@ class Student:
 
     def apply_decay_ratio(self, amount):
         """자연 감소량 amount에 건강 관리 배수 (1 - 0.1 x 레벨)와
-        대학원 배수 (1 + 0.5 x 년차)를 곱해 돌려준다.
+        대학원 배수 (1 + 0.5 x 년차 + 1.0 x 대학원 주기 수)를 곱해 돌려준다.
 
         건강 관리를 안 샀고(0레벨) 학부이면 amount를 그대로(정수로) 돌려준다.
         """

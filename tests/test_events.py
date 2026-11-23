@@ -222,8 +222,9 @@ def test_trait_bonus_table():
     assert (config.FEED_HEALTH, config.REST_MENTAL, config.REST_KNOWLEDGE) == (20, 20, -2)
     assert (config.STUDY_HEALTH, config.STUDY_MENTAL) == (-5, -8)
     assert (config.STUDY_KNOWLEDGE, config.STUDY_KNOWLEDGE_EXAM) == (10, 20)
-    # 졸업 기준: E단위 700/450, K단위 1000/750 (지식) -> L단위 걸린 시간 240/360초, 졸업 지식 1100
-    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (240, 360)
+    # 졸업 기준: E단위 700/450, K단위 1000/750 (지식) -> L단위 걸린 시간 240/360초 -> 11절 A안 200/360초,
+    # 졸업 지식 1100
+    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (200, 360)
     assert config.GRADUATION_KNOWLEDGE == 1100
 
 
@@ -486,19 +487,21 @@ def test_dialog_freeze_not_counted_in_graduation_time(make_game, monkeypatch):
     """(L단위) 대화창 동안 시간이 멈추고, 선택으로 졸업 목표에 닿으면 그 순간(멈춘 시각) 졸업한다.
 
     4학년 1090에서 취업 박람회 "대학원 상담"(지식 +10) -> 1100 졸업. 대화창 5초는 걸린 시간에 안 들어간다.
+    (11절 A안) 수석 기준 200초에 맞춰 199.5초에서 시작: 대화창 5초를 셌다면 204.5초로 무사가 된다.
     """
     g = make_game(51)
     force_event(monkeypatch, g, event_by_id("job_fair"))
     reach_grade(g.student, 4)
     g.student.knowledge = config.GRADUATION_KNOWLEDGE - 10
-    g.student.elapsed = 239.5
+    g.student.elapsed = 199.5
     assert g.do_action(FEED)
     assert g.state == config.STATE_EVENT
     g.update(5.0)
-    assert g.state == config.STATE_EVENT and g.student.elapsed == 239.5
+    assert g.state == config.STATE_EVENT and g.student.elapsed == 199.5
     assert g.choose_option(config.CHOICE_SECOND)
     assert g.state == config.STATE_ENDING
-    assert g.student.graduation_time == 239.5
+    assert g.student.graduation_time == 199.5
+
     assert g.ending == config.ENDING_TOP
 
 
