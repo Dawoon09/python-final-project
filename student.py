@@ -12,9 +12,10 @@ def clamp(value, low, high):
 
 
 def judge_ending(seconds):
-    """졸업까지 걸린 게임 시간 seconds(초)로 졸업 엔딩 이름을 돌려준다(기획서 11절).
+    """졸업까지 걸린 게임 시간 seconds(초)로 졸업 엔딩 이름을 돌려준다(기획서 2절).
 
-    200초 이하 "수석 졸업", 200초 초과 360초 이하 "무사 졸업", 360초 초과 "아슬아슬 졸업".
+    400초 이하 "수석 졸업", 400초 초과 720초 이하 "무사 졸업", 720초 초과 "아슬아슬 졸업"
+    (시간 기준은 임시 값, config.TOP_GRADUATE_SECONDS / NORMAL_GRADUATE_SECONDS).
     소수 덧셈 오차(199.9999… 등)는 TIME_EPSILON 만큼 봐준다.
     (휴학은 체력·멘탈로 정하므로 여기서 다루지 않는다.)
     """
@@ -59,9 +60,68 @@ class Student:
         self.grade = config.FIRST_GRADE  # 지금까지 오른 학년(1~4). 지식이 줄어도 내려가지 않는다
         self.graduation_time = None  # 졸업한 순간의 경과 시간(초). 아직 졸업 전이면 None
         self.grad_entry_time = None  # 대학원에 들어간 순간의 경과 시간(초). 학부면 None
+        self.full_until = None     # 버프 '든든함'이 끝나는 경과 시간(초). 학식을 안 먹었으면 None
 
     # ------------------------------------------------------------
-    # 진급과 졸업 (기획서 11절, L단위): 학년은 누적 지식으로 오른다
+    # 최댓값 (기획서 3절: 체력 증진·멘탈 관리 업그레이드)
+    # ------------------------------------------------------------
+    @property
+    def max_health(self):
+        """체력 최댓값 = 100 + 10 x 체력 증진 레벨."""
+        return config.GAUGE_MAX + self.get_upgrade_bonus(config.UPGRADE_HEALTH_MAX)
+
+    @property
+    def max_mental(self):
+        """멘탈 최댓값 = 100 + 10 x 멘탈 관리 레벨."""
+        return config.GAUGE_MAX + self.get_upgrade_bonus(config.UPGRADE_MENTAL_MAX)
+
+    # ------------------------------------------------------------
+    # 디버프와 버프 (기획서 2절 "디버프와 버프")
+    # ------------------------------------------------------------
+    def is_tired(self):
+        """디버프 '피곤'이면 True: 체력이 30 미만(최댓값과 상관없이 30)."""
+        return self.health < config.LOW_GAUGE_LIMIT
+
+    def is_depressed(self):
+        """디버프 '우울'이면 True: 멘탈이 30 미만."""
+        return self.mental < config.LOW_GAUGE_LIMIT
+
+    def has_debuff(self, name):
+        """디버프 name("피곤" 또는 "우울")이 지금 붙어 있으면 True. 모르는 이름이면 False."""
+        if name == config.DEBUFF_TIRED:
+            return self.is_tired()
+        if name == config.DEBUFF_DEPRESSED:
+            return self.is_depressed()
+        return False
+
+    def get_full_duration(self):
+        """학식 한 번으로 붙는 든든함 지속 시간(초) = 30 + 6 x 학식 메뉴 개선 Lv (+ 체력 단련 10)."""
+        return (config.FULL_DURATION + self.get_upgrade_bonus(config.UPGRADE_MENU)
+                + self.get_trait_bonus(config.BONUS_FULL_TIME))
+
+    def get_full_time_left(self):
+        """든든함이 끝날 때까지 남은 시간(초)을 돌려준다(없거나 끝났으면 0)."""
+        if self.full_until is None:
+            return config.ZERO_TIME
+        return max(config.ZERO_TIME, self.full_until - self.elapsed)
+
+    def is_full_buff_active(self):
+        """버프 '든든함'이 붙어 있으면 True(남은 시간이 0보다 클 때)."""
+        return self.get_full_time_left() > config.TIME_EPSILON
+
+    def get_statuses(self):
+        """지금 붙어 있는 디버프·버프 이름 목록을 돌려준다(상태 배지용): 피곤, 우울, 든든함 순서."""
+        statuses = []
+        if self.is_tired():
+            statuses.append(config.DEBUFF_TIRED)
+        if self.is_depressed():
+            statuses.append(config.DEBUFF_DEPRESSED)
+        if self.is_full_buff_active():
+            statuses.append(config.BUFF_FULL)
+        return statuses
+
+    # ------------------------------------------------------------
+    # 진급과 졸업 (기획서 2절, L단위): 학년은 누적 지식으로 오른다
     # ------------------------------------------------------------
     def get_grade(self):
         """지금 학년(1~4)을 돌려준다. 대학원에서는 4로 둔다.
@@ -76,8 +136,8 @@ class Student:
     def get_grad_goal(self, year):
         """대학원 year년차를 마치는(다음 년차로 오르는) 누적 지식 목표를 돌려준다.
 
-        졸업 지식 1100에 해마다 (400 + 100 x (k-1))를 k = 1..year까지 더한다.
-        year가 0이면 졸업 지식 1100 그대로다. 예: 1년차 1500, 2년차 2000, 3년차 2600.
+        졸업 지식 2200에 해마다 (800 + 200 x (k-1))를 k = 1..year까지 더한다.
+        year가 0이면 졸업 지식 2200 그대로다. 예: 1년차 3000, 2년차 4000, 3년차 5200.
         """
         goal = config.GRADUATION_KNOWLEDGE
         for k in range(config.GRAD_FIRST_YEAR, year + config.GRAD_YEAR_STEP):
@@ -88,8 +148,8 @@ class Student:
     def get_next_goal(self):
         """다음 목표(누적 지식)를 돌려준다.
 
-        1학년 200(2학년 진급), 2학년 450, 3학년 750, 4학년 1100(졸업),
-        대학원 n년차는 n+1년차로 오르는 목표(1500, 2000, 2600 …).
+        1학년 400(2학년 진급), 2학년 900, 3학년 1500, 4학년 2200(졸업),
+        대학원 n년차는 n+1년차로 오르는 목표(3000, 4000, 5200 …).
         """
         if self.is_in_grad_school():
             return self.get_grad_goal(self.grad_year)
@@ -100,7 +160,7 @@ class Student:
     def get_goal_start(self):
         """지금 목표 구간이 시작된 누적 지식(앞 목표)을 돌려준다(진행 막대의 왼쪽 끝).
 
-        1학년 0, 2학년 200, 3학년 450, 4학년 750, 대학원 n년차는 (n-1)년차 목표(1년차는 1100).
+        1학년 0, 2학년 400, 3학년 900, 4학년 1500, 대학원 n년차는 (n-1)년차 목표(1년차는 2200).
         """
         if self.is_in_grad_school():
             return self.get_grad_goal(self.grad_year - config.GRAD_YEAR_STEP)
@@ -131,7 +191,7 @@ class Student:
 
         지식이 바뀔 때마다(행동·이벤트·선택 직후) Game.check_promotion이 부른다.
         - 학부: 지식이 다음 학년 목표 이상이면 학년 +1. 한 번에 여러 목표를 넘으면 그만큼 오른다.
-          4학년에서 졸업 목표(1100) 이상이면 그 순간의 경과 시간을 graduation_time에 적는다(졸업).
+          4학년에서 졸업 목표(2200) 이상이면 그 순간의 경과 시간을 graduation_time에 적는다(졸업).
           졸업은 진급 횟수에 넣지 않는다.
         - 대학원: 지식이 년차 목표 이상이면 년차 +1 (여러 번 가능, 끝없이).
         체력이나 멘탈이 0이면(휴학·수료) 아무것도 하지 않고 0을 돌려준다(휴학이 졸업보다 먼저).
@@ -155,7 +215,7 @@ class Student:
         return count
 
     # ------------------------------------------------------------
-    # 60초 주기 (기획서 11절): 계절·낮밤·시험 기간·이벤트 횟수용 시계
+    # 60초 주기 (기획서 2절): 계절·낮밤·시험 기간·이벤트 횟수용 시계
     # ------------------------------------------------------------
     def get_cycle_index(self):
         """지금 60초 주기 번호를 돌려준다: 경과 시간 // 60 + 1 (0~60초 1번, 60~120초 2번 …).
@@ -172,7 +232,7 @@ class Student:
         return max(config.ZERO_TIME, self.elapsed - cycle_start)
 
     # ------------------------------------------------------------
-    # 대학원 (기획서 10절·11절)
+    # 대학원 (기획서 3절)
     # ------------------------------------------------------------
     def is_in_grad_school(self):
         """대학원에 다니는 중이면 True(대학원 년차가 1 이상)."""
@@ -211,18 +271,21 @@ class Student:
     # 게이지 값 바꾸기
     # ------------------------------------------------------------
     def change_health(self, amount):
-        """체력을 amount만큼 바꾸고 0~100 안으로 맞춘다.
+        """체력을 amount만큼 바꾸고 0~체력 최댓값(max_health) 안으로 맞춘다.
 
         건강 관리 업그레이드로 자연 감소가 소수(예: 0.9)가 되면 체력도 소수가 된다.
         소수 오차가 쌓이지 않도록 GAUGE_DECIMALS 자리에서 반올림한다(정수는 그대로 정수).
         """
         value = round(self.health + amount, config.GAUGE_DECIMALS)
-        self.health = clamp(value, config.GAUGE_MIN, config.GAUGE_MAX)
+        self.health = clamp(value, config.GAUGE_MIN, self.max_health)
 
     def change_mental(self, amount):
-        """멘탈을 amount만큼 바꾸고 0~100 안으로 맞춘다(소수 처리는 change_health와 같다)."""
+        """멘탈을 amount만큼 바꾸고 0~멘탈 최댓값(max_mental) 안으로 맞춘다.
+
+        소수 처리는 change_health와 같다.
+        """
         value = round(self.mental + amount, config.GAUGE_DECIMALS)
-        self.mental = clamp(value, config.GAUGE_MIN, config.GAUGE_MAX)
+        self.mental = clamp(value, config.GAUGE_MIN, self.max_mental)
 
     def change_knowledge(self, amount):
         """지식을 amount만큼 바꾼다. 지식은 0 아래로 내려가지 않는다(상한 없음)."""
@@ -238,7 +301,7 @@ class Student:
         그래서 프레임 속도와 상관없이 1초에 정확히 한 번 줄어들고,
         dt가 커서 여러 초가 한꺼번에 지나도 지난 초 수만큼 줄어든다.
         소수 덧셈 오차 때문에 1초를 놓치지 않도록 아주 작은 허용치(TIME_EPSILON)를 둔다.
-        판에 시간 제한이 없으므로(기획서 11절) 경과 시간은 멈추지 않고 계속 흐른다.
+        판에 시간 제한이 없으므로(기획서 2절) 경과 시간은 멈추지 않고 계속 흐른다.
         감소가 일어날 때마다 경과 시간을 "그 감소가 일어난 시각"으로 맞춰 두어서,
         dt가 커도 감소마다 시험 기간인지(멘탈 -2, 60초 주기의 45~60초) 정확히 판단한다.
         학년·대학원 년차는 시간이 아니라 지식으로 오르므로 여기서 바뀌지 않는다.
@@ -253,13 +316,30 @@ class Student:
         self.elapsed = end_time
 
     def decay_once(self):
-        """1초분 자연 감소를 한 번 적용한다: 체력 -(체력 감소량), 멘탈 -(멘탈 감소량)."""
-        self.change_health(-self.get_health_decay())
-        self.change_mental(-self.get_mental_decay())
+        """1초분 자연 감소를 한 번 적용한다.
+
+        체력 -(체력 감소량) + 자기 관리 회복, 멘탈 -(멘탈 감소량) + 자기 관리 회복.
+        자기 관리 회복(0.2/초 x 레벨)은 어떤 행동을 하든 1초마다 늘 함께 더한다.
+        """
+        regen = self.get_self_care_regen()
+        self.change_health(round(regen - self.get_health_decay(), config.GAUGE_DECIMALS))
+        self.change_mental(round(regen - self.get_mental_decay(), config.GAUGE_DECIMALS))
+
+    def get_self_care_regen(self):
+        """자기 관리 업그레이드로 1초마다 체력·멘탈에 더하는 양 = 0.2 x 레벨.
+
+        0레벨이면 정수 0을 돌려준다(그래서 업그레이드가 없으면 게이지가 정수 그대로다).
+        """
+        if self.get_upgrade_level(config.UPGRADE_SELF_CARE) == config.LEVEL_START:
+            return config.NO_CHANGE
+        return self.get_upgrade_bonus(config.UPGRADE_SELF_CARE)
 
     def get_health_decay(self):
-        """1초마다 줄어드는 체력 양을 돌려준다: 1 x 건강 관리 배수."""
-        return self.apply_decay_ratio(config.HEALTH_DECAY_PER_SEC)
+        """1초마다 줄어드는 체력 양을 돌려준다: 1 x 건강 관리 배수 (든든함이면 x0.5)."""
+        decay = self.apply_decay_ratio(config.HEALTH_DECAY_PER_SEC)
+        if self.is_full_buff_active():
+            decay = round(decay * config.FULL_HEALTH_DECAY_RATIO, config.GAUGE_DECIMALS)
+        return decay
 
     def get_mental_decay(self):
         """1초마다 줄어드는 멘탈 양을 돌려준다: 평소 1, 시험 기간 2 (x 건강 관리 배수)."""
@@ -280,7 +360,7 @@ class Student:
         return round(amount * ratio * self.get_grad_decay_ratio(), config.GAUGE_DECIMALS)
 
     # ------------------------------------------------------------
-    # 업그레이드 (기획서 10절, H단위)
+    # 업그레이드 (기획서 3절, H단위)
     # ------------------------------------------------------------
     def get_upgrade_level(self, upgrade_id):
         """업그레이드 upgrade_id의 지금 레벨을 돌려준다(사지 않았으면 0)."""
@@ -289,7 +369,7 @@ class Student:
     def get_upgrade_bonus(self, upgrade_id):
         """업그레이드 upgrade_id가 주는 효과 크기 = 레벨 x 레벨당 효과 를 돌려준다.
 
-        예: 학식 메뉴 개선 2레벨 -> 2 x 4 = 8 (학식 체력 +8).
+        예: 푹신한 침대 2레벨 -> 2 x 4 = 8 (휴식 체력·멘탈 +8).
         """
         per_level = config.UPGRADES_BY_ID[upgrade_id][config.UPGRADE_PER_LEVEL]
         return self.get_upgrade_level(upgrade_id) * per_level
@@ -336,40 +416,52 @@ class Student:
         return None
 
     # ------------------------------------------------------------
-    # 행동 (3일차)
+    # 행동 (기획서 2절 "행동 효과"): 회복은 휴식에서만
     # ------------------------------------------------------------
     def feed(self):
-        """학식 먹이기: 체력 +20 (체력 단련 특성 +5, 학식 메뉴 개선 +4/Lv). 100을 넘지 않음."""
-        self.change_health(config.FEED_HEALTH + self.get_trait_bonus(config.BONUS_FEED_HEALTH)
-                           + self.get_upgrade_bonus(config.UPGRADE_MENU))
+        """학식 먹이기: 게이지는 바로 오르지 않고 버프 '든든함'이 붙는다.
 
-    def rest(self):
-        """쉬게 하기: 멘탈 +20 (음악 힐링 +5, 푹신한 침대 +4/Lv), 지식 -2,
-        체력 +0 (연애 중 +5, 카페 +5).
-
-        멘탈·체력은 0~100, 지식은 0 아래로 내려가지 않는다.
+        든든함인 동안 체력 자연 감소가 x0.5다. 지속 시간은 30초 + 학식 메뉴 개선 6초/Lv
+        (+ 체력 단련 특성 10초). 이미 든든함이면 남은 시간을 새 지속 시간으로 다시 채운다
+        (겹쳐 쌓이지 않는다). 시간은 경과 시간(elapsed)으로 재므로 대화창 동안 멈춘다.
         """
-        self.change_mental(config.REST_MENTAL + self.get_trait_bonus(config.BONUS_REST_MENTAL)
-                           + self.get_upgrade_bonus(config.UPGRADE_BED))
+        self.full_until = self.elapsed + self.get_full_duration()
+
+    def rest(self, recovery_ratio=config.NO_RATIO):
+        """쉬게 하기: 체력 +15, 멘탈 +20, 지식 -2.
+
+        체력 보너스: 연애 중 +5, 카페 +5, 푹신한 침대 +4/Lv.
+        멘탈 보너스: 음악 힐링 +5, 푹신한 침대 +4/Lv.
+        recovery_ratio는 방침의 휴식 회복 배수(휴식 위주 1.5)다.
+        계산: round((기본 + 보너스) x recovery_ratio). 체력·멘탈은 0~최댓값,
+        지식은 0 아래로 내려가지 않는다.
+        """
+        bed = self.get_upgrade_bonus(config.UPGRADE_BED)
+        health = (config.REST_HEALTH + self.get_trait_bonus(config.BONUS_REST_HEALTH)
+                  + self.get_upgrade_bonus(config.UPGRADE_CAFE) + bed)
+        mental = config.REST_MENTAL + self.get_trait_bonus(config.BONUS_REST_MENTAL) + bed
+        self.change_health(round(health * recovery_ratio))
+        self.change_mental(round(mental * recovery_ratio))
         self.change_knowledge(config.REST_KNOWLEDGE)
-        self.change_health(config.REST_HEALTH + self.get_trait_bonus(config.BONUS_REST_HEALTH)
-                           + self.get_upgrade_bonus(config.UPGRADE_CAFE))
 
     def study(self, knowledge_ratio=config.NO_RATIO, cost_ratio=config.NO_RATIO):
         """공부시키기: 지식 +(공부 지식량), 체력 -5 (카페인 특성이면 -3), 멘탈 -8.
 
         0 아래로 내려가지 않는다. 시험 기간 지식 +20 규칙은 특성과 상관없이 그대로다.
-        knowledge_ratio·cost_ratio는 일과표 방침(기획서 10절)의 배수다.
+        knowledge_ratio·cost_ratio는 일과표 방침(기획서 2절)의 배수다.
         특성·업그레이드 보너스를 먼저 더한 뒤 배수를 곱하고 round()로 정수로 만든다.
-        - 지식: round((공부 지식량 + 참고서 2/Lv + 도서관 3) x knowledge_ratio)
+        - 지식: round((공부 지식량 + 참고서 2/Lv + 도서관 3) x knowledge_ratio [x 피곤 0.7])
         - 체력: round((-5 + 카페인 2 + 헬스장 2) x cost_ratio), 멘탈: round(-8 x cost_ratio)
-        배수를 주지 않으면 1.0이라 예전과 같다.
+        피곤(공부하기 직전 체력 30 미만)이면 지식에 0.7을 더 곱한 뒤 반올림한다.
+        배수를 주지 않으면 1.0이다.
         """
         health = (config.STUDY_HEALTH + self.get_trait_bonus(config.BONUS_STUDY_HEALTH)
                   + self.get_upgrade_bonus(config.UPGRADE_GYM))
         knowledge = (self.get_study_knowledge() + self.get_upgrade_bonus(config.UPGRADE_BOOK)
-                     + self.get_upgrade_bonus(config.UPGRADE_LIBRARY))
-        self.change_knowledge(round(knowledge * knowledge_ratio))
+                     + self.get_upgrade_bonus(config.UPGRADE_LIBRARY)) * knowledge_ratio
+        if self.is_tired():
+            knowledge *= config.TIRED_KNOWLEDGE_RATIO
+        self.change_knowledge(round(knowledge))
         self.change_health(round(health * cost_ratio))
         self.change_mental(round(config.STUDY_MENTAL * cost_ratio))
 
@@ -388,7 +480,7 @@ class Student:
                 + (self.get_grade() - config.FIRST_GRADE) * config.RADIUS_PER_GRADE)
 
     # ------------------------------------------------------------
-    # 랜덤 이벤트와 성장 (기획서 9절)
+    # 랜덤 이벤트와 성장 (기획서 4절)
     # ------------------------------------------------------------
     def get_trait_bonus(self, bonus_name):
         """가진 특성들이 행동 효과 bonus_name에 더해 주는 양의 합을 돌려준다(없으면 0)."""
@@ -418,7 +510,7 @@ class Student:
     def apply_effects(self, effects):
         """이벤트 효과 {게이지 속성 이름: 변화량}을 적용한다.
 
-        체력·멘탈은 0~100, 지식은 0 이상으로 맞춘다(기존 change_ 메서드 사용).
+        체력·멘탈은 0~최댓값(max_health/max_mental), 지식은 0 이상으로 맞춘다(기존 change_ 메서드 사용).
         """
         for name, amount in effects.items():
             if name == config.GAUGE_HEALTH:
@@ -533,19 +625,20 @@ class Student:
             shown_health = self.health
         if shown_mental is None:
             shown_mental = self.mental
-        self.draw_bar(screen, font, config.HEALTH_LABEL, self.health,
+        self.draw_bar(screen, font, config.HEALTH_LABEL, self.health, self.max_health,
                       config.HEALTH_LABEL_Y, config.HEALTH_BAR_Y,
                       config.HEART_SPRITE, config.HEART_COLORS, shown_health)
-        self.draw_bar(screen, font, config.MENTAL_LABEL, self.mental,
+        self.draw_bar(screen, font, config.MENTAL_LABEL, self.mental, self.max_mental,
                       config.MENTAL_LABEL_Y, config.MENTAL_BAR_Y,
                       config.STAR_SPRITE, {config.SPRITE_INK: config.COLOR_SKY}, shown_mental)
 
-    def draw_bar(self, screen, font, label, value, label_y, bar_y, icon, icon_colors,
-                 shown_value):
+    def draw_bar(self, screen, font, label, value, max_value, label_y, bar_y, icon,
+                 icon_colors, shown_value):
         """아이콘·라벨과 도트 게이지 막대 하나를 그린다.
 
         - 막대 바깥에 계단형 모서리 남색 테두리(도트 1칸)를 두르고, 안쪽 빈 부분은 연한 색.
-        - 채움 폭 = 막대 폭 x 표시값 / 100 (픽셀 단위로 정확히 비례). 값이 1이어도 2픽셀이 보인다.
+        - 채움 폭 = 막대 폭 x 표시값 / 최댓값(max_value). 막대 전체가 지금 최댓값이다.
+        - 라벨 줄 오른쪽 끝(막대 오른쪽 끝)에 "지금/최대" 글자("80/100", 반올림 정수)를 쓴다.
         - 채움 색은 실제 값(value)이 30 미만이면 빨강, 아니면 초록. 맨 위 줄은 밝게, 맨 아래 줄은 어둡게.
         테두리는 막대 바깥쪽에 있어서 채움을 가리지 않는다.
         """
@@ -557,6 +650,10 @@ class Student:
         label_rect.midleft = (config.GAUGE_X + icon_width + config.GAUGE_LABEL_GAP,
                               label_y + icon_height // config.HALF)
         screen.blit(label_text, label_rect)
+        value_text = render_text(font, config.GAUGE_VALUE_TEXT.format(round(value), max_value))
+        value_rect = value_text.get_rect()
+        value_rect.midright = (config.GAUGE_X + config.BAR_WIDTH, label_rect.centery)
+        screen.blit(value_text, value_rect)
 
         # 2) 테두리 상자: 막대보다 사방으로 1칸 크다 -> 상자 안쪽 = 막대 자리
         bar_rect = pygame.Rect(config.GAUGE_X, bar_y, config.BAR_WIDTH, config.BAR_HEIGHT)
@@ -568,7 +665,8 @@ class Student:
             colors = (config.COLOR_RED, config.COLOR_RED_LIGHT, config.COLOR_RED_DARK)
         else:
             colors = (config.COLOR_GREEN, config.COLOR_GREEN_LIGHT, config.COLOR_GREEN_DARK)
-        fill_width = int(config.BAR_WIDTH * shown_value / config.GAUGE_MAX)
+        shown_value = clamp(shown_value, config.GAUGE_MIN, max_value)
+        fill_width = int(config.BAR_WIDTH * shown_value / max_value)
         self.draw_bar_fill(screen, bar_rect, fill_width, colors)
 
     def draw_bar_fill(self, screen, bar_rect, fill_width, colors):
@@ -638,15 +736,27 @@ class Student:
         얻은 순서대로 왼쪽 위부터 한 줄에 TRAIT_BADGE_COLUMNS(2)개씩 채운다.
         특성 4개가 모두 있어도 2 x 2로 패널 안에 들어간다. 배지 색은 특성마다 다르다.
         """
-        for index, trait in enumerate(self.traits):
+        self.draw_badges(screen, font, self.traits, config.TRAIT_BADGE_Y, config.TRAIT_COLORS)
+
+    def draw_status_badges(self, screen, font, statuses):
+        """상태 패널 위쪽(체력 라벨 위)에 지금 붙은 디버프·버프 이름을 글자 배지로 그린다.
+
+        statuses는 이름 목록이다(Game.get_status_names: get_statuses + "컨디션 좋음").
+        특성 배지와 같은 모양으로 2열이다.
+        """
+        self.draw_badges(screen, font, statuses, config.STATUS_BADGE_Y, config.STATUS_COLORS)
+
+    def draw_badges(self, screen, font, names, top, colors):
+        """이름 목록 names를 top부터 2열 도트 배지로 그린다. 색은 colors[이름] = (몸통, 위 줄)."""
+        for index, name in enumerate(names):
             row, col = divmod(index, config.TRAIT_BADGE_COLUMNS)
             box = pygame.Rect(
                 config.TRAIT_BADGE_X + col * (config.TRAIT_BADGE_WIDTH + config.TRAIT_BADGE_GAP),
-                config.TRAIT_BADGE_Y + row * (config.TRAIT_BADGE_HEIGHT + config.TRAIT_BADGE_GAP),
+                top + row * (config.TRAIT_BADGE_HEIGHT + config.TRAIT_BADGE_GAP),
                 config.TRAIT_BADGE_WIDTH, config.TRAIT_BADGE_HEIGHT)
-            fill, light = config.TRAIT_COLORS[trait]
+            fill, light = colors[name]
             inner = draw_pixel_box(screen, box, fill, light, drop=config.COLOR_DROP)
-            text = render_text(font, trait)
+            text = render_text(font, name)
             text_rect = text.get_rect()
             text_rect.center = inner.center
             screen.blit(text, text_rect)

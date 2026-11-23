@@ -403,11 +403,13 @@ def test_panel_gauge_constants():
     assert config.UPGRADE_GAUGE_BAR_HEIGHT == 8
     assert config.UPGRADE_HEADER_Y == 132
     assert config.UPGRADE_ROW_TOP == 166
-    assert config.UPGRADE_ROW_HEIGHT == 27
-    assert config.UPGRADE_ROW_STEP == 28
+    # (M단위) 13줄: 줄 높이 27 -> 20, 간격 28 -> 21 (마지막 줄 아래 끝 445 -> 438)
+    assert config.UPGRADE_ROW_HEIGHT == 20
+    assert config.UPGRADE_ROW_STEP == 21
     assert config.UPGRADE_FOOTER_Y == 454   # K단위 2차: 455 -> 454 (글자 꼬리까지 외곽선 안)
-    last_row_bottom = config.UPGRADE_ROW_TOP + 9 * config.UPGRADE_ROW_STEP + config.UPGRADE_ROW_HEIGHT
-    assert last_row_bottom == 445
+    last_row_bottom = config.UPGRADE_ROW_TOP + 12 * config.UPGRADE_ROW_STEP + config.UPGRADE_ROW_HEIGHT
+    assert last_row_bottom == 438
+    assert len(config.UPGRADE_IDS) == 13
     assert [n for n, _, _ in config.UPGRADE_GAUGES] == [config.GAUGE_HEALTH, config.GAUGE_MENTAL]
 
 
@@ -466,8 +468,8 @@ def test_panel_footer_below_rows_inside_panel(g, monkeypatch, cursor):
     assert panel_inner.inflate(0, 2).contains(ink), (text, ink, panel_inner)
     assert ink.left >= panel_inner.left and ink.right <= panel_inner.right
     for i in range(len(config.UPGRADE_IDS)):
-        assert g.get_upgrade_row_rect(i).top == 166 + 28 * i
-        assert g.get_upgrade_row_rect(i).height == 27
+        assert g.get_upgrade_row_rect(i).top == 166 + 21 * i     # (M단위) 13줄: 간격 21
+        assert g.get_upgrade_row_rect(i).height == 20
 
 
 @pytest.mark.parametrize("health, mental", [(20, 80), (100, 0), (29.9, 30), (30, 29.9),
@@ -496,7 +498,7 @@ def test_panel_gauge_colour_from_real_length_from_shown(g, monkeypatch, real, la
 def test_panel_gauge_follows_smoothed_value(g, monkeypatch):
     g.upgrade_panel_open = True
     g.student.health = 50
-    g.do_action(config.ACTION_FEED)
+    g.do_action(config.ACTION_REST)        # (M단위) 체력 회복은 휴식(+15)
     target = g.student.health
     assert target > 50
     widths = [fill_widths(g, monkeypatch)[0][1]]

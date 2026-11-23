@@ -77,8 +77,9 @@ def draw_on(surf, s):
 
 def test_config_grade_values():
     # (L단위) SECONDS_PER_GRADE·TOTAL_SECONDS 삭제 -> 진급 목표(지식) 200/450/750, 졸업 1100
-    assert config.GRADE_GOALS == [200, 450, 750]
-    assert config.GRADUATION_KNOWLEDGE == 1100
+    # (M단위) 진급 기준 2배 -> 400/900/1500, 졸업 2200
+    assert config.GRADE_GOALS == [400, 900, 1500]
+    assert config.GRADUATION_KNOWLEDGE == 2200
     assert config.MAX_GRADE == 4
     assert config.CYCLE_SECONDS == 60
     assert (config.BASE_RADIUS, config.RADIUS_PER_GRADE) == (40, 10)
@@ -88,10 +89,10 @@ def test_config_grade_values():
 
 
 @pytest.mark.parametrize("knowledge, grade, radius", [
-    (0, 1, 40), (199, 1, 40),
-    (200, 2, 50), (449, 2, 50),
-    (450, 3, 60), (749, 3, 60),
-    (750, 4, 70), (1099, 4, 70), (1100, 4, 70), (5000, 4, 70),
+    (0, 1, 40), (399, 1, 40),
+    (400, 2, 50), (899, 2, 50),
+    (900, 3, 60), (1499, 3, 60),
+    (1500, 4, 70), (2199, 4, 70), (2200, 4, 70), (10000, 4, 70),
 ])
 def test_grade_and_radius(knowledge, grade, radius):
     s = student_at(knowledge)
@@ -116,21 +117,21 @@ def test_time_alone_never_promotes(frames):
 
 
 def test_grade_by_study_actions():
-    """(L단위) 공부를 반복해 지식이 200에 닿는 순간 2학년이 된다(시험 기간 아닌 0초: +10씩)."""
+    """(L단위) 공부를 반복해 지식이 400(M단위)에 닿는 순간 2학년이 된다(시험 기간 아닌 0초: +10씩)."""
     s = Student()
-    for _ in range(19):
+    for _ in range(39):
         s.study()
         s.health = s.mental = 100
         s.promote()
-    assert (s.knowledge, s.get_grade()) == (190, 1)
+    assert (s.knowledge, s.get_grade()) == (390, 1)
     s.study()
     s.promote()
-    assert (s.knowledge, s.get_grade()) == (200, 2)
+    assert (s.knowledge, s.get_grade()) == (400, 2)
 
 
 def test_game_update_advances_grade(game):
     """Game.update 안의 진급 판정: 지식이 목표 이상이면 다음 update에서 학년이 오른다."""
-    game.student.knowledge = 200
+    game.student.knowledge = config.GRADE_GOALS[0]
     game.update(1 / 60)
     assert game.student.get_grade() == 2
     assert game.student.get_radius() == 50
@@ -144,8 +145,8 @@ def test_grade_does_not_advance_outside_playing(game):
 
 
 @pytest.mark.parametrize("knowledge, glasses", [
-    (0, False), (199, False), (200, False), (449, False),
-    (450, True), (749, True), (750, True), (1100, True),
+    (0, False), (399, False), (400, False), (899, False),
+    (900, True), (1499, True), (1500, True), (2200, True),
 ])
 def test_glasses(knowledge, glasses):
     assert student_at(knowledge).has_glasses() is glasses
@@ -153,10 +154,10 @@ def test_glasses(knowledge, glasses):
 
 def test_glasses_stay_after_knowledge_drops():
     """(L단위) 학년은 내려가지 않으므로 지식이 줄어도 안경·크기는 그대로다."""
-    s = student_at(450)
+    s = student_at(900)
     s.rest()
     s.promote()
-    assert s.knowledge == 448
+    assert s.knowledge == 898
     assert (s.get_grade(), s.has_glasses(), s.get_radius()) == (3, True, 60)
 
 
@@ -164,8 +165,8 @@ def test_glasses_stay_after_knowledge_drops():
 # test_time_left_always_in_range)는 학년 시간 제한이 없어져 삭제했다(기획서 11절).
 # 대신 다음 목표까지 남은 지식을 확인한다.
 @pytest.mark.parametrize("knowledge, left", [
-    (0, 200), (120, 80), (199, 1), (200, 250), (449, 1), (450, 300), (749, 1),
-    (750, 350), (1099, 1),
+    (0, 400), (240, 160), (399, 1), (400, 500), (899, 1), (900, 600), (1499, 1),
+    (1500, 700), (2199, 1),
 ])
 def test_knowledge_to_goal(knowledge, left):
     assert student_at(knowledge).get_knowledge_to_goal() == left
@@ -223,7 +224,7 @@ def face_height(surf):
     return y - CY
 
 
-@pytest.mark.parametrize("knowledge, radius", [(0, 40), (200, 50), (450, 60), (750, 70)])
+@pytest.mark.parametrize("knowledge, radius", [(0, 40), (400, 50), (900, 60), (1500, 70)])
 def test_face_drawn_with_grade_size(surface, knowledge, radius):
     s = student_at(knowledge)
     draw_on(surface, s)
@@ -239,7 +240,7 @@ def test_face_drawn_with_grade_size(surface, knowledge, radius):
 
 def test_face_grows_each_grade_pixels(surface):
     extents = []
-    for knowledge in (0, 200, 450, 750, 1100, 3000):
+    for knowledge in (0, 400, 900, 1500, 2200, 6000):
         draw_on(surface, student_at(knowledge))
         extents.append(face_extent(surface))
     assert extents[0] < extents[1] < extents[2] < extents[3]
@@ -281,7 +282,7 @@ def eye_y(radius):
     return CY - radius + 9 * cell + cell // 2
 
 
-@pytest.mark.parametrize("knowledge, glasses", [(0, False), (200, False), (450, True), (750, True)])
+@pytest.mark.parametrize("knowledge, glasses", [(0, False), (400, False), (900, True), (1500, True)])
 def test_glasses_pixels(surface, knowledge, glasses):
     """안경 가운데 다리(두 눈 사이, 눈 높이)는 안경이 있을 때만 남색(얼굴 선 색), 없으면 피부."""
     s = student_at(knowledge)
@@ -302,7 +303,7 @@ def count_color(surf, target, radius):
     return n
 
 
-@pytest.mark.parametrize("knowledge", [0, 200, 450, 750])
+@pytest.mark.parametrize("knowledge", [0, 400, 900, 1500])
 @pytest.mark.parametrize("health, dark", [(29, True), (30, False), (1, True), (100, False)])
 def test_dark_circle_pixels(surface, knowledge, health, dark):
     s = student_at(knowledge, health=health)
@@ -327,7 +328,7 @@ def mouth_line_rows(surf, radius, col):
 MOUTH_LEFT_COL, MOUTH_CENTER_COL, MOUTH_RIGHT_COL = 7, 10, 12
 
 
-@pytest.mark.parametrize("knowledge", [0, 200, 450, 750])
+@pytest.mark.parametrize("knowledge", [0, 400, 900, 1500])
 @pytest.mark.parametrize("mental, mouth", [(60, "smile"), (59, "flat"), (30, "flat"), (29, "cry")])
 def test_mouth_pixels(surface, knowledge, mental, mouth):
     """입 모양을 픽셀로 구분한다(도트 재디자인).
@@ -366,7 +367,7 @@ def test_mouth_pixels_differ_between_three(surface):
 
 
 def test_draw_all_combinations_no_crash(surface):
-    for knowledge in (0, 199, 200, 450, 750, 1100, 3000):
+    for knowledge in (0, 399, 400, 900, 1500, 2200, 6000):
         for health in (0, 1, 29, 30, 100):
             for mental in (0, 29, 30, 59, 60, 100):
                 draw_on(surface, student_at(knowledge, health=health, mental=mental))
@@ -389,13 +390,14 @@ def test_face_inside_student_area(game):
 
 @pytest.mark.parametrize("knowledge, texts", [
     # (L단위) "남은 시간 n초" -> "다음 학년까지 지식 n" / 4학년 "졸업까지 지식 n" (기획서 11절)
-    (0, ["1학년", "다음 학년까지 지식 200"]),
-    (120, ["1학년", "다음 학년까지 지식 80"]),
-    (199, ["1학년", "다음 학년까지 지식 1"]),
-    (200, ["2학년", "다음 학년까지 지식 250"]),
-    (500, ["3학년", "다음 학년까지 지식 250"]),
-    (750, ["4학년", "졸업까지 지식 350"]),
-    (1099, ["4학년", "졸업까지 지식 1"]),
+    # (M단위) 진급 기준 2배 400/900/1500, 졸업 2200
+    (0, ["1학년", "다음 학년까지 지식 400"]),
+    (240, ["1학년", "다음 학년까지 지식 160"]),
+    (399, ["1학년", "다음 학년까지 지식 1"]),
+    (400, ["2학년", "다음 학년까지 지식 500"]),
+    (1000, ["3학년", "다음 학년까지 지식 500"]),
+    (1500, ["4학년", "졸업까지 지식 700"]),
+    (2199, ["4학년", "졸업까지 지식 1"]),
 ])
 def test_info_bar_texts(game, knowledge, texts):
     rec = RecordingFont(game.font)
@@ -412,7 +414,7 @@ def test_info_bar_via_draw_info_bar(game):
     game.font = rec
     game.draw_info_bar()
     # (H단위) 연구비 추가, (L단위) 남은 시간 -> 다음 학년까지 지식 (기획서 11절 화면)
-    assert rec.texts == ["1학년", "다음 학년까지 지식 200", "지식 0", "연구비 0"]
+    assert rec.texts == ["1학년", "다음 학년까지 지식 400", "지식 0", "연구비 0"]
 
 
 def test_info_bar_updates_with_frames(game):
@@ -454,7 +456,8 @@ def test_knowledge_not_drawn_by_gauges_anymore(surface):
     font = pygame.font.SysFont(config.FONT_NAME, config.FONT_SIZE)
     rec = RecordingFont(font)
     Student().draw_gauges(surface, rec)
-    assert rec.texts == [config.HEALTH_LABEL, config.MENTAL_LABEL]
+    # (M단위) 라벨 줄 오른쪽에 "지금/최대" 글자가 붙는다. 지식 숫자는 여전히 없다
+    assert rec.texts == [config.HEALTH_LABEL, "80/100", config.MENTAL_LABEL, "80/100"]
 
 
 # ======================= 숫자패드 =======================

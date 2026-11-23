@@ -407,13 +407,16 @@ def test_no_random_module_anywhere():
 # ======================= E3 수치 팝업 =======================
 
 @pytest.mark.parametrize("setup, k, expected", [
-    ({"health": 80}, pygame.K_1, ["체력 +20"]),
-    ({"health": 95}, pygame.K_1, ["체력 +5"]),
-    ({"health": 100}, pygame.K_1, []),
-    ({"mental": 80, "knowledge": 10}, pygame.K_2, ["멘탈 +20", "지식 -2"]),
-    ({"mental": 80, "knowledge": 0}, pygame.K_2, ["멘탈 +20"]),
-    ({"mental": 90, "knowledge": 1}, pygame.K_2, ["멘탈 +10", "지식 -1"]),
-    ({"mental": 100, "knowledge": 0}, pygame.K_2, []),
+    # (M단위) 학식은 게이지를 바꾸지 않아 팝업이 없다. 체력 회복(+15)은 휴식 팝업으로 본다
+    ({"health": 80, "mental": 100}, pygame.K_2, ["체력 +15"]),
+    ({"health": 95, "mental": 100}, pygame.K_2, ["체력 +5"]),
+    ({"health": 50}, pygame.K_1, []),
+    ({"health": 100, "mental": 80, "knowledge": 10}, pygame.K_2, ["멘탈 +20", "지식 -2"]),
+    ({"health": 100, "mental": 80, "knowledge": 0}, pygame.K_2, ["멘탈 +20"]),
+    ({"health": 100, "mental": 90, "knowledge": 1}, pygame.K_2, ["멘탈 +10", "지식 -1"]),
+    ({"health": 100, "mental": 100, "knowledge": 0}, pygame.K_2, []),
+    ({"health": 80, "mental": 80, "knowledge": 10}, pygame.K_2,
+     ["체력 +15", "멘탈 +20", "지식 -2"]),
     ({}, pygame.K_3, ["체력 -5", "멘탈 -8", "지식 +10"]),
     ({"elapsed": 45.0}, pygame.K_3, ["체력 -5", "멘탈 -8", "지식 +20"]),
     ({"elapsed": 44.9}, pygame.K_3, ["체력 -5", "멘탈 -8", "지식 +10"]),
@@ -460,7 +463,8 @@ def test_popups_stacked_without_glyph_overlap(game):
 
 
 def test_popup_removed_after_08s(game):
-    game.do_action(config.ACTION_FEED)
+    game.student.health = 100              # (M단위) 학식은 팝업이 없어 휴식(멘탈 +20 하나)으로 본다
+    game.do_action(config.ACTION_REST)
     game.update(0.79)
     assert len(game.popups) == 1
     game.update(0.02)
@@ -534,7 +538,8 @@ def test_real_popups_fit_inside_stage_and_above_head(game, elapsed):
 
 
 def test_popup_rises_12px_and_blinks_from_05s(game):
-    game.do_action(config.ACTION_FEED)
+    game.student.health = 100              # (M단위) 학식은 팝업이 없어 휴식(멘탈 +20 하나)으로 본다
+    game.do_action(config.ACTION_REST)
     p = game.popups[0]
     assert config.POPUP_RISE_SPEED * config.POPUP_TIME == pytest.approx(12)
     # 0.5초 전에는 항상 보이고, 0.5초부터 보임/숨김이 섞인다
@@ -568,23 +573,24 @@ def _fill_color(g, bar_y):
     return color(g.screen, config.GAUGE_X + 1, bar_y + config.BAR_HEIGHT // 2)
 
 
-def test_shown_value_animates_25_to_45_color_by_real(game):
+def test_shown_value_animates_25_to_40_color_by_real(game):
+    """(M단위) 예전 학식 25 -> 45 대신 휴식 체력 +15: 25 -> 40."""
     game.student.health = 25
-    game.do_action(config.ACTION_FEED)
-    assert game.student.health == 45
+    game.do_action(config.ACTION_REST)
+    assert game.student.health == 40
     assert game.get_shown_gauge(config.GAUGE_HEALTH) == 25
     game.draw()
     assert _fill_width(game, config.HEALTH_BAR_Y) == 50            # 길이는 이전 값
-    assert _fill_color(game, config.HEALTH_BAR_Y) == config.COLOR_GREEN   # 색은 실제 값 45
+    assert _fill_color(game, config.HEALTH_BAR_Y) == config.COLOR_GREEN   # 색은 실제 값 40
     game.update(config.GAUGE_ANIM_TIME / 2)
     mid = game.get_shown_gauge(config.GAUGE_HEALTH)
-    assert 25 < mid < 45 and mid == pytest.approx(35)
+    assert 25 < mid < 40 and mid == pytest.approx(32.5)
     game.draw()
-    assert 50 < _fill_width(game, config.HEALTH_BAR_Y) < 90
+    assert 50 < _fill_width(game, config.HEALTH_BAR_Y) < 80
     game.update(config.GAUGE_ANIM_TIME / 2)
-    assert game.get_shown_gauge(config.GAUGE_HEALTH) == 45
+    assert game.get_shown_gauge(config.GAUGE_HEALTH) == 40
     game.draw()
-    assert _fill_width(game, config.HEALTH_BAR_Y) == 90
+    assert _fill_width(game, config.HEALTH_BAR_Y) == 80
 
 
 def test_shown_value_animates_down_red_by_real(game):
@@ -626,7 +632,7 @@ def test_natural_decay_not_animated(game):
 
 def test_new_game_shown_equals_real(game):
     game.student.health = 30
-    game.do_action(config.ACTION_FEED)
+    game.do_action(config.ACTION_REST)     # (M단위) 체력 회복은 휴식
     assert game.get_shown_gauge(config.GAUGE_HEALTH) != game.student.health
     game.end_game(config.ENDING_LEAVE)
     game.handle_event(key(pygame.K_r))
@@ -857,8 +863,10 @@ def test_leave_by_study_action_clears_effects(game, attr, value):
     game.student.knowledge = 40
     assert game.do_action(config.ACTION_STUDY) is True
     assert game.state == config.STATE_ENDING and game.ending == config.ENDING_LEAVE
-    assert game.student.knowledge == 50
-    assert game.best_record == 50
+    # (M단위) 체력 30 미만(피곤)이면 공부 지식 x0.7 -> +7
+    gain = 7 if attr == "health" else 10      # 체력 5·3은 피곤, 멘탈 8은 체력 80이라 아님
+    assert game.student.knowledge == 40 + gain
+    assert game.best_record == 40 + gain
     assert_effects_cleared(game)
     game.draw()                       # 엔딩 화면 그리기 오류 없음
 
@@ -1020,6 +1028,10 @@ def test_particles_never_overlap_popups_every_frame(game, k, elapsed):
     game.student.health, game.student.mental, game.student.knowledge = 60, 60, 10
     old_grade_at(game.student, elapsed)
     game.do_action(LEGACY_KEY_ACTIONS[k])
+    if k == pygame.K_1:
+        # (M단위) 학식은 게이지를 바꾸지 않아 팝업이 없다 -> 겹칠 팝업이 없다
+        assert game.popups == [] and len(game.particles) == config.PARTICLE_COUNT
+        return
     assert game.popups and len(game.particles) == config.PARTICLE_COUNT
     frames = 0
     while game.popups and game.particles:
@@ -1041,6 +1053,10 @@ def test_particles_and_popups_pixels_never_overlap(game, k, elapsed):
     game.student.health, game.student.mental, game.student.knowledge = 60, 60, 10
     old_grade_at(game.student, elapsed)
     game.do_action(LEGACY_KEY_ACTIONS[k])
+    if k == pygame.K_1:
+        # (M단위) 학식은 팝업이 없다 -> 파티클만 그려진다
+        assert game.popups == [] and game.particles
+        return
     for step in range(12):
         parts, pops = game.particles, game.popups
         game.particles, game.popups = [], []

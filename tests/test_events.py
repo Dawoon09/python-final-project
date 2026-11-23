@@ -212,20 +212,22 @@ def test_trait_and_look_and_flag_names():
 
 def test_trait_bonus_table():
     assert config.TRAIT_BONUSES == {
-        "체력 단련": {config.BONUS_FEED_HEALTH: 5},
+        "체력 단련": {config.BONUS_FULL_TIME: 10},   # M단위: 학식 체력 +5 -> 든든함 +10초
         "음악 힐링": {config.BONUS_REST_MENTAL: 5},
         "카페인": {config.BONUS_STUDY_HEALTH: 2},
         "연애 중": {config.BONUS_REST_HEALTH: 5},
     }
-    assert config.REST_HEALTH == 0
+    # (M단위) 휴식 기본 체력 0 -> +15, 학식 체력 +20(FEED_HEALTH) 삭제 -> 든든함 30초
+    assert config.REST_HEALTH == 15
+    assert not hasattr(config, "FEED_HEALTH") and config.FULL_DURATION == 30
     # 기본 행동 수치 불변
-    assert (config.FEED_HEALTH, config.REST_MENTAL, config.REST_KNOWLEDGE) == (20, 20, -2)
+    assert (config.REST_MENTAL, config.REST_KNOWLEDGE) == (20, -2)
     assert (config.STUDY_HEALTH, config.STUDY_MENTAL) == (-5, -8)
     assert (config.STUDY_KNOWLEDGE, config.STUDY_KNOWLEDGE_EXAM) == (10, 20)
     # 졸업 기준: E단위 700/450, K단위 1000/750 (지식) -> L단위 걸린 시간 240/360초 -> 11절 A안 200/360초,
-    # 졸업 지식 1100
-    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (200, 360)
-    assert config.GRADUATION_KNOWLEDGE == 1100
+    # 졸업 지식 1100 -> M단위 2200, 시간 기준은 임시 값(400/720)이라 순서만 본다
+    assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
+    assert config.GRADUATION_KNOWLEDGE == 2200
 
 
 # ======================= 2. 발생 규칙 =======================
@@ -583,15 +585,23 @@ def test_choice_shows_popups(make_game, monkeypatch):
     force_event(monkeypatch, g, event_by_id("free_rider"))
     g.student.elapsed = 61.0
     reach_grade(g.student, 2)   # (L단위) 2학년 이벤트: 학년은 지식으로
-    assert g.do_action(FEED)   # 체력 80 -> 100
+    assert g.do_action(REST)   # (M단위) 학식은 팝업이 없어 휴식: 체력 +15·멘탈 +20·지식 -2
     n_action = len(g.popups)
+    assert n_action == 3
     pass_input_delay(g)
     press(g, pygame.K_1)      # 지식 +20, 체력 -15, 멘탈 -10
     new = texts_top_down(g.popups[n_action:])
     assert new == ["체력 -15", "멘탈 -10", "지식 +20"]
-    ys_old = [p["y"] for p in g.popups[:n_action]]
-    ys_new = [p["y"] for p in g.popups[n_action:]]
-    assert max(ys_new) < min(ys_old)   # 행동 팝업 위에 쌓인다
+    # (D/E단위) 선택지 팝업은 무대 왼쪽 위 열(EVENT_POPUP_X)에 쌓여 행동 팝업과 겹치지 않는다.
+    # (M단위) 예전 "행동 팝업 1줄 위" 비교는 휴식 팝업이 3줄이 되어 글자 사각형 겹침으로 본다.
+    assert all(p["x"] == config.EVENT_POPUP_X for p in g.popups[n_action:])
+
+    def rect(p):
+        surf = g.popup_font.render(p["text"], False, (0, 0, 0))
+        return surf.get_rect(center=(p["x"], p["y"]))
+    for new_pop in g.popups[n_action:]:
+        for old_pop in g.popups[:n_action]:
+            assert not rect(new_pop).colliderect(rect(old_pop)), (new_pop["text"], old_pop["text"])
 
 
 def test_choice_popup_uses_clamped_change(make_game, monkeypatch):
@@ -685,9 +695,9 @@ def test_auto_event_effect_and_notice(make_game, monkeypatch, event):
     g.student.health = g.student.mental = 50
     g.student.knowledge = 30
     force_event(monkeypatch, g, event)
-    assert g.do_action(FEED)   # 체력 50 -> 70
+    assert g.do_action(FEED)   # (M단위) 학식은 게이지 그대로(든든함만)
     eff = event[config.EVENT_EFFECTS]
-    assert gauges(g) == (70 + eff.get(H, 0), 50 + eff.get(M, 0), 30 + eff.get(K, 0))
+    assert gauges(g) == (50 + eff.get(H, 0), 50 + eff.get(M, 0), 30 + eff.get(K, 0))
     assert g.state == config.STATE_PLAYING and g.current_event is None
     assert g.notice is not None and event[config.EVENT_TITLE] in g.notice["text"]
     assert g.student.seen_events == set()   # 자동형은 반복 가능
@@ -697,10 +707,12 @@ def test_auto_event_effect_and_notice(make_game, monkeypatch, event):
 def test_auto_event_popups_shown(make_game, monkeypatch):
     g = make_game(61)
     force_event(monkeypatch, g, event_by_id("professor_praise"))
-    g.student.mental = 50
-    assert g.do_action(FEED)
-    assert popup_texts(g)[:1] == ["체력 +20"]                 # 행동 팝업
-    assert texts_top_down(g.popups[1:]) == ["멘탈 +5", "지식 +15"]   # 이벤트 팝업
+    g.student.mental = 100
+    g.student.health = 50
+    assert g.do_action(REST)   # (M단위) 체력 회복은 휴식(+15). 멘탈 100이라 멘탈 팝업 없음
+    assert popup_texts(g)[:1] == ["체력 +15"]                 # 행동 팝업
+    # 이벤트 팝업: 멘탈 100이라 +5는 잘려서 없고 지식 +15만
+    assert texts_top_down(g.popups[1:]) == ["지식 +15"]
     # (D/E단위) 이벤트 팝업은 머리 위가 아니라 EVENT_POPUP_X 열, 알림 상자 아래에 쌓인다
     action_pop, event_pops = g.popups[0], g.popups[1:]
     assert action_pop["x"] == config.STUDENT_CENTER_X
@@ -741,7 +753,7 @@ def test_auto_event_to_zero_leaves(make_game, monkeypatch, event_id, attr):
     g = make_game(64)
     force_event(monkeypatch, g, event_by_id(event_id))
     setattr(g.student, attr, 10)
-    action = REST if attr == "health" else FEED   # 그 게이지를 올리지 않는 행동
+    action = FEED   # 그 게이지를 올리지 않는 행동 (M단위: 학식은 게이지를 바꾸지 않는다)
     if attr == "health":
         g.student.mental = 50
     assert g.do_action(action)
@@ -753,9 +765,11 @@ def test_auto_event_to_zero_leaves(make_game, monkeypatch, event_id, attr):
 def test_auto_event_clamped(make_game, monkeypatch):
     g = make_game(65)
     force_event(monkeypatch, g, event_by_id("side_dish"))
-    assert g.do_action(FEED)   # 80 -> 100, +15 -> 100
+    g.student.health = 90
+    assert g.do_action(FEED)   # (M단위) 학식은 게이지 그대로 90, 반찬 +15 -> 100에서 잘림
     assert g.student.health == 100
     assert "체력 +15" not in popup_texts(g)
+    assert "체력 +10" in popup_texts(g)
 
 
 def test_auto_event_repeats(make_game, monkeypatch):
@@ -779,25 +793,31 @@ def student_with(*traits, health=50, mental=50, knowledge=50, elapsed=0.0):
     return s
 
 
+# (M단위) 학식은 게이지를 바꾸지 않고 든든함 지속 시간(feed 칸, 초)만 준다: 기본 30, 체력 단련 40.
+# 휴식 기본 체력 +15(연애 중 +20), 멘탈 +20(음악 힐링 +25).
 @pytest.mark.parametrize("traits, feed, rest, study", [
-    ((), (70, 50, 50), (50, 70, 48), (45, 42, 60)),
-    (("체력 단련",), (75, 50, 50), (50, 70, 48), (45, 42, 60)),
-    (("음악 힐링",), (70, 50, 50), (50, 75, 48), (45, 42, 60)),
-    (("연애 중",), (70, 50, 50), (55, 70, 48), (45, 42, 60)),
-    (("카페인",), (70, 50, 50), (50, 70, 48), (47, 42, 60)),
-    (("체력 단련", "음악 힐링", "연애 중", "카페인"), (75, 50, 50), (55, 75, 48), (47, 42, 60)),
-    (("음악 힐링", "연애 중"), (70, 50, 50), (55, 75, 48), (45, 42, 60)),
+    ((), 30, (65, 70, 48), (45, 42, 60)),
+    (("체력 단련",), 40, (65, 70, 48), (45, 42, 60)),
+    (("음악 힐링",), 30, (65, 75, 48), (45, 42, 60)),
+    (("연애 중",), 30, (70, 70, 48), (45, 42, 60)),
+    (("카페인",), 30, (65, 70, 48), (47, 42, 60)),
+    (("체력 단련", "음악 힐링", "연애 중", "카페인"), 40, (70, 75, 48), (47, 42, 60)),
+    (("음악 힐링", "연애 중"), 30, (70, 75, 48), (45, 42, 60)),
 ])
 def test_trait_bonuses(traits, feed, rest, study):
-    for action, expected in ((Student.feed, feed), (Student.rest, rest), (Student.study, study)):
+    s = student_with(*traits)
+    s.feed()
+    assert (s.health, s.mental, s.knowledge) == (50, 50, 50), traits
+    assert s.get_full_duration() == feed and s.full_until == s.elapsed + feed, traits
+    for action, expected in ((Student.rest, rest), (Student.study, study)):
         s = student_with(*traits)
         action(s)
         assert (s.health, s.mental, s.knowledge) == expected, (traits, action.__name__)
 
 
 def test_trait_bonus_clamped():
-    s = student_with("체력 단련", health=90)
-    s.feed()
+    s = student_with("연애 중", health=90)    # (M단위) 체력 회복 보너스는 휴식(+20)
+    s.rest()
     assert s.health == 100
     s = student_with("음악 힐링", "연애 중", health=98, mental=90, knowledge=1)
     s.rest()
@@ -821,24 +841,27 @@ def test_traits_kept_in_order_without_duplicates():
     for t in ("카페인", "체력 단련", "카페인"):
         s.add_trait(t)
     assert s.traits == ["카페인", "체력 단련"]
-    assert s.get_trait_bonus(config.BONUS_FEED_HEALTH) == 5
+    assert s.get_trait_bonus(config.BONUS_FULL_TIME) == 10
     assert s.get_trait_bonus(config.BONUS_STUDY_HEALTH) == 2
     assert s.get_trait_bonus(config.BONUS_REST_HEALTH) == 0
 
 
 def test_trait_works_through_game_action(make_game, monkeypatch):
-    """선택지로 얻은 특성이 이후 행동에 반영된다(체력 단련: 학식 +25)."""
+    """선택지로 얻은 특성이 이후 행동에 반영된다(체력 단련: 예전 학식 +25 -> M단위 든든함 40초)."""
     g = make_game(70)
     force_event(monkeypatch, g, event_by_id("club_fair"))
     g.student.health = 50
-    assert g.do_action(FEED)        # 70
+    assert g.do_action(FEED)        # 든든함 30초
+    assert g.student.get_full_time_left() == config.FULL_DURATION
     pass_input_delay(g)
     press(g, pygame.K_2)            # 헬스부
     monkeypatch.setattr(config, "EVENT_CHANCE", 0.0)
     g.update(1.0)
+    health = g.student.health
     assert g.do_action(FEED)
-    assert g.student.health == 70 - 1 + 25
-    assert "체력 +25" in popup_texts(g)
+    assert g.student.health == health
+    assert g.student.get_full_time_left() == config.FULL_DURATION + 10
+    assert not any(t.startswith("체력") for t in popup_texts(g))
 
 
 @pytest.mark.parametrize("event_id, index, attr, value", [
@@ -940,18 +963,18 @@ def choose_first(event):
 
 
 def greedy(s, low=30):
-    if s.health <= low:
-        return FEED
-    if s.mental <= low:
+    """(M단위) 회복은 휴식에서만: 체력·멘탈이 위험하면 휴식, 아니면 공부."""
+    if s.health <= low or s.mental <= low:
         return REST
     return STUDY
 
 
 def care_only(s):
-    if s.health <= 50:
-        return FEED
-    if s.mental <= 50:
+    """(M단위) 휴식으로 회복하고, 든든함이 끝났으면 학식."""
+    if s.health <= 50 or s.mental <= 50:
         return REST
+    if not s.is_full_buff_active():
+        return FEED
     return None
 
 
@@ -1094,23 +1117,35 @@ def test_distribution_care_only_also_gets_events():
 
 
 def test_all_three_graduation_endings_and_leave_reachable():
-    endings = {}
-    # (L단위) 등급은 걸린 시간이라 행동 간격으로 나눈다(1초 수석, 1.5초 무사, 2.5초 아슬아슬 쪽)
-    scenarios = [
-        ("top", greedy, choose_knowledge, 1.0),
-        ("normal", greedy, choose_safe, 1.5),
-        ("barely", greedy, choose_safe, 2.5),
-        ("leave", study_only, choose_first, 1.0),
-    ]
-    for name, policy, chooser, interval in scenarios:
+    """이벤트가 켜진 시뮬레이션에서 졸업 엔딩과 휴학 엔딩이 나온다.
+
+    (L단위) 등급은 걸린 시간이라 행동 간격으로 나눴다(1초 수석, 1.5초 무사, 2.5초 아슬아슬 쪽).
+    (M단위) 시간 기준이 임시 값이라 어느 간격이 어느 등급인지는 고정하지 않는다.
+    대신: 규칙 위반 없음, 졸업 판의 등급 = judge_ending(걸린 시간), 간격이 길수록 평균 졸업 시각이 늦다,
+    공부만 하면 휴학. 수석·무사·아슬아슬 3종의 경계는 judge_ending 경계 테스트에서 본다.
+    """
+    from student import judge_ending
+
+    mean_times = []
+    scenarios = [(choose_knowledge, 1.0), (choose_safe, 1.5), (choose_safe, 2.5)]
+    for chooser, interval in scenarios:
+        times = []
         for seed in range(5):
-            g, log = simulate(seed, policy, chooser, interval=interval)
+            g, log = simulate(seed, greedy, chooser, interval=interval)
             assert log["violations"] == []
-            endings.setdefault(name, set()).add(g.ending)
-    assert config.ENDING_TOP in endings["top"]
-    assert config.ENDING_NORMAL in endings["normal"]
-    assert config.ENDING_BARELY in endings["barely"]
-    assert endings["leave"] == {config.ENDING_LEAVE}
+            assert g.ending is not None, (seed, interval)
+            if g.student.has_graduated():
+                assert g.ending == judge_ending(g.student.graduation_time)
+                times.append(g.student.graduation_time)
+        assert times, interval
+        mean_times.append(sum(times) / len(times))
+    assert mean_times == sorted(mean_times), mean_times
+    leave = set()
+    for seed in range(5):
+        g, log = simulate(seed, study_only, choose_first, interval=1.0)
+        assert log["violations"] == []
+        leave.add(g.ending)
+    assert leave == {config.ENDING_LEAVE}
     pygame.quit()
 
 

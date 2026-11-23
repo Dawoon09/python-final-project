@@ -112,7 +112,8 @@ GAME_CONSTANTS = [
     "GAUGE_MIN", "GAUGE_MAX", "HEALTH_START", "MENTAL_START", "KNOWLEDGE_START",
     "HEALTH_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC_EXAM",
     "DECAY_INTERVAL", "TIME_EPSILON", "LOW_GAUGE_LIMIT",
-    "FEED_HEALTH", "REST_MENTAL", "REST_KNOWLEDGE", "STUDY_HEALTH", "STUDY_MENTAL",
+    # M단위: FEED_HEALTH 삭제(학식 = 버프 든든함). M_REMOVED_CONSTANTS 에서 확인
+    "REST_MENTAL", "REST_KNOWLEDGE", "STUDY_HEALTH", "STUDY_MENTAL",
     "STUDY_KNOWLEDGE", "STUDY_KNOWLEDGE_EXAM",  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
     "MENTAL_SMILE_MIN", "MENTAL_FLAT_MIN", "BASE_RADIUS", "RADIUS_PER_GRADE", "GLASSES_GRADE",
     "MOUTH_SMILE", "MOUTH_FLAT", "MOUTH_CRY",
@@ -132,7 +133,9 @@ UI_TEXTS = [
 
 # (L단위) 기획서 11절(시간 제한 없애기)로 없어진 상수와 화면 글자
 L_REMOVED_CONSTANTS = ["SECONDS_PER_GRADE", "TOTAL_SECONDS", "TOP_GRADUATE_KNOWLEDGE",
-                       "NORMAL_GRADUATE_KNOWLEDGE", "TIME_LEFT_TEXT"]
+                       "NORMAL_GRADUATE_KNOWLEDGE", "TIME_LEFT_TEXT",
+                       # (M단위) 회복은 휴식에서만: 학식 체력 +20 상수가 없어졌다
+                       "FEED_HEALTH"]
 
 
 def test_game_constants_same_as_main(tmp_path):
@@ -330,6 +333,12 @@ I_CHANGED = {"Student.update", "Student.is_time_over", "Student.is_exam_period",
 # - Student.get_graduation_ending: 지식 -> graduation_time, 졸업 전이면 None
 L_CHANGED = {"judge_ending", "Student.get_grade", "Student.get_graduation_ending"}
 
+# (M단위) 기획서 2절(회복은 휴식에서만·든든함·최댓값·디버프)이 규칙 자체를 바꾼 함수.
+# 새 규칙은 test_idle_m.py 에서 확인한다.
+# - Student.feed: 체력 +20 -> 버프 든든함(full_until)
+# - Student.rest: 체력 +15(기본) + 방침 휴식 회복 배수(recovery_ratio)
+M_CHANGED = {"Student.feed", "Student.rest"}
+
 
 @pytest.mark.parametrize("name", ["student.py", "game.py", "button.py"])
 def test_logic_functions_unchanged_from_main(name):
@@ -345,7 +354,8 @@ def test_logic_functions_unchanged_from_main(name):
     changed = []
     for fname, node in old.items():
         if (_is_drawing(fname) or fname == "Game.__init__" or fname in G_CHANGED
-                or fname in H_CHANGED or fname in I_CHANGED or fname in L_CHANGED):
+                or fname in H_CHANGED or fname in I_CHANGED or fname in L_CHANGED
+                or fname in M_CHANGED):
             continue
         assert fname in new, f"{name}: {fname} 이 사라짐"
         new_node = _remove_event_hooks(fname, new[fname])
@@ -679,8 +689,8 @@ def _face_bbox(surf):
     return min(xs), min(ys), max(xs) + 1, max(ys) + 1
 
 
-@pytest.mark.parametrize("knowledge, radius", [(0, 40), (200, 50), (450, 60), (750, 70),
-                                              (1100, 70)])
+@pytest.mark.parametrize("knowledge, radius", [(0, 40), (400, 50), (900, 60), (1500, 70),
+                                              (2200, 70)])   # M단위 진급 기준 2배
 def test_face_diameter_is_twice_radius(surface, knowledge, radius):
     """실제로 그려진 얼굴(머리카락 포함)의 가로·세로 = 2 x 반지름, 중심 = 제자 무대 가운데."""
     s = _student(knowledge)
@@ -693,7 +703,7 @@ def test_face_diameter_is_twice_radius(surface, knowledge, radius):
     assert (left + right) // 2 == CX and (top + bottom) // 2 == CY
 
 
-@pytest.mark.parametrize("knowledge", [0, 200, 450, 750])
+@pytest.mark.parametrize("knowledge", [0, 400, 900, 1500])
 def test_dark_circles_fully_visible_under_glasses(surface, knowledge):
     """체력 30 미만 다크서클이 안경에 가리지 않고 양쪽 모두 온전히 보인다(2칸 x 2개)."""
     s = _student(knowledge, health=29)
@@ -711,15 +721,15 @@ def test_dark_circles_fully_visible_under_glasses(surface, knowledge):
 
 @pytest.mark.parametrize("health", [30, 100])
 def test_no_dark_circle_color_when_healthy(surface, health):
-    for knowledge in (0, 450):
+    for knowledge in (0, 900):
         surface.fill(config.COLOR_BG)
         _student(knowledge, health=health).draw(surface)
         assert not any(color(surface, x, y) == config.COLOR_DARK_CIRCLE
                        for x in range(CX - 70, CX + 70) for y in range(CY - 70, CY + 70))
 
 
-@pytest.mark.parametrize("knowledge, glasses", [(0, False), (199, False), (200, False),
-                                                (449, False), (450, True), (750, True)])
+@pytest.mark.parametrize("knowledge, glasses", [(0, False), (399, False), (400, False),
+                                                (899, False), (900, True), (1500, True)])
 def test_glasses_lens_glass_color_only_with_glasses(surface, knowledge, glasses):
     surface.fill(config.COLOR_BG)
     _student(knowledge).draw(surface)
@@ -729,7 +739,7 @@ def test_glasses_lens_glass_color_only_with_glasses(surface, knowledge, glasses)
 
 
 def test_three_mouths_produce_three_different_images(surface):
-    for knowledge in (0, 450, 750):
+    for knowledge in (0, 900, 1500):   # M단위 진급 기준 2배 (1·3·4학년)
         images = set()
         for mental in (60, 59, 29):
             surface.fill(config.COLOR_BG)
@@ -902,7 +912,7 @@ def test_gauges_inside_status_panel():
     assert config.HEALTH_BAR_Y + config.BAR_HEIGHT + P < config.MENTAL_LABEL_Y
 
 
-@pytest.mark.parametrize("knowledge", [0, 200, 450, 750])
+@pytest.mark.parametrize("knowledge", [0, 400, 900, 1500])
 def test_student_and_shadow_inside_stage(knowledge):
     r = _student(knowledge).get_radius()
     inner = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH,

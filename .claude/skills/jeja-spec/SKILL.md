@@ -5,7 +5,7 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 
 # 제자 키우기 기준표 (최종)
 
-출처: `docs/기획서.md` (최종 게임 한 문서, 2026-11-23 정리). 절 번호는 기획서와 같다.
+출처: `docs/기획서.md` (최종 게임 한 문서, 2026-11-23 정리, M단위 반영). 절 번호는 기획서와 같다.
 이 표와 기획서가 다르면 기획서가 우선이고, 차이를 발견하면 리드에게 보고한다. 수치는 모두 `config.py` 상수와 같다.
 "확정 해석" 표시는 기획서가 모호해서 사용자와 합의한 내용이다.
 
@@ -26,24 +26,28 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 
 | 게이지 | 범위 | 시작값 | 자연 감소 (1초마다) | 0이 되면 |
 |---|---|---|---|---|
-| 체력 | 0~100 | 80 | -1 | 즉시 휴학 (대학원이면 수료) |
-| 멘탈 | 0~100 | 80 | -1 (시험 기간 -2) | 즉시 휴학 (대학원이면 수료) |
+| 체력 | 0~`max_health` (100 + 10 × 체력 증진 Lv) | 80 | -1 (든든함이면 -0.5) | 즉시 휴학 (대학원이면 수료) |
+| 멘탈 | 0~`max_mental` (100 + 10 × 멘탈 관리 Lv) | 80 | -1 (시험 기간 -2) | 즉시 휴학 (대학원이면 수료) |
 | 지식 | 0 이상, 상한 없음 | 0 | 없음 | 진급·졸업 기준 |
 
-- clamp: 체력·멘탈 0~100, 지식 0 미만 금지. 휴학 판정은 `<= 0`.
-- 자연 감소 = 기본 × (1 − 0.1 × 건강 관리 Lv) × 대학원 배수. 소수 가능(`GAUGE_DECIMALS` 6자리 반올림). 0레벨·학부면 정수 그대로.
+- clamp: 체력 0~`Student.max_health`, 멘탈 0~`Student.max_mental`(property, `GAUGE_MAX` 100 + 업그레이드), 지식 0 미만 금지. 휴학 판정은 `<= 0`.
+- **회복은 휴식에서만.** 학식은 게이지를 바로 바꾸지 않고 버프 든든함만 준다. 랜덤 이벤트는 예외(예전처럼 게이지를 바로 바꾼다).
+- 1초마다(`decay_once`): 체력 += 자기 관리 회복 − 체력 감소, 멘탈 += 자기 관리 회복 − 멘탈 감소.
+  - 감소 = 기본 × (1 − 0.1 × 건강 관리 Lv) × 대학원 배수, 체력은 든든함이면 × 0.5 (`FULL_HEALTH_DECAY_RATIO`).
+  - 자기 관리 회복 = 0.2 × 자기 관리 Lv (`get_self_care_regen`, 0레벨이면 정수 0). 행동과 상관없이 늘 더한다.
+  - 소수 가능(`GAUGE_DECIMALS` 6자리 반올림). 업그레이드 0레벨·학부·든든함 없음이면 정수 그대로.
 - "0이 되면 즉시": 자연 감소·공부·이벤트 무엇으로 0이 되어도 바로 엔딩.
 
 ### 자동 행동과 방침
 
 - `AUTO_ACTION_INTERVAL` 2.0초마다 자동 행동, 첫 행동도 2초 뒤. 간격 = 2.0 − 0.2 × 시간 관리 Lv (최소 1.0). 대화창(STATE_EVENT) 중 정지.
-- 고르기: health < 기준 or mental < 기준 → (health <= mental ? feed : rest), 아니면 study.
+- 고르기(`choose_auto_action`): health < 기준 or mental < 기준 → rest, 아니고 `not student.is_full_buff_active()` → feed, 아니면 study.
 
-| 방침 (`POLICY_*`) | 키 | 버튼 글자 | 회복 기준 | 공부 지식 | 공부 소모 |
-|---|---|---|---|---|---|
-| study_focus | 1 | 공부 위주 [1] | 30 | ×1.4 | ×1.6 |
-| balanced (시작값) | 2 | 균형 [2] | 50 | ×1.0 | ×1.0 |
-| rest_focus | 3 | 휴식 위주 [3] | 70 | ×0.8 | ×0.7 |
+| 방침 (`POLICY_*`) | 키 | 버튼 글자 | 회복 기준 | 공부 지식 | 공부 소모 | 휴식 회복 (`POLICY_REST_RATIO`) | 컨디션 보너스 (`POLICY_CONDITION_BONUS`) |
+|---|---|---|---|---|---|---|---|
+| study_focus | 1 | 공부 위주 [1] | 20 | ×1.6 | ×1.8 | ×1.0 | 0 |
+| balanced (시작값) | 2 | 균형 [2] | 50 | ×1.0 | ×1.0 | ×1.0 | 0 |
+| rest_focus | 3 | 휴식 위주 [3] | 70 | ×0.7 | ×0.7 | ×1.5 | 0.2 (체력·멘탈 ≥ 70이면 연구비 ×1.2) |
 
 - 방침은 새 판마다(start_new_game: 타이틀 Enter·다시 하기·환생) 균형. 대학원 진학은 방침 유지.
 
@@ -51,34 +55,50 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 
 | 행동 | 체력 | 멘탈 | 지식 |
 |---|---|---|---|
-| 학식 먹이기 (feed) | +20 (+체력 단련 5, +학식 메뉴 4/Lv) | - | - |
-| 쉬게 하기 (rest) | 0 (+연애 중 5, +카페 5) | +20 (+음악 힐링 5, +침대 4/Lv) | -2 |
+| 학식 먹이기 (feed) | - | - | - |
+| 쉬게 하기 (rest) | +15 (+연애 중 5, +카페 5, +침대 4/Lv) | +20 (+음악 힐링 5, +침대 4/Lv) | -2 |
 | 공부시키기 (study) | -5 (+카페인 2, +헬스장 2) | -8 | +10, 시험 +20 (+참고서 2/Lv, +도서관 3) |
 
-- 공부 계산: (기본 + 특성·업그레이드) → × 방침 배수 → Python `round()`. .5는 휴식 위주 체력 -5×0.7 = -3.5 → -4뿐.
-- 방침만 적용한 공부 1회: 공부 위주 지식 +14(시험 +28)·체력 -8·멘탈 -13 / 균형 +10(+20)·-5·-8 / 휴식 위주 +8(+16)·-4·-6.
+- 학식: `full_until = elapsed + get_full_duration()`, 지속 = 30 (`FULL_DURATION`) + 6 × 학식 메뉴 Lv + 체력 단련 10. 다시 먹으면 새 지속 시간으로 다시 채움(쌓이지 않음). `is_full_buff_active()` = 남은 시간(`get_full_time_left()`) > 0. elapsed 기준이라 대화창 동안 멈춘다. 대학원 진학 시 유지, 새 판에서 None.
+- 휴식: `rest(recovery_ratio)`, 체력·멘탈 각각 round((기본 + 보너스) × 방침 휴식 회복 배수). 지식 -2는 배수 없음. 15×1.5 = 22.5 → 22, 20×1.5 = 30.
+- 공부 계산: (기본 + 특성·업그레이드) → × 방침 배수 → (피곤이면 × 0.7) → Python `round()`. .5 예: 휴식 위주 체력 -5×0.7 = -3.5 → -4.
+- 방침만 적용한 공부 1회: 공부 위주 지식 +16(시험 +32)·체력 -9·멘탈 -14 / 균형 +10(+20)·-5·-8 / 휴식 위주 +7(+14)·-4·-6.
+
+### 디버프와 버프
+
+| 이름 (config) | 조건 | 효과 | 이름(코드) |
+|---|---|---|---|
+| 피곤 (`DEBUFF_TIRED`) | 체력 < 30 (`LOW_GAUGE_LIMIT`, 최댓값과 상관없음) | 공부 지식 ×0.7 (`TIRED_KNOWLEDGE_RATIO`), 공부 직전 체력으로 판정 | `Student.is_tired()`, `has_debuff(name)` |
+| 우울 (`DEBUFF_DEPRESSED`) | 멘탈 < 30 | 지식으로 버는 연구비 ×0.7 (`DEPRESSED_MONEY_RATIO`), 연구비를 쌓는 순간(효과 적용 뒤) 판정 | `Student.is_depressed()`, `has_debuff(name)` |
+| 든든함 (`BUFF_FULL`) | 학식 뒤 지속 시간 동안 | 체력 자연 감소 ×0.5 | `Student.is_full_buff_active()`, `full_until`, `get_full_time_left()` |
+| 컨디션 좋음 (`CONDITION_GOOD`) | 방침 rest_focus, 체력·멘탈 ≥ 70 (`CONDITION_GOOD_MIN`) | 지식으로 버는 연구비 ×1.2 | `Game.is_good_condition()` |
+
+- 연구비 배수 `Game.get_money_multiplier()` = 명성 배수 × 대학원 배수 × `get_condition_money_ratio()`(우울 0.7 / 컨디션 좋음 1.2 / 그 밖 1.0). 졸업 보너스는 `get_fame_multiplier()`만 곱한다. 장학금은 배수 없음.
+- 상태 배지: `Student.get_statuses()`(피곤·우울·든든함 순) + 컨디션 좋음 = `Game.get_status_names()`, 상태 패널 위쪽(`STATUS_BADGE_Y` 128)에 글자 배지 2열.
 - **확정 해석 (시험 기간):** 멘탈 **자연 감소만** 2배, 공부 기본 지식 20. 공부의 체력 -5·멘탈 -8은 그대로. 보너스는 2배 아님.
 
 ### 진급과 졸업 (누적 지식 이상)
 
 | 단계 | 목표 | 경계 |
 |---|---|---|
-| 2학년 | 200 (`GRADE_GOALS[0]`) | 199 → 1학년, 200 → 2학년 |
-| 3학년 | 450 | 449 / 450 |
-| 4학년 | 750 | 749 / 750 |
-| 졸업 | 1100 (`GRADUATION_KNOWLEDGE`) | 1099 → 4학년, 1100 → 졸업 |
+| 2학년 | 400 (`GRADE_GOALS[0]`) | 399 → 1학년, 400 → 2학년 |
+| 3학년 | 900 | 899 / 900 |
+| 4학년 | 1500 | 1499 / 1500 |
+| 졸업 | 2200 (`GRADUATION_KNOWLEDGE`) | 2199 → 4학년, 2200 → 졸업 |
 
 - 한 번에 여러 목표를 넘으면 그만큼 오른다. 학년은 내려가지 않는다. 0이 된 순간과 겹치면 휴학이 먼저.
 - 진급 알림 "n학년 진급!" / "대학원 n년차!" 2초(`EVENT_NOTICE_TIME`).
 - 반지름 40 + (학년 − 1) × 10 → 40/50/60/70, 대학원 70. 안경 3학년부터.
 
-### 졸업 등급 (걸린 게임 시간, 대화창 정지 시간 제외)
+### 졸업 등급 (걸린 게임 시간, 대화창 정지 시간 제외) — **시간 기준은 임시 값**
 
 | 등급 | 조건 | 졸업 보너스 | 경계 |
 |---|---|---|---|
-| 수석 졸업 | ≤ 200초 (`TOP_GRADUATE_SECONDS`) | 200 | 200 → 수석 |
-| 무사 졸업 | 200초 초과 ≤ 360초 (`NORMAL_GRADUATE_SECONDS`) | 100 | 200.0001 → 무사, 360 → 무사 |
-| 아슬아슬 졸업 | 360초 초과 | 50 | 360.0001 → 아슬아슬 |
+| 수석 졸업 | ≤ 400초 (`TOP_GRADUATE_SECONDS`) | 200 | 400 → 수석 |
+| 무사 졸업 | 400초 초과 ≤ 720초 (`NORMAL_GRADUATE_SECONDS`) | 100 | 400.0001 → 무사, 720 → 무사 |
+| 아슬아슬 졸업 | 720초 초과 | 50 | 720.0001 → 아슬아슬 |
+
+- 400 / 720초는 M단위에서 예전 200 / 360초를 2배로 둔 임시 값이다. 밸런스 단위에서 다시 정한다.
 
 - 보너스 × (1 + 0.1 × 명성), 내림. 휴학·수료 0. `judge_ending(seconds)`는 `TIME_EPSILON`만큼 봐준다.
 
@@ -87,7 +107,7 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 | 엔딩 | 조건 | R | C |
 |---|---|---|---|
 | 휴학 | 학부에서 체력·멘탈 0 | 다시 하기 (명성 그대로) | - |
-| 수석/무사/아슬아슬 졸업 | 4학년 누적 지식 ≥ 1100 | 환생 (명성 +1) | 대학원 진학 |
+| 수석/무사/아슬아슬 졸업 | 4학년 누적 지식 ≥ 2200 | 환생 (명성 +1) | 대학원 진학 |
 | 대학원 n년차 수료 | 대학원에서 체력·멘탈 0 | 환생 (명성 +1) | - |
 
 ### 60초 주기
@@ -99,15 +119,15 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 
 ## 3. 성장
 
-- 연구비 += floor(지식 증가량 × (1 + 0.1 × 명성) × (1 + 1.0 × 대학원 년차)). 지식 감소 시 0. (`FAME_MONEY_BONUS` 0.1, `GRAD_MONEY_BONUS` 1.0)
+- 연구비 += floor(지식 증가량 × (1 + 0.1 × 명성) × (1 + 1.0 × 대학원 년차) × 컨디션 배수). 지식 감소 시 0. (`FAME_MONEY_BONUS` 0.1, `GRAD_MONEY_BONUS` 1.0, 컨디션 배수는 2절 디버프와 버프)
 - 명성: 졸업·수료 엔딩에서 환생하면 +1 (`FAME_STEP`).
 - record.json 저장: 판이 끝날 때마다(휴학·졸업·수료), 업그레이드를 살 때, 환생할 때.
-- 업그레이드 가격 = floor(기본가 × 2.0^레벨) (`UPGRADE_COST_GROWTH` 2.0). 전부 최대까지 합계 61,590.
+- 업그레이드 가격 = floor(기본가 × 2.0^레벨) (`UPGRADE_COST_GROWTH` 2.0). 13종 전부 최대까지 합계 92,590 (예전 10종 61,590 + 컨디션 31,000).
 
 | id | 이름 | 분류 | 최대 Lv | 기본가 | 레벨당 효과 |
 |---|---|---|---|---|---|
-| menu | 학식 메뉴 개선 | 행동 효율 | 5 | 240 | 학식 체력 +4 |
-| bed | 푹신한 침대 | 행동 효율 | 5 | 240 | 휴식 멘탈 +4 |
+| menu | 학식 메뉴 개선 | 행동 효율 | 5 | 240 | 든든함 지속 +6초 |
+| bed | 푹신한 침대 | 행동 효율 | 5 | 240 | 휴식 체력·멘탈 각각 +4 |
 | reference_book | 참고서 | 행동 효율 | 5 | 360 | 공부 지식 +2 |
 | time_management | 시간 관리 | 자동화 속도 | 5 | 450 | 간격 -0.2초 (2.0 → 1.0) |
 | health_care | 건강 관리 | 자동화 속도 | 5 | 450 | 자연 감소 -10% |
@@ -116,18 +136,22 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 | gym | 헬스장 | 시설 | 1 | 900 | 공부 체력 소모 -2, 배경 |
 | lucky_charm | 행운 부적 | 이벤트 | 3 | 600 | 이벤트 확률 +5%p (25% → 40%) |
 | scholarship | 장학금 제도 | 이벤트 | 1 | 750 | 자동형 "장학금을 받았다" 추가 |
+| health_max | 체력 증진 | 컨디션 | 5 | 300 | 체력 최대 +10 |
+| mental_max | 멘탈 관리 | 컨디션 | 5 | 300 | 멘탈 최대 +10 |
+| self_care | 자기 관리 | 컨디션 | 5 | 400 | 1초마다 체력·멘탈 +0.2 (늘, 휴식 중에도) |
 
 - 예: 학식 메뉴 240/480/960/1920/3840, 행운 부적 600/1200/2400.
 - 시간 관리 구매 시 auto_timer = min(auto_timer, 새 간격).
 - 장학금 이벤트: 연구비 +30 × 학년(대학원 4). 명성·대학원 배수 없음.
-- 업그레이드 패널: U 또는 [업그레이드 U], 게임·엔딩 화면에서만. ↑↓(순환)·Enter, 항목 클릭 = 고르고 바로 사기. 게임 화면에서 패널이 열려도 시간은 흐른다.
+- 업그레이드 패널: U 또는 [업그레이드 U], 게임·엔딩 화면에서만. ↑↓(순환)·Enter, 항목 클릭 = 고르고 바로 사기. 게임 화면에서 패널이 열려도 시간은 흐른다. 13줄: `UPGRADE_ROW_TOP` 166, `UPGRADE_ROW_HEIGHT` 20, `UPGRADE_ROW_STEP` 21 (마지막 줄 아래 끝 438), 줄은 외곽선 없는 띠.
+- record.json: 모르는 id는 무시, 없는 id(예전 10종 파일의 새 3종)는 0.
 
 ### 환생과 대학원
 
-- 대학원 n년차 → n+1 목표 누적: 1100 + Σ_{k=1..n}(400 + 100(k−1)) → 1500, 2000, 2600, 3300, 4100 … (경계 1499/1500, 1999/2000, 2599/2600).
+- 대학원 n년차 → n+1 목표 누적: 2200 + Σ_{k=1..n}(800 + 200(k−1)) → 3000, 4000, 5200, 6600, 8200 … (경계 2999/3000, 3999/4000, 5199/5200). (`GRAD_GOAL_FIRST_STEP` 800, `GRAD_GOAL_STEP_GROWTH` 200)
 - 대학원 자연 감소 배수 = 1 + 0.5n + 1.0c (`GRAD_DECAY_BONUS` 0.5, `GRAD_CYCLE_DECAY_BONUS` 1.0). c = floor((elapsed − grad_entry_time) / 60). 진학 직후 ×1.5, 60초 뒤 ×2.5, 120초 뒤 ×3.5 (1년차 기준). 건강 관리 배수와 곱한다. 학부는 1.
 - 대학원: 선택지형 없음(자동형만), get_grade() = 4, 장소 연구실, 정보바 "대학원 n년차", 목표 "다음 년차까지 지식 n".
-- 진학 시 게이지·지식·특성·외형·플래그·last_event_time·elapsed 유지, auto_timer = get_auto_interval()로 다시 채움, 바로 check_promotion.
+- 진학 시 게이지·지식·특성·외형·플래그·last_event_time·elapsed·full_until 유지, auto_timer = get_auto_interval()로 다시 채움, 바로 check_promotion.
 
 ## 4. 랜덤 이벤트와 성장 요소
 
@@ -156,12 +180,12 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 
 ### 특성 보정
 
-| 특성 | 학식 체력 | 휴식 멘탈 | 휴식 체력 | 공부 체력 |
+| 특성 | 학식 | 휴식 멘탈 | 휴식 체력 | 공부 체력 |
 |---|---|---|---|---|
-| 없음 | +20 | +20 | 0 | -5 |
-| 체력 단련 | +25 | | | |
+| 없음 | 든든함 30초 | +20 | +15 | -5 |
+| 체력 단련 | 든든함 40초 (`BONUS_FULL_TIME` +10) | | | |
 | 음악 힐링 | | +25 | | |
-| 연애 중 | | | +5 | |
+| 연애 중 | | | +20 | |
 | 카페인 | | | | -3 |
 
 - 이벤트 목록·외형 5종(기타·헬스 머리띠·커피잔·하트 머리핀·선글라스)·연계 3종(MT 참석·밴드부·연애 중)은 기획서 4절 표 그대로 config에 있다.
@@ -192,7 +216,8 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 | 대화창 | 점무늬 멈춤 표시, 대화창(300, 132, 472, 264), "[1] …"/"[2] …" + 효과 미리보기 |
 | 엔딩 | 엔딩 이름, 학사모(졸업·수료)/비구름(휴학), "졸업까지 m분 s초"(졸업), "누적 지식 n", "졸업 보너스: 연구비 +n"(졸업), 안내("R을 눌러 다시 하기" / "R: 환생 (명성 +1)" + "C: 대학원 진학"), [업그레이드 U]. 패널을 열면 가운데 패널을 오른쪽(284~788)으로 옮김 |
 
-- 게이지 막대 30 미만 빨강(실제 값 기준), 표정: 멘탈 ≥ 60 웃음, 30~59 일자, < 30 울음. 다크서클 체력 < 30.
+- 게이지 막대 30 미만 빨강(실제 값 기준), 막대 전체 = 지금 최댓값, 라벨 줄 오른쪽 "지금/최대"(`GAUGE_VALUE_TEXT`, 반올림). 표정: 멘탈 ≥ 60 웃음, 30~59 일자, < 30 울음. 다크서클 체력 < 30.
+- 상태 패널 위쪽 상태 배지(피곤·우울·든든함·컨디션 좋음, 글자 배지 2열, y 128~). 아이콘은 다음 단위.
 - 목표 글자: 1~3학년 "다음 학년까지 지식 n", 4학년 "졸업까지 지식 n", 대학원 "다음 년차까지 지식 n".
 - 배경 4겹: 장소(학년: lawn/lecture/library/ceremony, 대학원 lab) → 하늘(계절·시간대: `get_season()`, `get_time_of_day()`, `get_sky_color()`) → 행동 소품(`last_action`) → 시설(산 시설). 바깥 장소는 저녁·밤 그늘 단계, 연구실 제외.
 
@@ -218,11 +243,13 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 - [ ] 9. 휴학 엔딩 / 10. 화면 전환(Enter / R / C / ESC)
 - [ ] 11. 시험 기간 / 12. 졸업 엔딩 3종(걸린 시간) / 13. record.json
 - [ ] 14. 도트·E1~E6 / 15. 랜덤 이벤트 / 16. 특성·외형·연계 / 17. 연구비·명성
-- [ ] 18. 업그레이드 10종 / 19. 환생 / 20. 대학원 / 21. 배경 4겹 / 22. 목표 막대·경과 시간
+- [ ] 18. 업그레이드 13종 / 19. 환생 / 20. 대학원 / 21. 배경 4겹 / 22. 목표 막대·경과 시간
+- [ ] 23. 디버프와 버프(피곤·우울·든든함·컨디션 좋음, 상태 배지)
 
 ## 8. 개발 과정 (루프 단위)
 
 - 지난 단위: 원래 1~7일차, 연출 A·B, 이벤트 C~E, 방치형 G~K, 시간 제한 제거 L, 밸런스 확정 A안. 모두 main에 합쳐졌다(기획서 8절 표).
+- M단위(`feat/idle-depth`): 회복은 휴식에서만·든든함·새 자동 행동 규칙·최댓값·디버프·방침 수치·업그레이드 13종·진급 기준 2배. 화면 다듬기(툴팁·아이콘)는 다음 단위 N.
 - 새 작업도 같은 방식: 단위 하나 → 개발 → 검수 → (불통과면 수정 → 재검수), 같은 단위 3회 불통과면 멈춘다.
 
 ## 9. 구조와 기록
@@ -245,13 +272,13 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 
 - 모듈 함수: `student.judge_ending`, `game.format_time`, `button.sprite_size`·`draw_pixel_box`·`draw_cut_rect`·`render_text`
 - Game 상태: `state`, `running`, `student`, `policy`, `auto_timer`, `last_action`, `ending`, `current_event`, `dialog_time`, `money`, `fame`, `upgrades`, `best_record`, `record_path`, `rng`, `graduation_bonus`, `grad_year`(property), `upgrade_panel_open`, `upgrade_cursor`, `notice`, `promotion_notice`, `particles`, `popups`, `press_timers`, `jump_timer`, `gauge_lag`, `buttons`, `choice_buttons`, `upgrade_button`, `ending_upgrade_button`, `mouse_pos`, `blink_time`, `screen`, `scenery_key`
-- Game 메서드: `handle_event`, `update`, `draw`, `start_new_game`, `reset_round`, `set_policy`, `choose_auto_action`, `do_action`, `get_auto_interval`, `get_auto_progress`, `get_event_chance`, `check_promotion`, `check_ending`, `end_game`, `roll_event`, `pick_event`, `start_event`, `get_event_candidates`, `choose_option`, `is_dialog_ready`, `earn_knowledge_money`, `get_money_multiplier`, `get_grad_money_multiplier`, `get_upgrade_cost`, `can_buy_upgrade`, `buy_upgrade`, `is_upgrade_maxed`, `get_upgrade_row_rect`, `reincarnate`, `enter_grad_school`, `can_reincarnate`, `is_graduation_ending`, `is_grad_school_ending`, `load_record`, `save_record`, `load_best_record`, `save_best_record`, `update_best_record`, `get_season`, `get_time_of_day`, `get_sky_color`, `get_place`, `get_owned_facilities`, `get_scene_shade`, `get_goal_text`, `get_ending_layout`, `get_shown_gauge`, `get_gauge_values`, `get_student_lift`, `is_blink_on`, `clear_effects`
-- Student 상태: `health`, `mental`, `knowledge`, `elapsed`, `decay_timer`, `grade`, `grad_year`, `graduation_time`(졸업 순간 elapsed, 없으면 None), `grad_entry_time`(대학원 진입 elapsed, 학부면 None), `traits`, `looks`, `flags`, `seen_events`, `event_counts`, `last_event_time`, `upgrades`
-- Student 메서드: `update(dt)`, `feed`, `rest`, `study(knowledge_ratio, cost_ratio)`, `promote`, `get_grade`, `get_next_goal`, `get_goal_start`, `get_goal_progress`, `get_knowledge_to_goal`, `has_graduated`, `get_cycle_index`, `get_cycle_time`, `is_exam_period`, `is_in_grad_school`, `enter_grad_school`, `get_grad_goal(year)`, `get_grad_cycles`, `get_grad_decay_ratio`, `get_health_decay`, `get_mental_decay`, `get_study_knowledge`, `get_upgrade_bonus`, `get_trait_bonus`, `is_dropped_out`, `get_ending`, `get_graduation_ending`, `get_radius`, `get_mouth`, `has_dark_circles`, `has_glasses`, `get_cycle_event_count`, `count_event`, `is_event_gap_passed`, `can_have_event`, `needs_guaranteed_event`, `can_see_event`, `apply_effects`, `add_trait`, `add_look`, `add_flag`, `change_health`, `change_mental`, `change_knowledge`
+- Game 메서드: `handle_event`, `update`, `draw`, `start_new_game`, `reset_round`, `set_policy`, `choose_auto_action`, `do_action`, `get_auto_interval`, `get_auto_progress`, `get_event_chance`, `check_promotion`, `check_ending`, `end_game`, `roll_event`, `pick_event`, `start_event`, `get_event_candidates`, `choose_option`, `is_dialog_ready`, `earn_knowledge_money`, `get_money_multiplier`, `get_fame_multiplier`, `get_condition_money_ratio`, `is_good_condition`, `get_status_names`, `get_grad_money_multiplier`, `get_upgrade_cost`, `can_buy_upgrade`, `buy_upgrade`, `is_upgrade_maxed`, `get_upgrade_row_rect`, `reincarnate`, `enter_grad_school`, `can_reincarnate`, `is_graduation_ending`, `is_grad_school_ending`, `load_record`, `save_record`, `load_best_record`, `save_best_record`, `update_best_record`, `get_season`, `get_time_of_day`, `get_sky_color`, `get_place`, `get_owned_facilities`, `get_scene_shade`, `get_goal_text`, `get_ending_layout`, `get_shown_gauge`, `get_gauge_values`, `get_student_lift`, `is_blink_on`, `clear_effects`
+- Student 상태: `health`, `mental`, `knowledge`, `elapsed`, `decay_timer`, `grade`, `grad_year`, `graduation_time`(졸업 순간 elapsed, 없으면 None), `grad_entry_time`(대학원 진입 elapsed, 학부면 None), `traits`, `looks`, `flags`, `seen_events`, `event_counts`, `last_event_time`, `upgrades`, `full_until`(든든함 끝 elapsed, 없으면 None), `max_health`·`max_mental`(property)
+- Student 메서드: `update(dt)`, `feed`, `rest(recovery_ratio)`, `study(knowledge_ratio, cost_ratio)`, `is_tired`, `is_depressed`, `has_debuff(name)`, `is_full_buff_active`, `get_full_time_left`, `get_full_duration`, `get_statuses`, `get_self_care_regen`, `decay_once`, `promote`, `get_grade`, `get_next_goal`, `get_goal_start`, `get_goal_progress`, `get_knowledge_to_goal`, `has_graduated`, `get_cycle_index`, `get_cycle_time`, `is_exam_period`, `is_in_grad_school`, `enter_grad_school`, `get_grad_goal(year)`, `get_grad_cycles`, `get_grad_decay_ratio`, `get_health_decay`, `get_mental_decay`, `get_study_knowledge`, `get_upgrade_bonus`, `get_trait_bonus`, `is_dropped_out`, `get_ending`, `get_graduation_ending`, `get_radius`, `get_mouth`, `has_dark_circles`, `has_glasses`, `get_cycle_event_count`, `count_event`, `is_event_gap_passed`, `can_have_event`, `needs_guaranteed_event`, `can_see_event`, `apply_effects`, `add_trait`, `add_look`, `add_flag`, `change_health`, `change_mental`, `change_knowledge`
 - Button: `rect`, `text`, `is_clicked(pos)`, `draw(...)`
 
 ## 10. 밸런스
 
-- 확정(2026-11-23, A안): 진급 200/450/750, 졸업 1100, 수석 ≤ 200초, 무사 ≤ 360초, 가격 ×2.0(합계 61,590), 대학원 감소 1 + 0.5n + 1.0c, 대학원 연구비 1 + 1.0n.
-- 업그레이드 없는 첫 판(시드 30, 선택지 첫 번째): 공부 위주 무사 29·휴학 1(평균 276초), 균형 무사 30(317초), 휴식 위주 무사 15·아슬아슬 15(364초). 수석 0.
+- 지금(M단위, 2026-11-23): 진급 400/900/1500, 졸업 2200, 수석 ≤ 400초·무사 ≤ 720초(**임시**), 가격 ×2.0(13종 합계 92,590), 대학원 감소 1 + 0.5n + 1.0c, 대학원 연구비 1 + 1.0n. 시간 기준과 M단위 수치는 밸런스 단위에서 다시 정한다.
+- (예전 A안 시뮬레이션 수치는 M단위 이전 규칙 기준이라 지금과 맞지 않는다. 기획서 10절 참고.)
 - **확정 해석 (밸런스 변경):** 수치를 바꿀 이유가 생기면 바로 바꾸지 않는다. 근거(시뮬레이션 결과)와 조정안을 리드에게 보고하고, 사용자 승인 후 config.py와 기획서를 함께 바꾼다.

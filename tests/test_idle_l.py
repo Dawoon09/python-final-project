@@ -35,6 +35,9 @@ FRAME = 1 / 60
 P = config.PIXEL_SIZE
 FEED, REST, STUDY = config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY
 TOP, NORMAL, BARELY = config.ENDING_TOP, config.ENDING_NORMAL, config.ENDING_BARELY
+# (M단위) 졸업 등급 시간 기준은 임시 값(400/720)이라 경계 테스트는 config 상수로 쓴다
+TOP_S, NORMAL_S = config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS
+GOAL = config.GRADUATION_KNOWLEDGE   # (M단위) 졸업 지식 2200
 STAGE_INNER = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH,
                           config.PANEL_HEIGHT).inflate(-2 * P, -2 * P)
 GOAL_BOX = pygame.Rect(config.GOAL_BOX_X, config.GOAL_BOX_Y, config.GOAL_BOX_WIDTH,
@@ -122,12 +125,13 @@ def bbox(points):
 # ======================= 1. config 수치 (기획서 11절 표) =======================
 
 def test_l_constants_match_spec():
-    assert config.GRADE_GOALS == [200, 450, 750]
-    assert config.GRADUATION_KNOWLEDGE == 1100
-    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (200, 360)   # 11절 A안
+    # (M단위) 진급 기준 2배: 200/450/750/1100 -> 400/900/1500/2200, 시간 기준은 임시 값이라 순서만
+    assert config.GRADE_GOALS == [400, 900, 1500]
+    assert config.GRADUATION_KNOWLEDGE == 2200
+    assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
     assert config.CYCLE_SECONDS == 60 and config.EXAM_SECONDS == 15
     assert config.CYCLE_INDEX_START == 1
-    assert (config.GRAD_GOAL_FIRST_STEP, config.GRAD_GOAL_STEP_GROWTH) == (400, 100)
+    assert (config.GRAD_GOAL_FIRST_STEP, config.GRAD_GOAL_STEP_GROWTH) == (800, 200)   # M단위 2배
     assert config.GRADUATION_BONUS == {TOP: 200, NORMAL: 100, BARELY: 50}
     # 이벤트 보장 구간 4 x 11.25 = 주기 안 시험 기간 시작(45초), 최소 간격 8초 그대로
     assert config.EVENT_GUARANTEE_INTERVAL * config.EVENT_MIN_PER_GRADE == \
@@ -217,8 +221,9 @@ def test_screen_surface_has_no_alpha(g):
 # ======================= 2. 진급 경계와 여러 번 진급 =======================
 
 @pytest.mark.parametrize("knowledge, grade, goal", [
-    (0, 1, 200), (199, 1, 200), (200, 2, 450), (449, 2, 450), (450, 3, 750), (749, 3, 750),
-    (750, 4, 1100), (1099, 4, 1100),
+    # (M단위) 진급 기준 2배
+    (0, 1, 400), (399, 1, 400), (400, 2, 900), (899, 2, 900), (900, 3, 1500), (1499, 3, 1500),
+    (1500, 4, 2200), (2199, 4, 2200),
 ])
 def test_milestone_boundaries(knowledge, grade, goal):
     s = Student()
@@ -229,7 +234,7 @@ def test_milestone_boundaries(knowledge, grade, goal):
     assert not s.has_graduated() and s.get_ending() is None
 
 
-@pytest.mark.parametrize("knowledge", [1100, 1101, 5000])
+@pytest.mark.parametrize("knowledge", [2200, 2201, 10000])   # (M단위) 졸업 지식 2200
 def test_graduation_boundary_1100(knowledge):
     s = Student()
     s.elapsed = 123.0
@@ -243,7 +248,7 @@ def test_1099_does_not_graduate_even_after_long_time(monkeypatch):
     for name in ("HEALTH_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC_EXAM"):
         monkeypatch.setattr(config, name, 0)
     s = Student()
-    s.knowledge = 1099
+    s.knowledge = GOAL - 1               # (M단위) 2199
     s.promote()
     s.update(10000.0)
     s.promote()
@@ -251,8 +256,9 @@ def test_1099_does_not_graduate_even_after_long_time(monkeypatch):
 
 
 @pytest.mark.parametrize("start, end, count, grade", [
-    (0, 199, 0, 1), (0, 200, 1, 2), (0, 450, 2, 3), (0, 800, 3, 4), (199, 751, 3, 4),
-    (200, 449, 0, 2), (449, 450, 1, 3), (449, 1099, 2, 4),
+    # (M단위) 진급 기준 2배
+    (0, 399, 0, 1), (0, 400, 1, 2), (0, 900, 2, 3), (0, 1600, 3, 4), (399, 1501, 3, 4),
+    (400, 899, 0, 2), (899, 900, 1, 3), (899, 2199, 2, 4),
 ])
 def test_multiple_promotions_at_once(start, end, count, grade):
     s = Student()
@@ -265,7 +271,7 @@ def test_multiple_promotions_at_once(start, end, count, grade):
 
 
 def test_game_check_promotion_returns_count_and_notice(g):
-    g.student.knowledge = 800
+    g.student.knowledge = 1600
     assert g.check_promotion() == 3
     assert g.student.get_grade() == 4
     assert g.promotion_notice == {"text": "4학년 진급!", "timer": config.EVENT_NOTICE_TIME,
@@ -276,35 +282,35 @@ def test_game_check_promotion_returns_count_and_notice(g):
 def test_check_promotion_graduation_not_counted(g):
     reach_grade(g.student, 4)
     g.promotion_notice = None
-    g.student.knowledge = 1100
+    g.student.knowledge = GOAL
     assert g.check_promotion() == 0
     assert g.student.has_graduated()
     assert g.promotion_notice is None      # 졸업은 진급 알림이 아니다(엔딩 화면으로 간다)
 
 
 def test_promotion_by_study_action(g):
-    g.student.knowledge = 190
+    g.student.knowledge = 390               # (M단위) 2학년 목표 400
     assert g.do_action(STUDY)              # 0초: 평소 +10
-    assert g.student.knowledge == 200 and g.student.get_grade() == 2
+    assert g.student.knowledge == 400 and g.student.get_grade() == 2
     assert g.promotion_notice["text"] == "2학년 진급!"
 
 
 def test_promotion_by_auto_event(g, monkeypatch):
     """자동형 '교수님께 칭찬받았다'(지식 +15)로 목표를 넘으면 바로 진급."""
-    g.student.knowledge = 190
+    g.student.knowledge = 390
     g.start_event(event_by_id("professor_praise"))
-    assert g.student.knowledge == 205 and g.student.get_grade() == 2
+    assert g.student.knowledge == 405 and g.student.get_grade() == 2
     assert g.promotion_notice["text"] == "2학년 진급!"
 
 
 def test_promotion_by_choice_option(g):
     """선택지 '공부한다'(지식 +10) 결과로 목표를 넘으면 진급."""
-    g.student.knowledge = 195
+    g.student.knowledge = 395
     g.start_event(event_by_id("mt_invite"))
     g.update(config.EVENT_INPUT_DELAY)
     assert g.student.get_grade() == 1
     assert g.choose_option(config.CHOICE_SECOND)
-    assert g.student.knowledge == 205 and g.student.get_grade() == 2
+    assert g.student.knowledge == 405 and g.student.get_grade() == 2
     assert g.promotion_notice["text"] == "2학년 진급!"
 
 
@@ -312,7 +318,8 @@ def test_promotion_by_auto_action_in_update(no_events):
     """자동 행동(2초마다)으로 지식이 목표에 닿으면 그 update 안에서 진급한다."""
     game = Game()
     press(game, pygame.K_RETURN)
-    game.student.knowledge = 195
+    game.student.knowledge = 395
+    game.student.feed()                      # (M단위) 든든함이 있어야 자동 행동이 공부를 고른다
     game.update(2.0)                         # 2초 자동 행동: 균형, 체력·멘탈 78 -> 공부 +10
     assert game.last_action == STUDY
     assert game.student.get_grade() == 2
@@ -321,16 +328,16 @@ def test_promotion_by_auto_action_in_update(no_events):
 
 def test_no_demotion_after_rest(g):
     reach_grade(g.student, 2)
-    assert g.student.knowledge == 200
+    assert g.student.knowledge == 400        # (M단위) 2학년 목표 400, 3학년 900
     g.do_action(REST)                        # 지식 -2
-    assert g.student.knowledge == 198
+    assert g.student.knowledge == 398
     assert g.student.get_grade() == 2 and g.check_promotion() == 0
     assert g.student.get_goal_progress() == 0.0          # 구간 시작 아래 -> 0으로 자름
-    assert g.student.get_knowledge_to_goal() == 252
-    assert g.get_goal_text() == "다음 학년까지 지식 252"
+    assert g.student.get_knowledge_to_goal() == 502
+    assert g.get_goal_text() == "다음 학년까지 지식 502"
     for _ in range(30):
         g.do_action(REST)
-    assert g.student.knowledge == 138 and g.student.get_grade() == 2
+    assert g.student.knowledge == 338 and g.student.get_grade() == 2
     assert g.student.get_radius() == 50
 
 
@@ -344,7 +351,7 @@ def test_no_demotion_glasses_and_place_stay(g):
 def test_promote_noop_when_gauge_zero():
     for attr in ("health", "mental"):
         s = Student()
-        s.knowledge = 1200
+        s.knowledge = 2400
         setattr(s, attr, 0)
         assert s.promote() == 0
         assert s.get_grade() == 1 and not s.has_graduated()
@@ -355,19 +362,21 @@ def test_promote_noop_when_gauge_zero():
 @pytest.mark.parametrize("health, mental", [(5, 100), (100, 8), (5, 8)])
 def test_dropout_beats_graduation_on_study(g, health, mental):
     reach_grade(g.student, 4)
-    g.student.knowledge = 1095
+    g.student.knowledge = GOAL - 5
     g.student.health, g.student.mental = health, mental
     g.do_action(STUDY)
-    assert g.student.knowledge == 1105
+    # (M단위) 체력 5는 피곤(30 미만): 공부 지식 x0.7 = +7, 아니면 +10. 어느 쪽이든 졸업 목표를 넘는다
+    gain = 7 if health < config.LOW_GAUGE_LIMIT else 10
+    assert g.student.knowledge == GOAL - 5 + gain
     assert g.ending == config.ENDING_LEAVE
     assert g.student.graduation_time is None
     assert g.graduation_bonus == 0
 
 
 def test_dropout_beats_graduation_on_auto_event(g):
-    """자동형 '감기 기운'(체력 -10)으로 0이 되는 판정에서 지식이 1100 이상이어도 휴학."""
+    """자동형 '감기 기운'(체력 -10)으로 0이 되는 판정에서 지식이 졸업 지식 이상이어도 휴학."""
     reach_grade(g.student, 4)
-    g.student.knowledge = 1100
+    g.student.knowledge = GOAL
     g.student.health = 10
     g.start_event(event_by_id("cold"))
     assert g.ending == config.ENDING_LEAVE
@@ -376,29 +385,31 @@ def test_dropout_beats_graduation_on_auto_event(g):
 def test_dropout_beats_graduation_on_choice(g):
     """선택 '대기업 지원'(지식 +20, 멘탈 -15)으로 1100을 넘으면서 멘탈 0 -> 휴학."""
     reach_grade(g.student, 4)
-    g.student.knowledge = 1090
+    g.student.knowledge = GOAL - 10
     g.student.mental = 15
     g.start_event(event_by_id("job_fair"))
     g.update(config.EVENT_INPUT_DELAY)
     assert g.choose_option(config.CHOICE_FIRST)
-    assert g.student.knowledge == 1110
+    assert g.student.knowledge == GOAL + 10
     assert g.ending == config.ENDING_LEAVE
 
 
 # ======================= 4. 졸업 시각과 등급 =======================
 
 @pytest.mark.parametrize("seconds, ending", [
-    (0.0, TOP), (200, TOP), (200.0000000001, TOP), (200.0001, NORMAL), (240, NORMAL), (300, NORMAL),
-    (360, NORMAL), (360.0001, BARELY), (3600, BARELY),
+    # (M단위) 경계는 config 상수 기준(지금 400/720초, 임시 값)
+    (0.0, TOP), (TOP_S, TOP), (TOP_S + 0.0000000001, TOP), (TOP_S + 0.0001, NORMAL),
+    (TOP_S + 40, NORMAL), ((TOP_S + NORMAL_S) / 2, NORMAL),
+    (NORMAL_S, NORMAL), (NORMAL_S + 0.0001, BARELY), (NORMAL_S * 10, BARELY),
 ])
 def test_judge_ending_time_boundaries(seconds, ending):
     assert judge_ending(seconds) == ending
 
 
-@pytest.mark.parametrize("frames, ending", [(200 * 60, TOP), (200 * 60 + 1, NORMAL),
-                                            (360 * 60, NORMAL), (360 * 60 + 1, BARELY)])
+@pytest.mark.parametrize("frames, ending", [(TOP_S * 60, TOP), (TOP_S * 60 + 1, NORMAL),
+                                            (NORMAL_S * 60, NORMAL), (NORMAL_S * 60 + 1, BARELY)])
 def test_graduation_time_after_60fps_frames(g, frames, ending):
-    """1/60초 프레임을 쌓은 소수 오차(199.9999…)에서도 경계 200/360초가 맞게 판정된다."""
+    """1/60초 프레임을 쌓은 소수 오차(399.9999…)에서도 경계(config 수석·무사 기준 초)가 맞게 판정된다."""
     for _ in range(frames - 1):
         g.student.health = g.student.mental = 100
         g.update(FRAME)
@@ -410,15 +421,16 @@ def test_graduation_time_after_60fps_frames(g, frames, ending):
     assert g.ending == ending
 
 
-@pytest.mark.parametrize("seconds, ending", [(200.0, TOP), (240.0, NORMAL), (300.0, NORMAL),
-                                             (400.0, BARELY)])
+@pytest.mark.parametrize("seconds, ending", [(float(TOP_S), TOP), (TOP_S + 40.0, NORMAL),
+                                             ((TOP_S + NORMAL_S) / 2, NORMAL),
+                                             (NORMAL_S + 40.0, BARELY)])
 @pytest.mark.parametrize("fame", [0, 2])
 def test_bonus_by_time_grade(g, seconds, ending, fame):
     g.fame = fame
     g.money = 5
     reach_grade(g.student, 4)
     g.student.elapsed = seconds
-    g.student.knowledge = 1095
+    g.student.knowledge = GOAL - 5
     g.do_action(STUDY)
     assert g.ending == ending
     assert g.student.graduation_time == seconds
@@ -431,27 +443,28 @@ def test_graduation_time_excludes_dialog_pause(g):
     """대화창이 30초 떠 있어도 게임 시간은 멈추므로 졸업 시각에 들어가지 않는다.
 
     (11절 A안) 수석 200초에 맞춰 199초에서 시작(30초를 셌다면 229초로 무사가 된다).
+    (M단위) 수석 기준 1초 전(TOP_S - 1)에서 시작한다.
     """
     reach_grade(g.student, 4)
-    g.student.knowledge = 1090
-    g.student.elapsed = 199.0
+    g.student.knowledge = GOAL - 10
+    g.student.elapsed = TOP_S - 1.0
     g.student.health = g.student.mental = 100
     g.start_event(event_by_id("job_fair"))
     for _ in range(30 * 60):
         g.update(FRAME)
-    assert g.student.elapsed == 199.0
-    assert g.choose_option(config.CHOICE_SECOND)          # 대학원 상담: 지식 +10 -> 1100
-    assert g.ending == TOP and g.student.graduation_time == 199.0
+    assert g.student.elapsed == TOP_S - 1.0
+    assert g.choose_option(config.CHOICE_SECOND)          # 대학원 상담: 지식 +10 -> 졸업 지식
+    assert g.ending == TOP and g.student.graduation_time == TOP_S - 1.0
 
 
 
 def test_best_record_is_cumulative_knowledge(g):
     g.best_record = 0
     reach_grade(g.student, 4)
-    g.student.knowledge = 1234
+    g.student.knowledge = GOAL + 134
     g.update(FRAME)
     assert g.state == config.STATE_ENDING
-    assert g.best_record == 1234
+    assert g.best_record == GOAL + 134
 
 
 # ======================= 5. 60초 주기 =======================
@@ -641,7 +654,7 @@ def test_choice_events_use_current_grade(g, grade, elapsed, expected):
 def test_choice_candidates_follow_promotion_mid_cycle(g):
     g.student.elapsed = 20.0
     assert {e[config.EVENT_ID] for e in g.get_event_candidates()[0]} == {"mt_invite", "club_fair"}
-    g.student.knowledge = 450
+    g.student.knowledge = 900                # (M단위) 3학년 목표 900
     g.check_promotion()
     assert {e[config.EVENT_ID] for e in g.get_event_candidates()[0]} == \
         {"confession", "exchange_student"}
@@ -658,8 +671,9 @@ def test_scholarship_uses_current_grade(g):
 
 # ======================= 7. 대학원 =======================
 
-@pytest.mark.parametrize("year, goal", [(0, 1100), (1, 1500), (2, 2000), (3, 2600), (4, 3300),
-                                        (5, 4100)])
+# (M단위) 2배: 2200 + Σ(800 + 200(k-1))
+@pytest.mark.parametrize("year, goal", [(0, 2200), (1, 3000), (2, 4000), (3, 5200), (4, 6600),
+                                        (5, 8200)])
 def test_grad_goals(year, goal):
     assert Student().get_grad_goal(year) == goal
 
@@ -676,8 +690,9 @@ def _graduate_and_enter(game, knowledge, seconds=250.0):
 
 
 @pytest.mark.parametrize("knowledge, year, notice", [
-    (1100, 1, None), (1499, 1, None), (1500, 2, "대학원 2년차!"), (1999, 2, "대학원 2년차!"),
-    (2000, 3, "대학원 3년차!"), (2600, 4, "대학원 4년차!"),
+    # (M단위) 년차 목표 2배
+    (2200, 1, None), (2999, 1, None), (3000, 2, "대학원 2년차!"), (3999, 2, "대학원 2년차!"),
+    (4000, 3, "대학원 3년차!"), (5200, 4, "대학원 4년차!"),
 ])
 def test_grad_entry_immediate_promotion(g, knowledge, year, notice):
     _graduate_and_enter(g, knowledge)
@@ -691,8 +706,8 @@ def test_grad_entry_immediate_promotion(g, knowledge, year, notice):
 
 
 @pytest.mark.parametrize("start, end, count, year", [
-    (1100, 1499, 0, 1), (1100, 1500, 1, 2), (1100, 2000, 2, 3), (1500, 2599, 1, 3),
-    (2000, 3300, 2, 5),
+    (2200, 2999, 0, 1), (2200, 3000, 1, 2), (2200, 4000, 2, 3), (3000, 5199, 1, 3),
+    (4000, 6600, 2, 5),
 ])
 def test_grad_year_promotions(g, start, end, count, year):
     _graduate_and_enter(g, start)
@@ -704,26 +719,26 @@ def test_grad_year_promotions(g, start, end, count, year):
 
 
 def test_grad_goal_text_and_progress(g, monkeypatch):
-    _graduate_and_enter(g, 1300)
-    assert g.get_goal_text() == "다음 년차까지 지식 200"
-    assert g.student.get_goal_start() == 1100
+    _graduate_and_enter(g, 2600)             # (M단위) 2200 ~ 3000 구간의 절반
+    assert g.get_goal_text() == "다음 년차까지 지식 400"
+    assert g.student.get_goal_start() == 2200
     assert g.student.get_goal_progress() == pytest.approx(0.5)
     texts = texts_of(g, monkeypatch, "draw_info_bar")
-    assert texts[:2] == ["대학원 1년차", "다음 년차까지 지식 200"]
+    assert texts[:2] == ["대학원 1년차", "다음 년차까지 지식 400"]
 
 
 def test_grad_time_alone_never_advances_year(g, monkeypatch):
     monkeypatch.setattr(config, "HEALTH_DECAY_PER_SEC", 0)
     monkeypatch.setattr(config, "MENTAL_DECAY_PER_SEC", 0)
     monkeypatch.setattr(config, "MENTAL_DECAY_PER_SEC_EXAM", 0)
-    _graduate_and_enter(g, 1100)
+    _graduate_and_enter(g, GOAL)
     g.update(600.0)
     assert g.grad_year == 1 and g.state == config.STATE_PLAYING
     assert g.student.elapsed == pytest.approx(850.0)
 
 
 def test_grad_events_counted_by_cycle_after_entry(g, monkeypatch):
-    _graduate_and_enter(g, 1100, seconds=250.0)       # 5번 주기 10초
+    _graduate_and_enter(g, GOAL, seconds=250.0)       # 5번 주기 10초
     monkeypatch.setattr(config, "EVENT_MAX_PER_GRADE", 5)
     monkeypatch.setattr(config, "EVENT_CHANCE", 1.0)
     g.student.last_event_time = None
@@ -734,9 +749,10 @@ def test_grad_events_counted_by_cycle_after_entry(g, monkeypatch):
 # ======================= 8. 화면: 정보바·목표 막대·경과 시간 =======================
 
 @pytest.mark.parametrize("knowledge, grade_text, goal_text", [
-    (0, "1학년", "다음 학년까지 지식 200"), (199, "1학년", "다음 학년까지 지식 1"),
-    (200, "2학년", "다음 학년까지 지식 250"), (749, "3학년", "다음 학년까지 지식 1"),
-    (750, "4학년", "졸업까지 지식 350"), (1099, "4학년", "졸업까지 지식 1"),
+    # (M단위) 진급 기준 2배
+    (0, "1학년", "다음 학년까지 지식 400"), (399, "1학년", "다음 학년까지 지식 1"),
+    (400, "2학년", "다음 학년까지 지식 500"), (1499, "3학년", "다음 학년까지 지식 1"),
+    (1500, "4학년", "졸업까지 지식 700"), (2199, "4학년", "졸업까지 지식 1"),
 ])
 def test_info_bar_texts(g, monkeypatch, knowledge, grade_text, goal_text):
     g.student.knowledge = knowledge
@@ -758,10 +774,11 @@ def _info_rects(font, grade_text, goal_text, money, knowledge):
 
 
 @pytest.mark.parametrize("grade_text, goal_text, money, knowledge", [
-    ("4학년", "다음 학년까지 지식 200", 45990, 1099),
-    ("4학년", "졸업까지 지식 1100", 99999, 1099),
-    ("대학원 12년차", "다음 년차까지 지식 1500", 99999, 99999),
-    ("대학원 99년차", "다음 년차까지 지식 10200", 99999, 99999),
+    # (M단위) 진급·년차 목표 2배, 업그레이드 합계 92,590
+    ("4학년", "다음 학년까지 지식 400", 92590, 2199),
+    ("4학년", "졸업까지 지식 2200", 99999, 2199),
+    ("대학원 12년차", "다음 년차까지 지식 3000", 99999, 99999),
+    ("대학원 99년차", "다음 년차까지 지식 20400", 99999, 99999),
 ])
 def test_info_bar_texts_fit_and_do_not_overlap(g, grade_text, goal_text, money, knowledge):
     """정보바 4개 글자가 상자 안쪽에 들어가고 서로 겹치지 않는다(현실적인 큰 값: 연구비 5자리,
@@ -800,13 +817,13 @@ def test_goal_bar_fill_follows_progress(g):
     g.student.elapsed = 5.0                           # 시험 기간 아님
     g.student.knowledge = 0
     assert _yellow_span(g)[0] == 0
-    g.student.knowledge = 100                         # 0~200 구간의 절반
+    g.student.knowledge = 200                         # (M단위) 0~400 구간의 절반
     half, left_half = _yellow_span(g)
-    g.student.knowledge = 199
+    g.student.knowledge = 399
     almost, _ = _yellow_span(g)
-    reach_grade(g.student, 2)                         # 200: 새 구간(200~450)의 0
+    reach_grade(g.student, 2)                         # 400: 새 구간(400~900)의 0
     assert _yellow_span(g)[0] == 0
-    g.student.knowledge = 449
+    g.student.knowledge = 899
     full_ish, left_full = _yellow_span(g)
     assert half > 0 and half % P == 0 and almost % P == 0
     assert abs(almost - 2 * half) <= 2 * P
@@ -815,10 +832,10 @@ def test_goal_bar_fill_follows_progress(g):
 
 
 def test_goal_bar_full_when_ratio_one(g):
-    g.student.knowledge = 199
+    g.student.knowledge = 399
     almost, _ = _yellow_span(g)
     g.student.grade = 1
-    g.student.knowledge = 200                         # 진급 판정 전: 진행률 1
+    g.student.knowledge = 400                         # 진급 판정 전: 진행률 1 (M단위 목표 400)
     assert g.student.get_goal_progress() == 1.0
     full, _ = _yellow_span(g)
     assert full >= almost and full % P == 0
@@ -870,7 +887,7 @@ def test_format_time_function():
 # ======================= 9. 진급 알림 =======================
 
 def test_promotion_notice_text_timer_and_expiry(g):
-    g.student.knowledge = 450
+    g.student.knowledge = 900                # (M단위) 3학년 목표 900
     g.check_promotion()
     assert g.promotion_notice["text"] == "3학년 진급!"
     g.update(config.EVENT_NOTICE_TIME - 0.1)
@@ -880,7 +897,7 @@ def test_promotion_notice_text_timer_and_expiry(g):
 
 
 def test_promotion_notice_position_top_right_of_stage(g, monkeypatch):
-    g.student.knowledge = 200
+    g.student.knowledge = 400                # (M단위) 2학년 목표 400
     g.check_promotion()
     g.update(config.EVENT_NOTICE_SLIDE_TIME + 0.05)   # 내려오는 연출이 끝난 자리
     monkeypatch.setattr(g, "get_student_lift", lambda: 0)
@@ -901,9 +918,9 @@ def test_promotion_notice_position_top_right_of_stage(g, monkeypatch):
 def test_promotion_notice_does_not_overlap_event_notice(g, monkeypatch, event_id):
     """자동형 알림(왼쪽 위)과 진급 알림(오른쪽 위)이 같이 떠도 겹치지 않는다."""
     event = event_by_id(event_id)
-    g.student.knowledge = 190
+    g.student.knowledge = 390
     g.start_event(event)
-    g.student.knowledge = 800
+    g.student.knowledge = 1600
     g.check_promotion()
     g.update(config.EVENT_NOTICE_SLIDE_TIME + 0.05)
     monkeypatch.setattr(g, "get_student_lift", lambda: 0)
@@ -915,7 +932,7 @@ def test_promotion_notice_does_not_overlap_event_notice(g, monkeypatch, event_id
 
 
 def test_promotion_notice_cleared_on_new_game_and_ending(g):
-    g.student.knowledge = 200
+    g.student.knowledge = 400                # (M단위) 2학년 목표 400
     g.check_promotion()
     g.end_game(config.ENDING_LEAVE)
     assert g.promotion_notice is None

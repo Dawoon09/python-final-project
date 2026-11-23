@@ -121,9 +121,12 @@ def set_health(value):
 @pytest.mark.parametrize("seconds, knowledge, ending", [
     # E단위 700/450, K단위 1000/750 (지식) -> L단위: 걸린 시간 240/360초 (기획서 11절)
     # -> 11절 A안 200/360초. 강제 졸업 시각에 프레임 몇 개가 더해지므로 수석 사례는 150초로 둔다.
-    (150.0, config.GRADUATION_KNOWLEDGE + 20, config.ENDING_TOP),
-    (300.0, config.GRADUATION_KNOWLEDGE, config.ENDING_NORMAL),
-    (400.0, config.GRADUATION_KNOWLEDGE + 120, config.ENDING_BARELY),
+    # (M단위) 시간 기준은 임시 값이라 config 상수 기준으로 시각을 잡는다
+    (config.TOP_GRADUATE_SECONDS - 50.0, config.GRADUATION_KNOWLEDGE + 20, config.ENDING_TOP),
+    ((config.TOP_GRADUATE_SECONDS + config.NORMAL_GRADUATE_SECONDS) / 2,
+     config.GRADUATION_KNOWLEDGE, config.ENDING_NORMAL),
+    (config.NORMAL_GRADUATE_SECONDS + 40.0, config.GRADUATION_KNOWLEDGE + 120,
+     config.ENDING_BARELY),
 ])
 def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_record_path,
                                                     seconds, knowledge, ending):
@@ -161,7 +164,8 @@ def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_recor
     assert after3["policy"] == config.POLICY_REST_FOCUS   # 3키 -> 휴식 위주
     # 쿨타임 없음: 바로 다음 프레임의 학식도 실행되고, 1키 -> 공부 위주
     after1 = by_label(script, "after_key1")
-    assert after1["health"] == after3["health"] + config.FEED_HEALTH
+    # (M단위) 학식은 게이지를 바로 바꾸지 않고 든든함만 붙인다
+    assert after1["health"] == after3["health"]
     assert after1["last_action"] == config.ACTION_FEED
     assert after1["policy"] == config.POLICY_STUDY_FOCUS
     # 강제 졸업 -> 엔딩 화면, 걸린 시간에 맞는 엔딩
@@ -208,7 +212,8 @@ def test_real_loop_leave_by_study_key_then_restart(monkeypatch, isolated_record_
     assert after3["state"] == config.STATE_ENDING
     assert after3["ending"] == config.ENDING_LEAVE
     assert after3["health"] == 0
-    assert after3["best"] == config.STUDY_KNOWLEDGE  # 휴학도 기록 저장
+    # 휴학도 기록 저장. (M단위) 체력 3은 피곤(30 미만)이라 공부 지식 x0.7
+    assert after3["best"] == round(config.STUDY_KNOWLEDGE * config.TIRED_KNOWLEDGE_RATIO)
     after_r = by_label(script, "after_r")
     assert after_r["state"] == config.STATE_PLAYING
     assert after_r["health"] == config.HEALTH_START
@@ -283,14 +288,15 @@ def test_no_numeric_literals_other_than_0_1(name):
     ("HEALTH_START", 80), ("MENTAL_START", 80), ("KNOWLEDGE_START", 0),
     ("HEALTH_DECAY_PER_SEC", 1), ("MENTAL_DECAY_PER_SEC", 1), ("MENTAL_DECAY_PER_SEC_EXAM", 2),
     ("DECAY_INTERVAL", 1.0), ("LOW_GAUGE_LIMIT", 30),
-    ("FEED_HEALTH", 20), ("REST_MENTAL", 20), ("REST_KNOWLEDGE", -2),
+    # M단위: FEED_HEALTH 삭제(학식 = 든든함 30초), 휴식 체력 +15
+    ("FULL_DURATION", 30), ("REST_HEALTH", 15), ("REST_MENTAL", 20), ("REST_KNOWLEDGE", -2),
     ("STUDY_HEALTH", -5), ("STUDY_MENTAL", -8),
     ("STUDY_KNOWLEDGE", 10), ("STUDY_KNOWLEDGE_EXAM", 20),  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
     ("MENTAL_SMILE_MIN", 60), ("MENTAL_FLAT_MIN", 30),
     ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
     # L단위(기획서 11절): 졸업 등급은 걸린 시간, 진급 목표 200/450/750, 졸업 지식 1100
-    ("TOP_GRADUATE_SECONDS", 200), ("NORMAL_GRADUATE_SECONDS", 360),   # 11절 A안: 수석 240 -> 200
-    ("GRADE_GOALS", [200, 450, 750]), ("GRADUATION_KNOWLEDGE", 1100),
+    # M단위: 진급 기준 2배 400/900/1500, 졸업 2200. 시간 기준(400/720)은 임시 값이라 고정하지 않는다
+    ("GRADE_GOALS", [400, 900, 1500]), ("GRADUATION_KNOWLEDGE", 2200),
     ("ENDING_LEAVE", "휴학"), ("ENDING_TOP", "수석 졸업"),
     ("ENDING_NORMAL", "무사 졸업"), ("ENDING_BARELY", "아슬아슬 졸업"),
     ("RECORD_FILENAME", "record.json"),

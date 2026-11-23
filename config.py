@@ -32,7 +32,7 @@ START_STATE = STATE_TITLE
 # ---------------------------------------------------------------
 # 3. 시간
 # ---------------------------------------------------------------
-# 기획서 11절: 판에 시간 제한이 없다. 학년은 누적 지식으로 오르고,
+# 기획서 2절: 판에 시간 제한이 없다. 학년은 누적 지식으로 오르고,
 # 60초 "주기"는 계절·낮밤·시험 기간·이벤트 횟수를 세는 보기용 시계로만 쓴다.
 CYCLE_SECONDS = 60                          # 주기 하나의 길이(초): 봄·여름·가을·겨울 한 바퀴
 CYCLE_INDEX_START = 1                       # 첫 주기 번호 (0~60초 = 1번 주기)
@@ -48,7 +48,9 @@ ZERO_TIME = 0.0                             # 시간 값의 시작값·하한(�
 # 4. 게이지
 # ---------------------------------------------------------------
 GAUGE_MIN = 0               # 체력·멘탈·지식의 최솟값
-GAUGE_MAX = 100             # 체력·멘탈의 최댓값 (지식은 상한 없음)
+GAUGE_MAX = 100             # 체력·멘탈의 기본 최댓값 (지식은 상한 없음)
+# 체력 증진·멘탈 관리 업그레이드로 최댓값이 레벨마다 +10 오른다(기획서 3절):
+# 체력 최대 = GAUGE_MAX + 10 x 체력 증진 Lv, 멘탈 최대 = GAUGE_MAX + 10 x 멘탈 관리 Lv
 
 HEALTH_START = 80           # 체력 시작값
 MENTAL_START = 80           # 멘탈 시작값
@@ -60,13 +62,29 @@ MENTAL_DECAY_PER_SEC_EXAM = 2   # 시험 기간 멘탈 자연 감소(1초마다)
 DECAY_INTERVAL = 1.0            # 자연 감소가 일어나는 간격(초)
 TIME_EPSILON = 1e-9             # 소수 덧셈 오차 허용치 (0.1을 10번 더하면 0.9999999…가 되는 문제 방지)
 
-LOW_GAUGE_LIMIT = 30        # 이 값 미만이면 막대가 빨간색, 체력은 다크서클
+LOW_GAUGE_LIMIT = 30        # 이 값 미만이면 막대가 빨간색, 체력은 다크서클 (최댓값과 상관없이 30)
+
+# 디버프 (기획서 2절 "디버프와 버프"): 게이지가 LOW_GAUGE_LIMIT(30) 미만인 동안 붙는다
+DEBUFF_TIRED = "피곤"           # 체력 30 미만: 공부 지식 x0.7
+DEBUFF_DEPRESSED = "우울"       # 멘탈 30 미만: 버는 연구비 x0.7
+TIRED_KNOWLEDGE_RATIO = 0.7     # 피곤일 때 공부 지식 배수 (보너스·방침 배수 다음에 곱한다)
+DEPRESSED_MONEY_RATIO = 0.7     # 우울일 때 지식으로 버는 연구비 배수
+
+# 버프 '든든함' (기획서 2절): 학식을 먹으면 붙는다
+BUFF_FULL = "든든함"
+FULL_DURATION = 30.0            # 든든함 기본 지속 시간(초, 게임 시간). 다시 먹으면 처음부터 다시 잰다
+FULL_HEALTH_DECAY_RATIO = 0.5   # 든든함인 동안 체력 자연 감소 배수
+
+# 휴식 위주 방침의 "컨디션 좋음" (기획서 2절): 체력·멘탈이 모두 70 이상이면 연구비 +20%
+CONDITION_GOOD = "컨디션 좋음"
+CONDITION_GOOD_MIN = 70         # 체력·멘탈이 둘 다 이 값 이상이어야 한다
 
 # ---------------------------------------------------------------
 # 5. 행동 증감량과 자동 행동 (방치형: 쿨타임 대신 자동 행동 간격)
 # ---------------------------------------------------------------
-FEED_HEALTH = 20            # 학식 먹이기: 체력 +20
+# 학식 먹이기는 게이지를 바로 채우지 않고 버프 '든든함'만 준다(FULL_DURATION)
 
+REST_HEALTH = 15            # 쉬게 하기: 체력 +15
 REST_MENTAL = 20            # 쉬게 하기: 멘탈 +20
 REST_KNOWLEDGE = -2         # 쉬게 하기: 지식 -2
 
@@ -75,7 +93,7 @@ STUDY_MENTAL = -8           # 공부시키기: 멘탈 -8
 STUDY_KNOWLEDGE = 10        # 공부시키기: 지식 +10
 STUDY_KNOWLEDGE_EXAM = 20   # 시험 기간 공부시키기: 지식 +20
 
-# 방치형 전환(기획서 10절): 행동 쿨타임은 없앴다. 대신 제자가 이 간격마다 스스로 행동한다.
+# 방치형(기획서 2절 "자동 행동과 일과표 방침"): 쿨타임 없이 제자가 이 간격마다 스스로 행동한다.
 AUTO_ACTION_INTERVAL = 2.0  # 자동 행동 간격(초, 게임 시간). 게임 시작 후 첫 행동도 2초 뒤
 
 # 일과표 방침 이름 (Game.set_policy 에 넘기는 값)
@@ -86,19 +104,24 @@ POLICY_START = POLICY_BALANCED      # 새 게임의 시작 방침
 POLICY_ORDER = [POLICY_STUDY_FOCUS, POLICY_BALANCED, POLICY_REST_FOCUS]  # 버튼·키 1/2/3 순서
 
 # 방침 사전의 키
-POLICY_THRESHOLD = "threshold"            # 회복 기준: 체력이나 멘탈이 이 값 미만이면 회복한다
+POLICY_THRESHOLD = "threshold"            # 회복 기준: 체력이나 멘탈이 이 값 미만이면 휴식한다
 POLICY_KNOWLEDGE_RATIO = "knowledge_ratio"  # 공부 지식 배수
 POLICY_COST_RATIO = "cost_ratio"          # 공부 체력·멘탈 소모 배수
+POLICY_REST_RATIO = "rest_ratio"          # 휴식 체력·멘탈 회복 배수 (보너스 포함 회복량에 곱한다)
+POLICY_CONDITION_BONUS = "condition_bonus"  # 컨디션 좋음(체력·멘탈 70 이상)일 때 연구비에 더하는 비율
 POLICY_TEXT = "text"                      # 방침 버튼 글자
 
-# 방침 3가지 (기획서 10절 표)
+# 방침 3가지 (기획서 2절 방침 표)
 POLICIES = {
-    POLICY_STUDY_FOCUS: {POLICY_THRESHOLD: 30, POLICY_KNOWLEDGE_RATIO: 1.4,
-                         POLICY_COST_RATIO: 1.6, POLICY_TEXT: "공부 위주 [1]"},
+    POLICY_STUDY_FOCUS: {POLICY_THRESHOLD: 20, POLICY_KNOWLEDGE_RATIO: 1.6,
+                         POLICY_COST_RATIO: 1.8, POLICY_REST_RATIO: 1.0,
+                         POLICY_CONDITION_BONUS: 0.0, POLICY_TEXT: "공부 위주 [1]"},
     POLICY_BALANCED: {POLICY_THRESHOLD: 50, POLICY_KNOWLEDGE_RATIO: 1.0,
-                      POLICY_COST_RATIO: 1.0, POLICY_TEXT: "균형 [2]"},
-    POLICY_REST_FOCUS: {POLICY_THRESHOLD: 70, POLICY_KNOWLEDGE_RATIO: 0.8,
-                        POLICY_COST_RATIO: 0.7, POLICY_TEXT: "휴식 위주 [3]"},
+                      POLICY_COST_RATIO: 1.0, POLICY_REST_RATIO: 1.0,
+                      POLICY_CONDITION_BONUS: 0.0, POLICY_TEXT: "균형 [2]"},
+    POLICY_REST_FOCUS: {POLICY_THRESHOLD: 70, POLICY_KNOWLEDGE_RATIO: 0.7,
+                        POLICY_COST_RATIO: 0.7, POLICY_REST_RATIO: 1.5,
+                        POLICY_CONDITION_BONUS: 0.2, POLICY_TEXT: "휴식 위주 [3]"},
 }
 NO_RATIO = 1.0              # 배수를 곱하지 않을 때의 값(×1.0). Student.study 의 기본값
 
@@ -123,12 +146,13 @@ MOUTH_CRY = "cry"           # 우는 입 (입꼬리가 내려간 ∩자)
 # ---------------------------------------------------------------
 # 8. 엔딩 기준
 # ---------------------------------------------------------------
-# 진급과 졸업 (기획서 11절): 누적 지식이 목표 "이상"이 되면 진급한다. 학년은 내려가지 않는다.
-GRADE_GOALS = [200, 450, 750]   # 2학년·3학년·4학년 진급 목표(누적 지식)
-GRADUATION_KNOWLEDGE = 1100     # 4학년에서 누적 지식 1100 이상이면 졸업
-# 졸업 등급은 졸업까지 걸린 게임 시간(대화창 정지 시간은 빼고 센다)으로 정한다
-TOP_GRADUATE_SECONDS = 200      # 200초 이하: 수석 졸업
-NORMAL_GRADUATE_SECONDS = 360   # 200초 초과 360초 이하: 무사 졸업, 초과: 아슬아슬 졸업
+# 진급과 졸업 (기획서 2절): 누적 지식이 목표 "이상"이 되면 진급한다. 학년은 내려가지 않는다.
+GRADE_GOALS = [400, 900, 1500]  # 2학년·3학년·4학년 진급 목표(누적 지식)
+GRADUATION_KNOWLEDGE = 2200     # 4학년에서 누적 지식 2200 이상이면 졸업
+# 졸업 등급은 졸업까지 걸린 게임 시간(대화창 정지 시간은 빼고 센다)으로 정한다.
+# (임시 값: 예전 200/360초를 2배로 둔 것. 밸런스 단위에서 다시 정한다)
+TOP_GRADUATE_SECONDS = 400      # 400초 이하: 수석 졸업
+NORMAL_GRADUATE_SECONDS = 720   # 400초 초과 720초 이하: 무사 졸업, 초과: 아슬아슬 졸업
 
 ENDING_LEAVE = "휴학"
 ENDING_TOP = "수석 졸업"
@@ -141,7 +165,7 @@ ENDING_BARELY = "아슬아슬 졸업"
 RECORD_FILENAME = "record.json"  # 최고 기록을 저장할 파일 이름
 RECORD_KEY = "best_knowledge"    # record.json 안에서 최고 지식을 담는 키: {"best_knowledge": 520}
 RECORD_ENCODING = "utf-8"        # record.json 을 읽고 쓸 때 쓰는 글자 인코딩
-# 방치형(기획서 10절): 최고 기록과 함께 연구비·명성·업그레이드 레벨도 저장한다
+# 방치형(기획서 3절·9절): 최고 기록과 함께 연구비·명성·업그레이드 레벨도 저장한다
 # {"best_knowledge": 520, "money": 340, "fame": 0, "upgrades": {"menu": 1, ...}}
 # 예전 형식({"best_knowledge": n})이나 깨진 파일도 읽을 수 있고, 없는 값은 0으로 본다.
 RECORD_MONEY_KEY = "money"       # 연구비
@@ -571,7 +595,7 @@ CAP_PIXEL = PIXEL_SIZE      # 학사모 도트 1칸 크기(4)
 CAP_TOP_Y = 196             # 학사모 위쪽 y -> 아래 끝 296 (누적 지식 배지 위)
 
 # ---------------------------------------------------------------
-# 16. 상호작용 효과 E1~E6 (jeja-spec 13절). 보기만 바꾸고 게임 결과에는 영향이 없다
+# 16. 상호작용 효과 E1~E6 (기획서·jeja-spec 6절 "화면 연출"). 보기만 바꾸고 게임 결과에는 영향이 없다
 # ---------------------------------------------------------------
 FULL_RATIO = 1.0            # 진행률·비율의 끝값(100%). 진행률 p 의 나머지 = FULL_RATIO - p
 NO_CHANGE = 0               # 게이지 변화량이 0 (늘지도 줄지도 않음)
@@ -680,6 +704,8 @@ GAUGE_HEALTH = "health"     # Student 의 체력 속성 이름 (표시값 사전
 GAUGE_MENTAL = "mental"     # Student 의 멘탈 속성 이름
 GAUGE_KNOWLEDGE = "knowledge"  # Student 의 지식 속성 이름
 GAUGE_NAMES = [GAUGE_HEALTH, GAUGE_MENTAL]   # 막대가 있어서 부드럽게 움직이는 게이지
+# 게이지 속성 이름 -> 그 최댓값 속성 이름 (Student.max_health / max_mental)
+GAUGE_MAX_NAMES = {GAUGE_HEALTH: "max_health", GAUGE_MENTAL: "max_mental"}
 # 수치 팝업을 띄울 게이지와 라벨 (위에서부터 이 순서로 쌓인다)
 POPUP_GAUGES = [(GAUGE_HEALTH, HEALTH_LABEL), (GAUGE_MENTAL, MENTAL_LABEL),
                 (GAUGE_KNOWLEDGE, KNOWLEDGE_LABEL)]
@@ -697,12 +723,12 @@ BLINK_INTERVAL = 0.5        # 깜빡임 간격(초)
 COLOR_HINT_DIM = COLOR_TEXT_SOFT   # 화살표가 숨었을 때의 안내 글자 색
 
 # ---------------------------------------------------------------
-# 17. 랜덤 이벤트와 성장 (기획서 9절, jeja-spec 14절)
+# 17. 랜덤 이벤트와 성장 (기획서·jeja-spec 4절)
 # ---------------------------------------------------------------
 # 발생 규칙 수치
 EVENT_CHANCE = 0.25                 # 행동이 실제로 실행된 직후 이벤트가 뜰 확률
 EVENT_GUARANTEE_INTERVAL = 11.25    # 최소 보장 구간 길이(초): 60초 주기 안 0~45초를 4구간으로 나눈다
-# (이름은 예전 그대로 _PER_GRADE지만 기획서 11절부터는 "60초 주기당" 횟수다)
+# (이름은 예전 그대로 _PER_GRADE지만 L단위부터는 "60초 주기당" 횟수다)
 EVENT_MIN_PER_GRADE = 4             # 주기당 최소 보장 이벤트 수 (보장 구간 개수)
 EVENT_MAX_PER_GRADE = 5             # 주기당 최대 이벤트 수
 EVENT_CHOICE_RATIO = 0.5            # 선택지형 후보가 있을 때 선택지형을 고를 확률
@@ -726,25 +752,24 @@ EVENT_COUNT_STEP = 1                # 이벤트가 한 번 나올 때 그 주기
 EVENT_COUNT_START = 0               # 주기별 이벤트 수의 시작값 (아직 안 나온 주기는 0번)
 
 # 특성 (얻으면 그 판 끝까지 유지). 값은 화면 배지에 쓸 이름이다
-TRAIT_FITNESS = "체력 단련"          # 학식 먹이기 체력 +20 -> +25
+TRAIT_FITNESS = "체력 단련"          # 든든함 지속 시간 +10초
 TRAIT_MUSIC = "음악 힐링"            # 쉬게 하기 멘탈 +20 -> +25
 TRAIT_CAFFEINE = "카페인"            # 공부시키기 체력 -5 -> -3
-TRAIT_LOVE = "연애 중"               # 쉬게 하기에 체력 +5가 함께 붙음
+TRAIT_LOVE = "연애 중"               # 쉬게 하기 체력 +15 -> +20
 
 # 특성 보정을 받는 행동 효과 이름
-BONUS_FEED_HEALTH = "feed_health"   # 학식 먹이기 체력
+BONUS_FULL_TIME = "full_time"       # 학식 먹이기로 붙는 든든함 지속 시간(초)
 BONUS_REST_MENTAL = "rest_mental"   # 쉬게 하기 멘탈
-BONUS_REST_HEALTH = "rest_health"   # 쉬게 하기 체력 (기본 0)
+BONUS_REST_HEALTH = "rest_health"   # 쉬게 하기 체력
 BONUS_STUDY_HEALTH = "study_health"  # 공부시키기 체력
-REST_HEALTH = 0                     # 쉬게 하기의 기본 체력 변화 (특성 없으면 0)
 TRAIT_BONUS_START = 0               # 특성 보정 합계의 시작값 (특성이 없으면 0)
 
 # 특성 -> {보정 받는 효과: 기본 수치에 더하는 양}. 여러 특성이 있으면 각각 더한다
 TRAIT_BONUSES = {
-    TRAIT_FITNESS: {BONUS_FEED_HEALTH: 5},     # +20 -> +25
+    TRAIT_FITNESS: {BONUS_FULL_TIME: 10},      # 든든함 30초 -> 40초
     TRAIT_MUSIC: {BONUS_REST_MENTAL: 5},       # +20 -> +25
     TRAIT_CAFFEINE: {BONUS_STUDY_HEALTH: 2},   # -5 -> -3
-    TRAIT_LOVE: {BONUS_REST_HEALTH: 5},        # 0 -> +5
+    TRAIT_LOVE: {BONUS_REST_HEALTH: 5},        # +15 -> +20
 }
 
 # 외형 5종 (얻으면 그 판 끝까지 제자에게 붙어 있다. 그리기는 D단위)
@@ -881,7 +906,7 @@ CHOICE_EVENTS = [
 ALL_EVENTS = AUTO_EVENTS + CHOICE_EVENTS   # 이벤트 표 전체 (자동형 5 + 선택지형 10)
 
 # ---------------------------------------------------------------
-# 18. 랜덤 이벤트 화면 (D단위, jeja-spec 14절 "화면"). 보기만 바꾸며 게임 결과에는 영향이 없다
+# 18. 랜덤 이벤트 화면 (D단위, 기획서·jeja-spec 4절). 보기만 바꾸며 게임 결과에는 영향이 없다
 # ---------------------------------------------------------------
 EVENT_FONT_SIZE = 18                # 대화창 상황 글자·선택 버튼 글자 크기
 SMALL_FONT_SIZE = 14                # 작은 글자 크기: 효과 미리보기, 특성 배지 (자동형 알림은 EVENT_NOTICE_FONT_SIZE)
@@ -991,6 +1016,19 @@ TRAIT_COLORS = {
     TRAIT_LOVE: (COLOR_PINK, COLOR_PINK_LIGHT),
 }
 
+# 상태 배지(M단위, 글자 배지만. 아이콘은 다음 단위): 상태 패널 위쪽(체력 라벨 줄 200 위)에
+# 지금 붙어 있는 디버프·버프를 특성 배지와 같은 모양으로 2열로 보인다
+STATUS_BADGE_Y = 128                # 첫 줄 위쪽 y (두 줄이면 아래 끝 128 + 24 + 8 + 24 = 184, 그림자 188)
+# 상태 이름 -> (몸통, 위 하이라이트 줄). 디버프는 분홍·회색, 버프는 민트·노랑
+STATUS_COLORS = {
+    DEBUFF_TIRED: (COLOR_PINK, COLOR_PINK_LIGHT),
+    DEBUFF_DEPRESSED: (COLOR_GRAY, COLOR_GRAY_LIGHT),
+    BUFF_FULL: (COLOR_MINT, COLOR_MINT_LIGHT),
+    CONDITION_GOOD: (COLOR_YELLOW, COLOR_YELLOW_LIGHT),
+}
+# 게이지 라벨 줄 오른쪽 끝(막대 오른쪽 끝과 같은 x)에 "지금/최대" 글자를 쓴다: "80/100"
+GAUGE_VALUE_TEXT = "{}/{}"
+
 # 외형 5종 도트 스프라이트. 위치는 얼굴 격자(20 x 20칸) 기준 (열, 행)이고 칸 크기는 얼굴과 같다
 # (반지름 // 10) -> 학년마다 얼굴과 함께 커지고, 점프·숨쉬기 때 얼굴과 함께 움직인다.
 # 자리 나눔: 선글라스 = 머리 꼭대기(열 4~15, 행 -1~2), 하트 머리핀 = 머리 왼쪽 옆(열 -3~1, 행 2~6),
@@ -1094,7 +1132,7 @@ LOOKS_BEHIND = [LOOK_GUITAR]
 LOOKS_FRONT = [LOOK_HEADBAND, LOOK_HEART_PIN, LOOK_SUNGLASSES, LOOK_COFFEE]
 
 # ---------------------------------------------------------------
-# 19. 재화(연구비·명성)와 업그레이드 (기획서 10절, H단위)
+# 19. 재화(연구비·명성)와 업그레이드 (기획서 3절, H단위)
 # ---------------------------------------------------------------
 MONEY_START = 0             # 연구비 기본값 (record.json 에 없으면 0)
 FAME_START = 0              # 명성 기본값 (record.json 에 없으면 0)
@@ -1121,24 +1159,27 @@ UPGRADE_CAFE = "cafe"                   # 카페
 UPGRADE_GYM = "gym"                     # 헬스장
 UPGRADE_CHARM = "lucky_charm"           # 행운 부적
 UPGRADE_SCHOLARSHIP = "scholarship"     # 장학금 제도
+UPGRADE_HEALTH_MAX = "health_max"       # 체력 증진
+UPGRADE_MENTAL_MAX = "mental_max"       # 멘탈 관리
+UPGRADE_SELF_CARE = "self_care"         # 자기 관리
 
 # 업그레이드 dict 키
 UPGRADE_ID = "id"
 UPGRADE_NAME = "name"               # 패널에 보일 이름
-UPGRADE_CATEGORY = "category"       # 분류 (행동 효율 / 자동화 속도 / 시설 / 이벤트)
+UPGRADE_CATEGORY = "category"       # 분류 (행동 효율 / 자동화 속도 / 시설 / 이벤트 / 컨디션)
 UPGRADE_MAX_LEVEL = "max_level"     # 최대 레벨
 UPGRADE_BASE_COST = "base_cost"     # 기본 가격
 UPGRADE_PER_LEVEL = "per_level"     # 레벨 1당 효과 크기 (효과 = 레벨 x 이 값)
 UPGRADE_EFFECT_TEXT = "effect"      # 패널에 보일 효과 설명
 
-# 업그레이드 10종 (기획서 10절 표 순서). 시설·장학금은 최대 레벨 1이라 "레벨 x 효과"로 똑같이 계산한다
+# 업그레이드 13종 (기획서 3절 표 순서). 시설·장학금은 최대 레벨 1이라 "레벨 x 효과"로 똑같이 계산한다
 UPGRADES = [
     {UPGRADE_ID: UPGRADE_MENU, UPGRADE_NAME: "학식 메뉴 개선", UPGRADE_CATEGORY: "행동 효율",
-     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 240, UPGRADE_PER_LEVEL: 4,
-     UPGRADE_EFFECT_TEXT: "학식 체력 +4"},
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 240, UPGRADE_PER_LEVEL: 6,
+     UPGRADE_EFFECT_TEXT: "든든함 +6초"},
     {UPGRADE_ID: UPGRADE_BED, UPGRADE_NAME: "푹신한 침대", UPGRADE_CATEGORY: "행동 효율",
      UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 240, UPGRADE_PER_LEVEL: 4,
-     UPGRADE_EFFECT_TEXT: "휴식 멘탈 +4"},
+     UPGRADE_EFFECT_TEXT: "휴식 체력·멘탈 +4"},
     {UPGRADE_ID: UPGRADE_BOOK, UPGRADE_NAME: "참고서", UPGRADE_CATEGORY: "행동 효율",
      UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 360, UPGRADE_PER_LEVEL: 2,
      UPGRADE_EFFECT_TEXT: "공부 지식 +2"},
@@ -1163,6 +1204,15 @@ UPGRADES = [
     {UPGRADE_ID: UPGRADE_SCHOLARSHIP, UPGRADE_NAME: "장학금 제도", UPGRADE_CATEGORY: "이벤트",
      UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 750, UPGRADE_PER_LEVEL: 30,
      UPGRADE_EFFECT_TEXT: "장학금 이벤트 추가"},
+    {UPGRADE_ID: UPGRADE_HEALTH_MAX, UPGRADE_NAME: "체력 증진", UPGRADE_CATEGORY: "컨디션",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 300, UPGRADE_PER_LEVEL: 10,
+     UPGRADE_EFFECT_TEXT: "체력 최대 +10"},
+    {UPGRADE_ID: UPGRADE_MENTAL_MAX, UPGRADE_NAME: "멘탈 관리", UPGRADE_CATEGORY: "컨디션",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 300, UPGRADE_PER_LEVEL: 10,
+     UPGRADE_EFFECT_TEXT: "멘탈 최대 +10"},
+    {UPGRADE_ID: UPGRADE_SELF_CARE, UPGRADE_NAME: "자기 관리", UPGRADE_CATEGORY: "컨디션",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 400, UPGRADE_PER_LEVEL: 0.2,
+     UPGRADE_EFFECT_TEXT: "체력·멘탈 +0.2/초"},
 ]
 UPGRADE_IDS = [upgrade[UPGRADE_ID] for upgrade in UPGRADES]          # 패널 순서
 UPGRADES_BY_ID = {upgrade[UPGRADE_ID]: upgrade for upgrade in UPGRADES}
@@ -1206,8 +1256,9 @@ UPGRADE_HEADER_RIGHT = 252          # 연구비 글자 오른쪽 끝 x
 UPGRADE_ROW_X = 24                  # 항목 줄 상자 왼쪽 x
 UPGRADE_ROW_WIDTH = 232             # 항목 줄 상자 가로 길이 -> 오른쪽 끝 256 (패널 안쪽 20~260)
 UPGRADE_ROW_TOP = 166               # 첫 항목 줄 위쪽 y (머리 줄과 미니 게이지 줄 아래)
-UPGRADE_ROW_HEIGHT = 27             # 항목 줄 상자 세로 길이 (안쪽 19: 작은 글자 한 줄 높이 19)
-UPGRADE_ROW_STEP = 28               # 항목 줄 사이 거리 (10줄 -> 마지막 아래 끝 445)
+# 항목이 13줄이라(M단위) 줄을 얇게 만든다: 외곽선 없는 계단형 모서리 띠 한 줄 = 작은 글자 한 줄(19)
+UPGRADE_ROW_HEIGHT = 20             # 항목 줄 띠 세로 길이
+UPGRADE_ROW_STEP = 21               # 항목 줄 사이 거리 (13줄 -> 마지막 아래 끝 166 + 12 x 21 + 20 = 438)
 # 패널 머리 줄 아래 미니 게이지 줄(K단위): 패널이 상태 패널의 체력·멘탈 막대를 가리므로
 # 작은 막대 2개를 한 줄에 나란히 보여 준다. 길이는 표시값(E4), 색(30 미만 빨강)은 실제 값 기준
 UPGRADE_GAUGE_Y = 154               # 미니 게이지 줄 가운데 y (라벨 글자 145~164, 막대 테두리 146~162)
@@ -1221,7 +1272,7 @@ UPGRADE_NAME_X = 48                 # 이름 글자 왼쪽 x
 UPGRADE_LEVEL_X = 148               # "Lv 0/5" 글자 왼쪽 x
 UPGRADE_COST_RIGHT = 248            # 가격 글자 오른쪽 끝 x
 UPGRADE_FOOTER_X = 28               # 바닥 줄(고른 항목 효과) 글자 왼쪽 x
-UPGRADE_FOOTER_Y = 454              # 바닥 줄 가운데 y (글자 445~464: 마지막 줄 아래 끝 445부터, 꼬리까지 외곽선 안)
+UPGRADE_FOOTER_Y = 454              # 바닥 줄 가운데 y (글자 445~464: 마지막 줄 아래 끝 438 아래, 꼬리까지 외곽선 안)
 UPGRADE_FOOTER_TEXT = "효과: {}"     # 바닥 줄 글자 틀: 고른 줄(↑↓)의 레벨당 효과
 UPGRADE_LEVEL_TEXT = "Lv {}/{}"
 UPGRADE_COST_TEXT = "{}"                # 가격 글자(숫자만, 단위 연구비는 머리 줄에 보인다)
@@ -1238,15 +1289,15 @@ COLOR_UPGRADE_TEXT_OFF = COLOR_BUTTON_TEXT_COOL
 COLOR_UPGRADE_CURSOR = COLOR_PINK_DARK  # 고른 줄 화살표 색
 
 # ---------------------------------------------------------------
-# 21. 졸업 후: 환생과 대학원 (기획서 10절, I단위)
+# 21. 졸업 후: 환생과 대학원 (기획서 3절, I단위)
 # ---------------------------------------------------------------
 GRAD_YEAR_UNDERGRAD = 0     # 대학원 년차 값: 0이면 학부(1~4학년)
 GRAD_FIRST_YEAR = 1         # 대학원에 들어가면 1년차부터
 GRAD_YEAR_STEP = 1          # 년차 목표를 넘을 때마다 대학원 년차가 오르는 양 (끝없이)
-# 대학원 n년차 -> n+1년차 목표(누적 지식) = 졸업 지식 1100 + (400 + 100 x (k-1))를 k = 1..n까지 더한 값
-# -> 1년차 1500, 2년차 2000, 3년차 2600 … (기획서 11절)
-GRAD_GOAL_FIRST_STEP = 400  # 1년차에 더 모아야 하는 지식
-GRAD_GOAL_STEP_GROWTH = 100  # 해마다 더 모아야 하는 지식이 늘어나는 양
+# 대학원 n년차 -> n+1년차 목표(누적 지식) = 졸업 지식 2200 + (800 + 200 x (k-1))를 k = 1..n까지 더한 값
+# -> 1년차 3000, 2년차 4000, 3년차 5200, 4년차 6600 … (기획서 3절)
+GRAD_GOAL_FIRST_STEP = 800  # 1년차에 더 모아야 하는 지식
+GRAD_GOAL_STEP_GROWTH = 200  # 해마다 더 모아야 하는 지식이 늘어나는 양
 # 대학원 자연 감소 배수 = 1 + 0.5 x n + 1.0 x c
 #   n = 대학원 년차, c = 대학원에 들어간 뒤 다 채운 60초 주기 수 (대학원에서만 시간 압박)
 GRAD_DECAY_BONUS = 0.5      # 년차 하나마다 더하는 자연 감소 배수
@@ -1274,12 +1325,12 @@ ENDING_OPEN_CENTER_X = STAGE_X + STAGE_WIDTH // 2      # 536
 ENDING_NAME_MAX_WIDTH_OPEN = 456  # 옮겨 그릴 때 큰 글씨 엔딩 이름의 최대 가로 길이 (패널 504 안)
 
 # ---------------------------------------------------------------
-# 22. 무대 배경 4겹 (기획서 10절 "배경", J단위)
+# 22. 무대 배경 4겹 (기획서 6절 "무대 배경 4겹", J단위)
 #   1) 장소(학년) 2) 하늘(계절·시간대) 3) 행동 소품(마지막 자동 행동) 4) 시설(산 시설)
 #   배경은 제자 무대 안쪽(x 288~784, y 120~456)에 그리고, 제자·파티클·팝업·알림보다 먼저 그린다.
 #   좌표는 무대 안쪽 왼쪽 위를 (0, 0)으로 하는 도트 칸(4 x 4 픽셀) 단위다(가로 124칸, 세로 84칸).
 # ---------------------------------------------------------------
-# 계절: 60초 주기 안 0~15초 봄, 15~30초 여름, 30~45초 가을, 45~60초 겨울(시험 기간) (기획서 11절)
+# 계절: 60초 주기 안 0~15초 봄, 15~30초 여름, 30~45초 가을, 45~60초 겨울(시험 기간) (기획서 2절)
 SEASON_SPRING = "spring"
 SEASON_SUMMER = "summer"
 SEASON_AUTUMN = "autumn"

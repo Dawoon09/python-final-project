@@ -7,11 +7,11 @@ import sys
 import pygame
 
 import config
-from button import (Button, draw_pixel_box, draw_progress_bar, draw_sprite, render_text,
-                    sprite_size)
+from button import (Button, draw_cut_rect, draw_pixel_box, draw_progress_bar, draw_sprite,
+                    render_text, sprite_size)
 from student import Student
 
-# 키보드 단축키 -> 일과표 방침 이름 (기획서 10절 조작키: 1/2/3)
+# 키보드 단축키 -> 일과표 방침 이름 (기획서 5절 조작 방법: 1/2/3)
 POLICY_KEYS = {
     pygame.K_1: config.POLICY_STUDY_FOCUS,
     pygame.K_2: config.POLICY_BALANCED,
@@ -146,7 +146,7 @@ class Game:
         self.state = config.STATE_PLAYING
 
     # ------------------------------------------------------------
-    # 졸업 후: 환생과 대학원 (기획서 10절, I단위)
+    # 졸업 후: 환생과 대학원 (기획서 3절, I단위)
     # ------------------------------------------------------------
     @property
     def grad_year(self):
@@ -192,7 +192,7 @@ class Game:
         """대학원 진학: 졸업한 같은 제자로 "대학원 1년차"를 이어서 시작한다.
 
         게이지·특성·외형·지식·연계 플래그는 그대로 두고, 게임 화면으로 돌아간다.
-        60초 주기 시계(경과 시간)는 졸업한 시각에서 이어서 흐른다(기획서 11절).
+        60초 주기 시계(경과 시간)는 졸업한 시각에서 이어서 흐른다(기획서 3절).
         자동 행동 시계는 2초(간격)부터 다시 잰다. 학부 졸업 엔딩이 아니면 아무것도 하지 않는다.
         들어갔으면 True, 아니면 False를 돌려준다.
         """
@@ -222,7 +222,7 @@ class Game:
         self.graduation_bonus = config.MONEY_START
         if ending in config.GRADUATION_BONUS:
             self.graduation_bonus = self.floor_money(config.GRADUATION_BONUS[ending]
-                                                     * self.get_money_multiplier())
+                                                     * self.get_fame_multiplier())
             self.money += self.graduation_bonus
         self.update_best_record(self.student.knowledge)
         self.save_record()
@@ -321,9 +321,9 @@ class Game:
     def check_promotion(self):
         """누적 지식으로 진급·졸업·대학원 년차 오름을 판정하고, 오른 횟수(진급 수)를 돌려준다.
 
-        지식이 바뀔 때마다(자동 행동·자동형 이벤트·선택지 직후) 부른다(기획서 11절).
+        지식이 바뀔 때마다(자동 행동·자동형 이벤트·선택지 직후) 부른다(기획서 2절).
         판정은 Student.promote가 한다. 학년은 내려가지 않고, 한 번에 여러 목표를 넘으면
-        그만큼 오른다. 졸업(4학년에서 1100 이상)은 졸업 시각만 적고 진급 수에는 넣지 않는다.
+        그만큼 오른다. 졸업(4학년에서 2200 이상)은 졸업 시각만 적고 진급 수에는 넣지 않는다.
         엔딩 화면으로 바꾸는 일은 check_ending이 한다(그래서 휴학이 졸업보다 먼저다).
         올랐으면 진급 알림("3학년 진급!" / "대학원 2년차!")을 2초 띄운다.
         """
@@ -340,7 +340,7 @@ class Game:
     def check_ending(self):
         """제자 상태를 보고 엔딩이 났으면 엔딩 화면으로 바꾼다.
 
-        휴학(체력·멘탈 0)이 졸업(4학년에서 누적 지식 1100 이상)보다 먼저다.
+        휴학(체력·멘탈 0)이 졸업(4학년에서 누적 지식 2200 이상)보다 먼저다.
         판정은 Student.get_ending이 한다. 엔딩이 났으면 True, 아니면 False를 돌려준다.
         """
         ending = self.student.get_ending()
@@ -368,7 +368,7 @@ class Game:
                 for y in config.CHOICE_BUTTON_YS]
 
     # ------------------------------------------------------------
-    # 일과표 방침과 자동 행동 (기획서 10절, G단위)
+    # 일과표 방침과 자동 행동 (기획서 2절, G단위)
     # ------------------------------------------------------------
     def set_policy(self, name):
         """일과표 방침을 name(study_focus/balanced/rest_focus)으로 바꾼다.
@@ -383,19 +383,17 @@ class Game:
         return True
 
     def choose_auto_action(self):
-        """지금 방침으로 제자가 스스로 고를 행동 이름(feed/rest/study)을 돌려준다.
+        """지금 방침으로 제자가 스스로 고를 행동 이름(feed/rest/study)을 돌려준다(기획서 2절).
 
-        체력이나 멘탈이 방침의 회복 기준 미만이면 둘 중 낮은 쪽을 회복한다:
-        체력이 멘탈보다 낮거나 같으면 학식(feed), 멘탈이 더 낮으면 휴식(rest).
-        둘 다 기준 이상이면 공부(study)한다.
+        1) 체력이나 멘탈이 방침의 회복 기준 미만이면 휴식(rest). 회복은 휴식에서만 된다.
+        2) 아니고 버프 '든든함'이 없으면 학식(feed)으로 든든함을 붙인다.
+        3) 둘 다 아니면 공부(study)한다.
         """
         threshold = config.POLICIES[self.policy][config.POLICY_THRESHOLD]
-        health = self.student.health
-        mental = self.student.mental
-        if health < threshold or mental < threshold:
-            if health <= mental:
-                return config.ACTION_FEED
+        if self.student.health < threshold or self.student.mental < threshold:
             return config.ACTION_REST
+        if not self.student.is_full_buff_active():
+            return config.ACTION_FEED
         return config.ACTION_STUDY
 
     def do_action(self, name):
@@ -403,7 +401,8 @@ class Game:
 
         게임 화면(STATE_PLAYING)이 아니거나 모르는 행동 이름이면 아무것도 하지 않는다.
         실행했으면 True, 무시했으면 False를 돌려준다. 실행하면 last_action에 이름을 남긴다.
-        공부는 지금 방침의 지식 배수·소모 배수를 적용한다(학식·휴식은 방침과 상관없다).
+        공부는 지금 방침의 지식 배수·소모 배수를, 휴식은 방침의 회복 배수를 적용한다
+        (학식은 방침과 상관없다).
         행동 뒤 진급·졸업을 판정하고(check_promotion), 체력이나 멘탈이 0이 되면
         그 즉시 휴학 엔딩, 졸업 목표를 넘었으면 졸업 엔딩으로 바꾼다(휴학이 먼저).
         실제로 실행됐을 때만 연출(파티클·팝업·점프·게이지 애니메이션)을 시작한다.
@@ -418,7 +417,7 @@ class Game:
         if name == config.ACTION_FEED:
             self.student.feed()
         elif name == config.ACTION_REST:
-            self.student.rest()
+            self.student.rest(config.POLICIES[self.policy][config.POLICY_REST_RATIO])
         elif name == config.ACTION_STUDY:
             policy = config.POLICIES[self.policy]
             self.student.study(policy[config.POLICY_KNOWLEDGE_RATIO],
@@ -444,7 +443,7 @@ class Game:
         return round(config.EVENT_CHANCE + bonus, config.GAUGE_DECIMALS)
 
     # ------------------------------------------------------------
-    # 연구비와 업그레이드 (기획서 10절, H단위)
+    # 연구비와 업그레이드 (기획서 3절, H단위)
     # ------------------------------------------------------------
     def floor_money(self, value):
         """연구비 계산 결과 value를 내림해 정수로 돌려준다(소수 오차를 MONEY_EPSILON 만큼 봐준다)."""
@@ -454,10 +453,43 @@ class Game:
         """대학원 연구비 배수 = 1 + 1.0 x 대학원 년차 를 돌려준다(학부는 1)."""
         return config.NO_RATIO + config.GRAD_MONEY_BONUS * self.grad_year
 
+    def get_fame_multiplier(self):
+        """명성 배수 = 1 + 0.1 x 명성 을 돌려준다(졸업 보너스는 이 배수만 곱한다)."""
+        return config.NO_RATIO + config.FAME_MONEY_BONUS * self.fame
+
+    def is_good_condition(self):
+        """'컨디션 좋음'이면 True: 휴식 위주 방침이고 체력·멘탈이 둘 다 70 이상(기획서 2절)."""
+        if config.POLICIES[self.policy][config.POLICY_CONDITION_BONUS] <= config.NO_CHANGE:
+            return False
+        return (self.student.health >= config.CONDITION_GOOD_MIN
+                and self.student.mental >= config.CONDITION_GOOD_MIN)
+
+    def get_condition_money_ratio(self):
+        """컨디션에 따른 연구비 배수를 돌려준다: 우울 0.7, 컨디션 좋음 1.2, 그 밖에는 1.0.
+
+        우울(멘탈 30 미만)과 컨디션 좋음(멘탈 70 이상)은 동시에 될 수 없다.
+        """
+        if self.student.is_depressed():
+            return config.DEPRESSED_MONEY_RATIO
+        if self.is_good_condition():
+            return config.NO_RATIO + config.POLICIES[self.policy][config.POLICY_CONDITION_BONUS]
+        return config.NO_RATIO
+
     def get_money_multiplier(self):
-        """연구비 획득 배수 = (1 + 0.1 x 명성) x 대학원 배수 를 돌려준다."""
-        fame_ratio = config.NO_RATIO + config.FAME_MONEY_BONUS * self.fame
-        return fame_ratio * self.get_grad_money_multiplier()
+        """지식으로 버는 연구비 배수 = 명성 배수 x 대학원 배수 x 컨디션 배수 를 돌려준다.
+
+        컨디션 배수(우울 0.7 / 컨디션 좋음 1.2)는 연구비를 쌓는 순간의 게이지로 정한다
+        (행동·이벤트 효과가 적용된 뒤).
+        """
+        return (self.get_fame_multiplier() * self.get_grad_money_multiplier()
+                * self.get_condition_money_ratio())
+
+    def get_status_names(self):
+        """상태 배지에 보일 이름 목록: 제자의 디버프·버프(피곤·우울·든든함) + 컨디션 좋음."""
+        names = self.student.get_statuses()
+        if self.is_good_condition():
+            names.append(config.CONDITION_GOOD)
+        return names
 
     def earn_knowledge_money(self, knowledge_before):
         """지식이 knowledge_before에서 지금 값으로 오른 만큼 연구비를 쌓고, 쌓은 양을 돌려준다.
@@ -568,7 +600,7 @@ class Game:
         return False
 
     # ------------------------------------------------------------
-    # 랜덤 이벤트 (기획서 9절, jeja-spec 14절)
+    # 랜덤 이벤트 (기획서·jeja-spec 4절)
     # ------------------------------------------------------------
     def roll_event(self):
         """자동 행동 직후 이벤트가 뜰지 정하고, 뜨면 시작한다. 뜬 이벤트(dict) 또는 None을 돌려준다.
@@ -750,7 +782,7 @@ class Game:
         dt가 커서 자동 행동 시각을 여러 번 지나가면, 행동 시각마다 끊어서 차례대로 처리한다
         (행동 시각까지 시간을 흘림 -> 엔딩 확인 -> 행동 -> 남은 시간 계속).
         엔딩 확인: 자연 감소로 체력·멘탈이 0이 되었으면 휴학(대학원이면 "대학원 n년차 수료")이다.
-        판에 시간 제한이 없으므로(기획서 11절) 시간이 지났다고 졸업하지는 않는다. 졸업은
+        판에 시간 제한이 없으므로(기획서 2절) 시간이 지났다고 졸업하지는 않는다. 졸업은
         지식이 바뀔 때 check_promotion이 판정한다(여기서도 한 번 더 확인해 둔다).
         엔딩이 나면 그 시각의 자동 행동은 하지 않는다.
         타이틀·엔딩 화면과 대화창(선택지형 이벤트)이 떠 있는 동안에는
@@ -1012,14 +1044,14 @@ class Game:
         pygame.display.flip()
 
     # ------------------------------------------------------------
-    # 무대 배경 4겹 (기획서 10절 "배경", J단위)
+    # 무대 배경 4겹 (기획서 6절 "무대 배경 4겹", J단위)
     #   1) 장소(학년) 2) 하늘(계절·시간대) 3) 행동 소품 4) 시설
     #   계산 메서드(get_season 등)는 화면 없이도 부를 수 있다.
     # ------------------------------------------------------------
     def get_season_time(self):
         """(계절 번호 0~3, 그 계절 안에서 흐른 시간(초) 0~15)를 돌려준다.
 
-        60초 주기 안 시간으로 정한다(기획서 11절): 0~15초 봄, 15~30초 여름,
+        60초 주기 안 시간으로 정한다(기획서 2절): 0~15초 봄, 15~30초 여름,
         30~45초 가을, 45~60초 겨울(시험 기간). 학년·대학원 년차와는 상관없다.
         """
         time_in_term = self.student.get_cycle_time()
@@ -1243,10 +1275,10 @@ class Game:
         오른쪽 제자 무대는 가리지 않으므로 패널을 열어도 제자와 배경이 보인다.
         머리 줄: 왼쪽 "업그레이드", 오른쪽 "연구비 N".
         그 아래 미니 게이지 줄: 패널이 가린 체력·멘탈 막대를 작게 보여 준다(draw_panel_gauges).
-        아래로 항목 10줄: 이름, "Lv 지금/최대", 가격(최고 레벨이면 "MAX").
+        아래로 항목 13줄(얇은 띠): 이름, "Lv 지금/최대", 가격(최고 레벨이면 "MAX").
         살 수 있는 항목은 민트, 연구비가 모자라거나 최고 레벨이면 회색이다.
         고른 줄(↑↓)에는 왼쪽에 화살표를 붙이고, 마우스를 올린 줄(살 수 있을 때)은 밝게 칠한다.
-        바닥 줄에는 고른 줄 항목의 효과 설명("효과: 학식 체력 +4")을 쓴다.
+        바닥 줄에는 고른 줄 항목의 효과 설명("효과: 든든함 +6초")을 쓴다.
         """
         panel = pygame.Rect(config.UPGRADE_PANEL_RECT)
         draw_pixel_box(self.screen, panel, config.COLOR_BG, config.COLOR_PANEL_LIGHT,
@@ -1277,6 +1309,7 @@ class Game:
         패널이 열려 있어도 게임은 흐르므로(방치형) 가려진 게이지를 여기서 볼 수 있게 한다.
         각 칸: 작은 라벨 글자 + 남색 도트 테두리 막대. 막대 길이는 표시값(E4 부드러운 변화),
         채움 색은 실제 값이 30 미만이면 빨강, 아니면 초록(기능 6과 같은 규칙).
+        막대 전체 길이는 지금 최댓값(max_health / max_mental)이다.
         """
         for name, label, label_x in config.UPGRADE_GAUGES:
             text = render_text(self.small_font, label)
@@ -1293,8 +1326,9 @@ class Game:
                 main, light = config.COLOR_RED, config.COLOR_RED_LIGHT
             else:
                 main, light = config.COLOR_GREEN, config.COLOR_GREEN_LIGHT
-            shown = min(max(self.get_shown_gauge(name), config.GAUGE_MIN), config.GAUGE_MAX)
-            fill = pygame.Rect(bar.left, bar.top, int(bar.width * shown / config.GAUGE_MAX),
+            max_value = getattr(self.student, config.GAUGE_MAX_NAMES[name])
+            shown = min(max(self.get_shown_gauge(name), config.GAUGE_MIN), max_value)
+            fill = pygame.Rect(bar.left, bar.top, int(bar.width * shown / max_value),
                                bar.height)
             pygame.draw.rect(self.screen, main, fill)
             pygame.draw.rect(self.screen, light, (fill.left, fill.top, fill.width,
@@ -1304,6 +1338,7 @@ class Game:
         """업그레이드 패널의 index번째 항목 줄 하나를 그린다(draw_upgrade_panel이 부른다).
 
         줄 안에는 이름, "Lv 지금/최대", 가격 세 가지만 작은 글자로 쓴다(효과는 바닥 줄).
+        항목이 13개라 줄은 외곽선 없는 계단형 모서리 띠(높이 20)로 얇게 그린다.
         """
         upgrade = config.UPGRADES_BY_ID[upgrade_id]
         row = self.get_upgrade_row_rect(index)
@@ -1318,7 +1353,10 @@ class Game:
             fill, light, text_color = (config.COLOR_UPGRADE_ROW_OFF,
                                        config.COLOR_UPGRADE_ROW_OFF_LIGHT,
                                        config.COLOR_UPGRADE_TEXT_OFF)
-        inner = draw_pixel_box(self.screen, row, fill, light)
+        draw_cut_rect(self.screen, fill, row)
+        pygame.draw.rect(self.screen, light, (row.left + config.PIXEL_SIZE, row.top,
+                                              row.width - config.BOX_INSET, config.PIXEL_SIZE))
+        inner = row
         if index == self.upgrade_cursor:
             _, arrow_height = sprite_size(config.ARROW_SPRITE, config.PIXEL_SIZE)
             draw_sprite(self.screen, config.ARROW_SPRITE, config.UPGRADE_CURSOR_X,
@@ -1673,6 +1711,7 @@ class Game:
                                  self.get_shown_gauge(config.GAUGE_HEALTH),
                                  self.get_shown_gauge(config.GAUGE_MENTAL))
         self.student.draw_traits(self.screen, self.small_font)
+        self.student.draw_status_badges(self.screen, self.small_font, self.get_status_names())
         self.student.draw(self.screen, self.get_student_lift())
         self.draw_stage_effects()
         if self.notice is not None:
@@ -1759,7 +1798,7 @@ class Game:
             self.draw_stars(config.ENDING_STARS, center_x - config.SCREEN_CENTER_X)
             self.draw_graduation_cap(center_x)
         if self.is_graduation_ending() and self.student.has_graduated():
-            # 졸업까지 걸린 시간: "졸업까지 3분 52초" (기획서 11절)
+            # 졸업까지 걸린 시간: "졸업까지 3분 52초" (기획서 2절)
             self.draw_text_center(
                 self.event_font,
                 config.ENDING_TIME_TEXT.format(format_time(self.student.graduation_time)),
@@ -1823,7 +1862,7 @@ class Game:
                     config.PIXEL_SIZE, ink)
 
     def get_goal_text(self):
-        """정보바의 목표 글자를 돌려준다(기획서 11절).
+        """정보바의 목표 글자를 돌려준다(기획서 6절).
 
         1~3학년 "다음 학년까지 지식 n", 4학년 "졸업까지 지식 n", 대학원 "다음 년차까지 지식 n".
         n은 다음 목표까지 더 모아야 하는 지식이다(0 아래로 내려가지 않음).
