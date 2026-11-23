@@ -23,7 +23,7 @@ import pytest  # noqa: E402
 
 import config  # noqa: E402
 from button import Button, draw_cut_rect, draw_pixel_box, render_text, sprite_size  # noqa: E402
-from conftest import press  # noqa: E402
+from conftest import press, spec_appendix, spec_rule_text  # noqa: E402
 from game import Game  # noqa: E402
 from student import Student  # noqa: E402
 
@@ -483,14 +483,43 @@ def test_policy_button_texts_match_spec(policy, expected):
     assert config.POLICIES[policy][config.POLICY_TEXT] == expected
 
 
+# 화면 문구 틀의 "{}" 자리를 기획서가 쓰는 자리 글자로 채운 것 (기획서 6절 표기: n, m분 s초, …)
+SPEC_UI_STRINGS = [
+    config.TITLE_TEXT, config.ENDING_LEAVE, config.ENDING_TOP, config.ENDING_NORMAL,
+    config.ENDING_BARELY, config.EXAM_BANNER_TEXT, config.START_HINT_TEXT,
+    config.RESTART_HINT_TEXT, config.REINCARNATE_HINT_TEXT, config.GRAD_SCHOOL_HINT_TEXT,
+    config.UPGRADE_BUTTON_TEXT, config.UPGRADE_PANEL_TITLE, config.AUTO_HINT_TEXT,
+    config.GOAL_LABEL_TEXT, config.HEALTH_LABEL, config.MENTAL_LABEL, config.KNOWLEDGE_LABEL,
+    config.MONEY_LABEL,
+    *(config.POLICIES[p][config.POLICY_TEXT] for p in config.POLICY_ORDER),
+    config.BEST_RECORD_TEXT.format("n"),
+    config.TITLE_WALLET_TEXT.format("n", "n"),
+    config.ENDING_KNOWLEDGE_TEXT.format("n"),
+    config.GRADUATION_BONUS_TEXT.format("n"),
+    config.ENDING_TIME_TEXT.format(config.TIME_TEXT.format("m", "s")),
+    config.ELAPSED_TEXT.format(config.TIME_TEXT.format("m", "s")),
+    config.GRADE_TEXT.format("n"), config.GRAD_YEAR_TEXT.format("n"),
+    config.NEXT_GRADE_TEXT.format("n"), config.GRADUATION_GOAL_TEXT.format("n"),
+    config.NEXT_GRAD_YEAR_TEXT.format("n"),
+    config.PROMOTION_TEXT.format("n"), config.GRAD_PROMOTION_TEXT.format("n"),
+    config.ENDING_GRAD_TEXT.format("n"),
+    config.CHOICE_BUTTON_TEXT.format(1, "…"), config.CHOICE_BUTTON_TEXT.format(2, "…"),
+]
+
+
 def test_korean_strings_appear_in_spec_document():
-    """엔딩 이름·배너·안내 문구가 기획서 본문에 그대로 있다(글자 하나 다르지 않음)."""
-    spec = (ROOT / "docs" / "기획서.md").read_text(encoding="utf-8")
-    for text in ("제자 키우기", "휴학", "수석 졸업", "무사 졸업", "아슬아슬 졸업",
-                 "학식 먹이기 [1]", "쉬게 하기 [2]", "공부시키기 [3]",
-                 "시험 기간! 공부 효과 2배, 멘탈 감소 2배", "누른 뒤 1초 동안 회색 (쿨타임)",
-                 "Enter를 눌러 시작", "R을 눌러 다시 하기", "체력", "멘탈", "지식"):
-        assert text in spec, text
+    """(문서 정리) 지금 화면에 쓰는 한글 문구(config)가 기획서 규칙 본문에 글자 그대로 있다.
+
+    예전에는 행동 버튼 글자·쿨타임 문구를 보았지만, 방치형 전환으로 그 문구는 화면에서
+    사라졌다. 그 옛 문구는 규칙 본문에 없고 부록 변경 이력에만 남아 있어야 한다.
+    """
+    rules = spec_rule_text()
+    for text in SPEC_UI_STRINGS:
+        assert text in rules, text
+    history = spec_appendix()
+    for old in ("학식 먹이기 [1]", "쉬게 하기 [2]", "공부시키기 [3]"):
+        assert old not in rules and old in history, old
+    assert "쿨타임" not in rules and "쿨타임" in history
 
 
 @pytest.mark.parametrize("name", GAME_FILES)
@@ -748,16 +777,35 @@ def test_draw_pixel_box_layers(surface):
 
 # ======================= 5. 도형 제한·리소스·클래스 =======================
 
+# README 실행 화면 스크린샷 폴더: 게임이 읽지 않는 문서 자료라 이미지가 허용된다(리드 승인, CLAUDE.md)
+README_IMAGE_DIR = ("docs", "images")
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
+SOUND_FONT_EXT = {".wav", ".ogg", ".mp3", ".ttf", ".otf"}
+
+
 def test_no_image_or_sound_files_in_project():
-    bad_ext = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".ogg", ".mp3", ".ttf", ".otf"}
+    """이미지·사운드·폰트 파일이 없다. 예외는 docs/images/ 안의 이미지(README 스크린샷)뿐이다."""
+    bad_ext = IMAGE_EXT | SOUND_FONT_EXT
     skip = {"build", "dist", ".git", ".pytest_cache", "__pycache__", ".claude", ".venv"}
     found = []
     for path in ROOT.rglob("*"):
-        if any(part in skip for part in path.relative_to(ROOT).parts):
+        parts = path.relative_to(ROOT).parts
+        if any(part in skip for part in parts):
+            continue
+        if parts[:len(README_IMAGE_DIR)] == README_IMAGE_DIR and path.suffix.lower() in IMAGE_EXT:
             continue
         if path.suffix.lower() in bad_ext:
             found.append(str(path))
     assert found == []
+
+
+@pytest.mark.parametrize("name", GAME_FILES)
+def test_game_code_does_not_reference_readme_images(name):
+    """게임 코드는 docs/images/ 스크린샷이나 어떤 이미지 파일 이름도 쓰지 않는다."""
+    src = (ROOT / name).read_text(encoding="utf-8")
+    assert "images" not in src
+    for ext in IMAGE_EXT:
+        assert ext not in src.lower(), ext
 
 
 def test_exactly_three_classes():

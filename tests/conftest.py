@@ -147,3 +147,62 @@ def graduate(student, seconds):
     student.promote()
     assert student.has_graduated()
     return student
+
+
+# ---------------------------------------------------------------
+# (문서 정리, docs/final-spec) 기획서는 최종 게임 한 문서(1~10절 + 부록 변경 이력)다.
+# 문서 검사는 절 번호 대신 제목 글자로 구역을 찾는다(절 번호가 바뀌어도 의도가 그대로 남게).
+# ---------------------------------------------------------------
+SPEC_PATH = os.path.join(PROJECT_ROOT, "docs", "기획서.md")
+JEJA_SPEC_PATH = os.path.join(PROJECT_ROOT, ".claude", "skills", "jeja-spec", "SKILL.md")
+APPENDIX_HEADING = "부록: 변경 이력"  # 기획서 맨 아래 "## 부록: 변경 이력"
+DEV_HISTORY_HEADING = "개발 과정"  # 기획서 "## 8. 개발 과정" (예전 수치가 기록으로 남는 절)
+
+
+def read_doc(path=SPEC_PATH):
+    """문서 전체 글자를 utf-8로 읽어 돌려준다."""
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def doc_section(text, heading):
+    """제목이 heading인 첫 마크다운 구역(제목 줄 포함)을 돌려준다.
+
+    제목 앞 절 번호("2. ")는 없어도 된다: "게임 규칙"은 "## 2. 게임 규칙"을 찾는다.
+    제목 뒤 괄호 설명도 없어도 된다: "졸업 등급"은 "### 졸업 등급 (걸린 게임 시간, …)"을 찾는다.
+
+    "## …"이면 다음 "## " 제목 전까지, "### …"이면 다음 "## "/"### " 제목 전까지다.
+    해당 제목이 없으면 AssertionError.
+    """
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        title = line.lstrip("#").strip()
+        name = title.split(" ", 1)[-1] if title[:1].isdigit() else title
+        if line.startswith("#") and (name == heading or name.startswith(heading + " (")):
+            level = len(line) - len(line.lstrip("#"))
+            end = len(lines)
+            for j in range(i + 1, len(lines)):
+                other = lines[j]
+                if other.startswith("#"):
+                    other_level = len(other) - len(other.lstrip("#"))
+                    if other_level <= level and other[other_level:other_level + 1] == " ":
+                        end = j
+                        break
+            return "\n".join(lines[i:end])
+    raise AssertionError("제목 없음: " + heading)
+
+
+def spec_rule_text(text=None):
+    """기획서에서 '지금 규칙'을 적은 부분: 1절부터 부록 전까지, 단 개발 과정(기록) 절은 뺀다."""
+    if text is None:
+        text = read_doc()
+    body = text[text.index("## 1."):text.index("## " + APPENDIX_HEADING)]
+    # 1절 앞의 머리말(원래 PDF 기획 소개)도 기록이라 뺀다
+    return body.replace(doc_section(body, DEV_HISTORY_HEADING), "")
+
+
+def spec_appendix(text=None):
+    """기획서의 부록 변경 이력 구역."""
+    if text is None:
+        text = read_doc()
+    return doc_section(text, APPENDIX_HEADING)

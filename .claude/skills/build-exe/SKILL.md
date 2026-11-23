@@ -43,7 +43,8 @@ RECORD_PATH = os.path.join(get_base_dir(), "record.json")
 ```
 
 - `__file__`은 `main.py`와 같은 폴더(루트)에 있는 모듈 기준이어야 한다.
-- 읽을 때 파일이 없거나 JSON이 깨지면 최고 기록 0으로 처리한다(`FileNotFoundError`, `json.JSONDecodeError`, `ValueError`).
+- 이 처리는 이미 `config.py`의 `get_base_dir()`와 `RECORD_PATH`에 들어 있다.
+- 읽을 때 파일이 없거나 JSON이 깨지면 모든 값(최고 기록·연구비·명성·업그레이드)을 0으로 처리한다(`OSError`, `ValueError`. `json.JSONDecodeError`는 `ValueError`의 한 종류).
 - `record.json`은 `.gitignore`에 넣는다.
 
 ## 4. 빌드 후 dist/ 확인 항목
@@ -52,7 +53,7 @@ RECORD_PATH = os.path.join(get_base_dir(), "record.json")
 - [ ] exe를 더블클릭하면 콘솔 창 없이 800×600 게임 창이 뜬다(--noconsole).
 - [ ] 타이틀·게임·엔딩 화면의 한글이 네모(□)로 깨지지 않는다.
 - [ ] 한 판을 끝낸 뒤 exe와 **같은 폴더**에 `record.json`이 생긴다.
-- [ ] exe를 다시 실행하면 타이틀에 최고 기록이 그대로 보인다.
+- [ ] exe를 다시 실행하면 타이틀에 최고 기록·명성·연구비가 그대로 보이고, 산 업그레이드도 남아 있다.
 - [ ] exe를 다른 폴더로 복사해 실행해도 동작한다(그 폴더에 새 record.json).
 - [ ] (7일차) 파이썬이 없는 PC에서도 실행된다 — 사용자가 직접 확인.
 

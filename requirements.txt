@@ -1,4 +1,5 @@
-# 과제에 필요한 패키지를 여기에 추가하세요 (예: pandas, matplotlib)
+# 게임 실행에 필요한 패키지
 pygame==2.6.1
+# 개발 도구: 테스트(pytest), 실행 파일 빌드(PyInstaller). 게임 실행에는 필요 없음
 pytest>=8.0
 pyinstaller>=6.0

@@ -28,7 +28,8 @@ import pytest  # noqa: E402
 
 import config  # noqa: E402
 import game as game_module  # noqa: E402
-from conftest import press, reach_grade  # noqa: E402
+from conftest import (JEJA_SPEC_PATH, doc_section, press, reach_grade, read_doc,  # noqa: E402
+                      spec_appendix, spec_rule_text)
 from game import Game, sprite_size  # noqa: E402
 from student import Student, judge_ending  # noqa: E402
 
@@ -827,29 +828,48 @@ def test_preview_other_color_darker_than_soft_text():
 # ======================= 9. 문서 일치 =======================
 
 def test_spec_section2_table_1000_750():
-    text = (ROOT / "docs" / "기획서.md").read_text(encoding="utf-8")
-    sec2 = text.split("## 2.")[1].split("## 3.")[0]
-    assert "| 수석 졸업 | 1000 이상 |" in sec2
-    assert "| 무사 졸업 | 750~999 |" in sec2
-    assert "| 아슬아슬 졸업 | 750 미만 |" in sec2
-    assert not re.search(r"\|\s*(500 이상|300~499|300 미만|700 이상|450~699|450 미만)\s*\|", sec2)
-    sec9 = text.split("## 9.")[1]
-    assert "700/450" in sec9   # 9절(이벤트 도입 때) 기록은 그대로 두고, 10절이 1000/750 으로 덮는다
-    assert "1000 이상" in text.split("## 10.")[1]
-    assert "8초" in sec9 and "최소 간격" in sec9
+    """(문서 정리) 기획서 2절 졸업 등급 표는 최종 규칙(걸린 시간 200/360초)만 적는다.
+
+    예전 기준(지식 500/300 -> 700/450 -> 1000/750)은 본문 규칙 절에 남지 않고
+    부록 변경 이력에만 기록으로 남는다. 이벤트 최소 간격 8초는 4절 발생 규칙에 있다.
+    (이름은 E단위·K단위 때 그대로 둔다)
+    """
+    text = read_doc()
+    grades = doc_section(doc_section(text, "게임 규칙"), "졸업 등급과 졸업 보너스")
+    assert "| 수석 졸업 | 200초 이하 | +200 |" in grades
+    assert "| 무사 졸업 | 200초 초과 360초 이하 | +100 |" in grades
+    assert "| 아슬아슬 졸업 | 360초 초과 | +50 |" in grades
+    rules = spec_rule_text(text)
+    assert not re.search(r"\|\s*(500 이상|300~499|300 미만|700 이상|450~699|450 미만|"
+                         r"1000 이상|750~999|750 미만)\s*\|", rules)
+    assert "1000/750" not in rules and "700/450" not in rules
+    history = spec_appendix(text)
+    assert "수석 500 / 무사 300" in history          # 원본 PDF
+    assert "졸업 기준 700 / 450" in history          # 이벤트 도입(E단위)
+    assert "졸업 기준 1000 / 750" in history         # 방치형 밸런스(K단위)
+    assert "최소 간격 8초" in history
+    occur = doc_section(text, "발생 규칙")
+    assert "**8초 이상**" in occur and "최소 간격" in occur
+    assert config.EVENT_MIN_GAP == 8.0
 
 
 def test_jeja_spec_section5_1000_750():
-    text = (ROOT / ".claude" / "skills" / "jeja-spec" / "SKILL.md").read_text(encoding="utf-8")
-    sec5 = text.split("## 5.")[1].split("## 6.")[0]
-    assert "누적 지식 ≥ 1000" in sec5
-    assert "750 ≤ 지식 ≤ 999" in sec5
-    assert "지식 < 750" in sec5
-    assert "749 → 아슬아슬, 750 → 무사, 999 → 무사, 1000 → 수석" in sec5
-    before_note = sec5.split("(2026")[0]
-    assert "500" not in before_note and "700" not in before_note and "450" not in before_note
-    sec14 = text.split("## 14.")[1]
-    assert "EVENT_MIN_GAP" in sec14 and "8.0초" in sec14
+    """(문서 정리) jeja-spec 졸업 등급은 걸린 시간 기준과 경계값만 적고, 예전 지식 기준은 없다.
+
+    (이름은 K단위 때 그대로 둔다) 이벤트 최소 간격 EVENT_MIN_GAP 8.0초는 4절 표에 있다.
+    """
+    text = read_doc(JEJA_SPEC_PATH)
+    grades = doc_section(doc_section(text, "게임 규칙"), "졸업 등급")
+    assert "≤ 200초 (`TOP_GRADUATE_SECONDS`)" in grades
+    assert "200초 초과 ≤ 360초 (`NORMAL_GRADUATE_SECONDS`)" in grades
+    assert "360초 초과" in grades
+    for boundary in ("200 → 수석", "200.0001 → 무사", "360 → 무사", "360.0001 → 아슬아슬"):
+        assert boundary in grades, boundary
+    for old in ("누적 지식 ≥ 1000", "750 ≤ 지식 ≤ 999", "지식 < 750", "1000 → 수석",
+                "500 이상", "700 이상"):
+        assert old not in text, old
+    events = doc_section(text, "랜덤 이벤트와 성장 요소")
+    assert "`EVENT_MIN_GAP`" in events and "8.0초" in events
 
 
 def test_readme_has_no_older_ending_criteria():
