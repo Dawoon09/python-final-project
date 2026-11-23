@@ -1,8 +1,9 @@
 """방치형 최종 검수(K단위 2차): 실제 메인 루프 한 바퀴 + 기획서 10절·README 핵심 수치 대조.
 
 - 실제 Game.run() 루프에 이벤트를 넣어(pygame.event.get 대체, 시계는 0.1초 고정):
-  타이틀 Enter -> 방치 플레이(방침 1·2 변경, 연구비로 업그레이드 구매) -> 240초 졸업
-  -> C 대학원 -> 2년차 -> 휴학(수료) -> R 환생 -> ESC, 새 Game 이 명성·업그레이드를 읽는다.
+  타이틀 Enter -> 방치 플레이(방침 1·2 변경, 연구비로 업그레이드 구매) -> 지식 1100 졸업
+  -> C 대학원 -> 2년차(누적 1500) -> 휴학(수료) -> R 환생 -> ESC, 새 Game 이 명성·업그레이드를 읽는다.
+  (L단위, 기획서 11절: 졸업은 지식 목표, 등급은 걸린 시간, 대학원 년차는 지식 목표)
 - 기획서 10절·README 의 업그레이드 표(최대 레벨·기본 가격·레벨별 가격·총합), 방침 표,
   졸업 기준, 대학원 배수, 가격 증가율이 config·Game 계산과 같다.
 """
@@ -79,7 +80,8 @@ class IdleScript:
                 return [key(pygame.K_u), key(pygame.K_RETURN), key(pygame.K_u)]
             return []
         if g.state == config.STATE_ENDING and g.is_graduation_ending() and self.once("c"):
-            self.log.append(("graduated", g.ending, s.knowledge, g.money, g.graduation_bonus))
+            self.log.append(("graduated", g.ending, s.knowledge, g.money, g.graduation_bonus,
+                             s.graduation_time))
             return [key(pygame.K_c)]
         if g.state == config.STATE_PLAYING and g.grad_year >= 1:
             if g.grad_year >= 2 and self.once("year2"):
@@ -111,12 +113,12 @@ def test_idle_end_to_end_real_loop(monkeypatch, isolated_record_path):
     # 업그레이드: 학식 메뉴 개선 240 을 연구비로 샀다
     assert config.UPGRADE_MENU in g.upgrades and g.upgrades[config.UPGRADE_MENU] == 1
     assert log["money_before_buy"][0] >= 240
-    # 방치(자동 행동)로 240초 졸업
-    ending, knowledge, money, bonus = log["graduated"]
+    # 방치(자동 행동)로 지식 1100 졸업, 등급은 걸린 시간(240초 이하 수석 / 360초 이하 무사)
+    ending, knowledge, money, bonus, seconds = log["graduated"]
     assert ending in (config.ENDING_TOP, config.ENDING_NORMAL, config.ENDING_BARELY)
-    assert ending == {True: config.ENDING_TOP}.get(knowledge >= 1000,
-                                                  config.ENDING_NORMAL if knowledge >= 750
-                                                  else config.ENDING_BARELY)
+    assert knowledge >= config.GRADUATION_KNOWLEDGE
+    assert ending == (config.ENDING_TOP if seconds <= 240 else
+                      config.ENDING_NORMAL if seconds <= 360 else config.ENDING_BARELY)
     assert bonus == config.GRADUATION_BONUS[ending]          # 명성 0
     # 대학원 2년차에서 끝 -> "대학원 2년차 수료"
     assert log["grad_end"] == (config.ENDING_GRAD_TEXT.format(2), 2)
@@ -211,10 +213,12 @@ def test_policy_tables_match_config(source):
 
 def test_key_numbers_in_spec_and_readme():
     s, r = spec10(), readme()
-    # 졸업 기준
-    assert "수석 1000 이상 / 무사 750~999 / 아슬아슬 750 미만" in s
-    assert "수석 졸업(1000 이상) / 무사 졸업(750~999) / 아슬아슬 졸업(750 미만)" in r
-    assert (config.TOP_GRADUATE_KNOWLEDGE, config.NORMAL_GRADUATE_KNOWLEDGE) == (1000, 750)
+    # 졸업 기준 (L단위, 기획서 11절: 걸린 시간 240/360초, 졸업 지식 1100. README 문구는
+    # 아직 11절 미반영이라 test_final.py::test_readme_describes_no_time_limit 에서 따로 본다)
+    assert "| 수석 졸업 | 240초 이하 |" in s and "| 아슬아슬 졸업 | 360초 초과 |" in s
+    assert "| 졸업 | 1100 |" in s
+    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (240, 360)
+    assert config.GRADUATION_KNOWLEDGE == 1100
     # 가격 증가율
     assert "기본 가격 × **1.8**^(현재 레벨)" in s and "기본 가격 × 1.8^(현재 레벨)" in r
     assert config.UPGRADE_COST_GROWTH == 1.8

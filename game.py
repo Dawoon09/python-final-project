@@ -33,6 +33,15 @@ PANEL_MOVE_KEYS = {
 PANEL_BUY_KEYS = (pygame.K_RETURN, pygame.K_KP_ENTER)
 
 
+def format_time(seconds):
+    """게임 시간 seconds(초)를 "3분 12초" 같은 글자로 바꿔 돌려준다(소수는 버린다).
+
+    1분이 안 되면 "0분 45초"처럼 0분도 쓴다. 경과 시간과 졸업까지 걸린 시간에 쓴다.
+    """
+    minutes, rest = divmod(int(seconds + config.TIME_EPSILON), config.SECONDS_PER_MINUTE)
+    return config.TIME_TEXT.format(minutes, rest)
+
+
 def to_count(value):
     """record.json에서 읽은 값 value가 0 이상의 정수면 그대로, 아니면 0을 돌려준다.
 
@@ -183,6 +192,7 @@ class Game:
         """대학원 진학: 졸업한 같은 제자로 "대학원 1년차"를 이어서 시작한다.
 
         게이지·특성·외형·지식·연계 플래그는 그대로 두고, 게임 화면으로 돌아간다.
+        60초 주기 시계(경과 시간)는 졸업한 시각에서 이어서 흐른다(기획서 11절).
         자동 행동 시계는 2초(간격)부터 다시 잰다. 학부 졸업 엔딩이 아니면 아무것도 하지 않는다.
         들어갔으면 True, 아니면 False를 돌려준다.
         """
@@ -194,6 +204,7 @@ class Game:
         self.auto_timer = self.get_auto_interval()
         self.clear_effects()
         self.state = config.STATE_PLAYING
+        self.check_promotion()   # 졸업할 때 이미 1년차 목표를 넘었으면 바로 오른다
         return True
 
     def end_game(self, ending):
@@ -307,11 +318,30 @@ class Game:
         self.save_best_record()
         return True
 
+    def check_promotion(self):
+        """누적 지식으로 진급·졸업·대학원 년차 오름을 판정하고, 오른 횟수(진급 수)를 돌려준다.
+
+        지식이 바뀔 때마다(자동 행동·자동형 이벤트·선택지 직후) 부른다(기획서 11절).
+        판정은 Student.promote가 한다. 학년은 내려가지 않고, 한 번에 여러 목표를 넘으면
+        그만큼 오른다. 졸업(4학년에서 1100 이상)은 졸업 시각만 적고 진급 수에는 넣지 않는다.
+        엔딩 화면으로 바꾸는 일은 check_ending이 한다(그래서 휴학이 졸업보다 먼저다).
+        올랐으면 진급 알림("3학년 진급!" / "대학원 2년차!")을 2초 띄운다.
+        """
+        count = self.student.promote()
+        if count > config.PROMOTION_COUNT_START:
+            if self.student.is_in_grad_school():
+                text = config.GRAD_PROMOTION_TEXT.format(self.grad_year)
+            else:
+                text = config.PROMOTION_TEXT.format(self.student.get_grade())
+            self.promotion_notice = {"text": text, "timer": config.EVENT_NOTICE_TIME,
+                                     "good": True}
+        return count
+
     def check_ending(self):
         """제자 상태를 보고 엔딩이 났으면 엔딩 화면으로 바꾼다.
 
-        휴학(체력·멘탈 0)이 졸업(240초)보다 먼저다. 판정은 Student.get_ending이 한다.
-        엔딩이 났으면 True, 아니면 False를 돌려준다.
+        휴학(체력·멘탈 0)이 졸업(4학년에서 누적 지식 1100 이상)보다 먼저다.
+        판정은 Student.get_ending이 한다. 엔딩이 났으면 True, 아니면 False를 돌려준다.
         """
         ending = self.student.get_ending()
         if ending is None:
@@ -374,10 +404,11 @@ class Game:
         게임 화면(STATE_PLAYING)이 아니거나 모르는 행동 이름이면 아무것도 하지 않는다.
         실행했으면 True, 무시했으면 False를 돌려준다. 실행하면 last_action에 이름을 남긴다.
         공부는 지금 방침의 지식 배수·소모 배수를 적용한다(학식·휴식은 방침과 상관없다).
-        행동으로 체력이나 멘탈이 0이 되면 그 즉시 휴학 엔딩으로 바꾼다.
+        행동 뒤 진급·졸업을 판정하고(check_promotion), 체력이나 멘탈이 0이 되면
+        그 즉시 휴학 엔딩, 졸업 목표를 넘었으면 졸업 엔딩으로 바꾼다(휴학이 먼저).
         실제로 실행됐을 때만 연출(파티클·팝업·점프·게이지 애니메이션)을 시작한다.
-        휴학으로 끝나면 end_game이 연출을 다시 비운다.
-        휴학이 아니면 랜덤 이벤트를 판정한다(roll_event). 대화창이 떠 있는 동안에는
+        엔딩으로 끝나면 end_game이 연출을 다시 비운다.
+        엔딩이 아니면 랜덤 이벤트를 판정한다(roll_event). 대화창이 떠 있는 동안에는
         상태가 게임 화면이 아니므로 행동이 무시된다.
         보통은 update의 자동 행동 시계가 2초마다 부른다.
         """
@@ -397,6 +428,7 @@ class Game:
         self.last_action = name
         self.earn_knowledge_money(before[config.GAUGE_KNOWLEDGE])
         self.start_action_effects(name, before)
+        self.check_promotion()
         if not self.check_ending():
             self.roll_event()
         return True
@@ -583,7 +615,7 @@ class Game:
     def start_event(self, event):
         """이벤트 event를 시작하고 그 학년 이벤트 수를 하나 늘린다.
 
-        - 자동형: 효과를 바로 적용하고 알림(2초)과 수치 팝업을 띄운 뒤 휴학을 판정한다.
+        - 자동형: 효과를 바로 적용하고 알림(2초)과 수치 팝업을 띄운 뒤 진급·졸업과 휴학을 판정한다.
           알림 색은 효과 합의 부호로 정한다(0 이상이면 좋은 일, 음수면 나쁜 일).
         - 선택지형: 한 판 1회로 기록하고, 선택 버튼 글자를 채운 뒤 대화 상태로 바꾼다(게임 정지).
           대화창 시계(dialog_time)를 0부터 다시 잰다(입력 대기·등장 연출용).
@@ -604,6 +636,7 @@ class Game:
             self.start_gauge_effects(before, for_event=True)
             if scholarship > config.MONEY_START:
                 self.spawn_event_popups([(config.MONEY_LABEL, scholarship)])
+            self.check_promotion()
             self.check_ending()
             return
         self.student.mark_event_seen(event[config.EVENT_ID])
@@ -627,7 +660,7 @@ class Game:
         """대화창에서 index번째(0 또는 1) 선택지를 고른다.
 
         효과·특성·외형·연계 플래그를 적용하고 수치 팝업을 띄운 뒤 게임을 다시 흐르게 한다.
-        그 결과 체력·멘탈이 0이면 바로 휴학 엔딩이다.
+        그 결과로 진급·졸업을 판정하고, 체력·멘탈이 0이면 바로 휴학 엔딩이다(휴학이 졸업보다 먼저).
         대화창이 떠 있지 않거나, 뜬 지 아직 입력 대기 시간(0.3초)이 안 지났으면
         아무것도 하지 않는다. 골랐으면 True, 아니면 False를 돌려준다.
         """
@@ -642,6 +675,7 @@ class Game:
         self.current_event = None
         self.state = config.STATE_PLAYING
         self.start_gauge_effects(before, for_event=True)
+        self.check_promotion()
         self.check_ending()
         return True
 
@@ -715,10 +749,10 @@ class Game:
         행동을 골라(choose_auto_action) 실행하고(do_action) 시계를 다시 2초로 채운다.
         dt가 커서 자동 행동 시각을 여러 번 지나가면, 행동 시각마다 끊어서 차례대로 처리한다
         (행동 시각까지 시간을 흘림 -> 엔딩 확인 -> 행동 -> 남은 시간 계속).
-        엔딩 확인: 자연 감소로 체력·멘탈이 0이 되었으면 휴학,
-        아니면 240초가 되었을 때 졸업. 그래서 240초 시점에 0이 겹치면 휴학이 먼저이고,
+        엔딩 확인: 자연 감소로 체력·멘탈이 0이 되었으면 휴학(대학원이면 "대학원 n년차 수료")이다.
+        판에 시간 제한이 없으므로(기획서 11절) 시간이 지났다고 졸업하지는 않는다. 졸업은
+        지식이 바뀔 때 check_promotion이 판정한다(여기서도 한 번 더 확인해 둔다).
         엔딩이 나면 그 시각의 자동 행동은 하지 않는다.
-        대학원에서는 240초에 멈추지 않고 끝없이 흐르며, 체력·멘탈 0이면 "대학원 n년차 수료"다.
         타이틀·엔딩 화면과 대화창(선택지형 이벤트)이 떠 있는 동안에는
         시간·게이지·자동 행동 시계가 흐르지 않는다(게임 정지). 자동 행동 직후
         대화창이 뜨면 이번 dt의 남은 시간도 흘리지 않는다.
@@ -730,6 +764,7 @@ class Game:
             self.student.update(step)
             self.auto_timer -= step
             remaining -= step
+            self.check_promotion()
             if self.check_ending():
                 break
             if self.auto_timer > config.TIME_EPSILON:
@@ -748,6 +783,8 @@ class Game:
         """
         # 자동형 이벤트 알림 {"text": 글자, "timer": 남은 시간, "good": 좋은 일이면 True}. 없으면 None
         self.notice = None
+        # 진급 알림 {"text": "2학년 진급!", "timer": 남은 시간, "good": True}. 없으면 None
+        self.promotion_notice = None
         self.dialog_time = config.ZERO_TIME  # 대화창이 뜬 뒤 흐른 시간(초): 입력 대기·등장 연출용
         self.particles = []        # 파티클 dict 리스트 (E2)
         self.popups = []           # 수치 팝업 dict 리스트 (E3)
@@ -874,7 +911,7 @@ class Game:
         """연출용 시계를 dt초만큼 진행한다.
 
         깜빡임 시계는 모든 화면에서 흐른다. 나머지(눌림·점프·숨쉬기·파티클·팝업·
-        게이지 애니메이션·자동형 알림)는 게임 화면과 대화창 화면에서만 흐른다.
+        게이지 애니메이션·자동형 알림·진급 알림)는 게임 화면과 대화창 화면에서만 흐른다.
         (대화창 중에도 연출만 마저 흐르고, 게임 시간·게이지·자동 행동 시계는 update에서 멈춘다.)
         게임 결과 값은 건드리지 않는다.
         """
@@ -887,6 +924,10 @@ class Game:
             self.notice["timer"] -= dt
             if self.notice["timer"] <= config.TIME_EPSILON:
                 self.notice = None
+        if self.promotion_notice is not None:
+            self.promotion_notice["timer"] -= dt
+            if self.promotion_notice["timer"] <= config.TIME_EPSILON:
+                self.promotion_notice = None
         self.breath_time += dt
         self.jump_timer = max(config.ZERO_TIME, self.jump_timer - dt)
         for name in self.press_timers:
@@ -978,10 +1019,10 @@ class Game:
     def get_season_time(self):
         """(계절 번호 0~3, 그 계절 안에서 흐른 시간(초) 0~15)를 돌려준다.
 
-        학년(대학원이면 년차) 안 시간으로 정한다: 0~15초 봄, 15~30초 여름,
-        30~45초 가을, 45~60초 겨울(시험 기간). 60초를 넘는 값(졸업 순간)은 겨울 끝으로 본다.
+        60초 주기 안 시간으로 정한다(기획서 11절): 0~15초 봄, 15~30초 여름,
+        30~45초 가을, 45~60초 겨울(시험 기간). 학년·대학원 년차와는 상관없다.
         """
-        time_in_term = max(config.ZERO_TIME, self.student.get_time_in_grade())
+        time_in_term = self.student.get_cycle_time()
         index = int((time_in_term + config.TIME_EPSILON) // config.SEASON_SECONDS)
         index = min(index, len(config.SEASONS) - config.INDEX_STEP)
         time_in_season = time_in_term - index * config.SEASON_SECONDS
@@ -1325,23 +1366,42 @@ class Game:
         EVENT_NOTICE_TEXT_MAX_WIDTH에서 2줄로 나눠 상자가 오른쪽으로 너무 길어지지 않게 한다.
         상자 높이는 2줄 자리로 늘 같고, 글자 줄들은 상자 세로 가운데에 놓는다.
         """
-        if self.notice["good"]:
+        self.draw_notice(self.notice)
+
+    def draw_promotion_notice(self):
+        """진급 알림("2학년 진급!", "대학원 2년차!")을 무대 오른쪽 위 구석에 그린다.
+
+        자동형 알림과 같은 모양(민트 도트 상자 + 하트, 위에서 내려오는 등장)이고,
+        자동형 알림(왼쪽 위)과 같은 때 떠도 겹치지 않도록 오른쪽 끝을 PROMOTION_NOTICE_RIGHT에 맞춘다.
+        """
+        self.draw_notice(self.promotion_notice, right=config.PROMOTION_NOTICE_RIGHT)
+
+    def draw_notice(self, notice, right=None):
+        """알림 notice({"text", "timer", "good"})를 도트 상자로 그린다(자동형 알림·진급 알림 공통).
+
+        right가 None이면 상자 왼쪽 끝을 EVENT_NOTICE_X(무대 왼쪽 위)에 맞추고,
+        숫자면 상자 오른쪽 끝을 그 x에 맞춘다(무대 오른쪽 위).
+        """
+        if notice["good"]:
             icon, icon_colors = config.NOTICE_GOOD_ICON, config.NOTICE_GOOD_COLORS
             fill, light, shadow = config.NOTICE_GOOD_BOX
         else:
             icon, icon_colors = config.NOTICE_BAD_ICON, config.NOTICE_BAD_COLORS
             fill, light, shadow = config.NOTICE_BAD_BOX
-        age = config.EVENT_NOTICE_TIME - self.notice["timer"]
+        age = config.EVENT_NOTICE_TIME - notice["timer"]
         slide = self.get_slide_offset(age, config.EVENT_NOTICE_SLIDE_TIME,
                                       config.EVENT_NOTICE_SLIDE_DISTANCE)
-        lines = self.wrap_text(self.notice_font, self.notice["text"],
+        lines = self.wrap_text(self.notice_font, notice["text"],
                                config.EVENT_NOTICE_TEXT_MAX_WIDTH)
         surfaces = [render_text(self.notice_font, line) for line in lines]
         text_width = max(surface.get_width() for surface in surfaces)
         icon_width, icon_height = sprite_size(icon, config.PIXEL_SIZE)
         width = (config.BOX_INSET + config.EVENT_NOTICE_PAD + icon_width
                  + config.EVENT_NOTICE_ICON_GAP + text_width + config.EVENT_NOTICE_PAD_RIGHT)
-        box = pygame.Rect(config.EVENT_NOTICE_X, config.EVENT_NOTICE_Y - slide,
+        left = config.EVENT_NOTICE_X
+        if right is not None:
+            left = right - width
+        box = pygame.Rect(left, config.EVENT_NOTICE_Y - slide,
                           width, config.EVENT_NOTICE_HEIGHT)
         self.screen.set_clip(self.get_stage_inner())
         inner = draw_pixel_box(self.screen, box, fill, light, shadow, drop=config.COLOR_DROP)
@@ -1597,9 +1657,11 @@ class Game:
                              (start_x + index * step, y, config.PIXEL_SIZE, config.PIXEL_SIZE))
 
     def draw_playing(self):
-        """게임 화면: 상단 정보바, (시험 기간이면) 노란 배너, 상태 패널(게이지),
-        제자 무대(배경 4겹 -> 제자 -> 파티클·팝업 -> 알림), 방침 버튼과 자동 행동 진행 막대."""
+        """게임 화면: 상단 정보바, 목표 진행 막대, (시험 기간이면) 노란 배너, 상태 패널(게이지),
+        제자 무대(배경 4겹 -> 제자 -> 파티클·팝업 -> 알림·진급 알림),
+        방침 버튼과 자동 행동 진행 막대, 경과 시간."""
         self.draw_info_bar()
+        self.draw_goal_bar()
         if self.student.is_exam_period():
             self.draw_exam_banner()
         self.draw_panel((config.STATUS_PANEL_X, config.PANEL_Y,
@@ -1615,7 +1677,10 @@ class Game:
         self.draw_stage_effects()
         if self.notice is not None:
             self.draw_event_notice()
+        if self.promotion_notice is not None:
+            self.draw_promotion_notice()
         self.draw_buttons()
+        self.draw_elapsed_time()
 
     def draw_stage_effects(self):
         """제자 무대 안에 파티클(E2)과 수치 팝업(E3)을 그린다.
@@ -1677,7 +1742,8 @@ class Game:
     def draw_ending(self):
         """엔딩 화면: 패널, 엔딩 이름, (졸업·수료) 학사모와 별 / (휴학) 비구름, 누적 지식 배지, 키 안내.
 
-        - 학부 졸업: 등급(수석/무사/아슬아슬 졸업), 졸업 보너스, "R: 환생 (명성 +1)" / "C: 대학원 진학"
+        - 학부 졸업: 등급(수석/무사/아슬아슬 졸업), 걸린 시간("졸업까지 3분 52초"), 졸업 보너스,
+          "R: 환생 (명성 +1)" / "C: 대학원 진학"
         - 대학원 수료: "대학원 n년차 수료", "R: 환생 (명성 +1)" (졸업 보너스 없음)
         - 휴학: "R을 눌러 다시 하기"
         업그레이드 패널(왼쪽)이 열려 있으면 가운데 패널과 글자·그림을 오른쪽으로 옮겨
@@ -1692,6 +1758,12 @@ class Game:
         else:
             self.draw_stars(config.ENDING_STARS, center_x - config.SCREEN_CENTER_X)
             self.draw_graduation_cap(center_x)
+        if self.is_graduation_ending() and self.student.has_graduated():
+            # 졸업까지 걸린 시간: "졸업까지 3분 52초" (기획서 11절)
+            self.draw_text_center(
+                self.event_font,
+                config.ENDING_TIME_TEXT.format(format_time(self.student.graduation_time)),
+                config.ENDING_TIME_Y, config.COLOR_TEXT, center_x)
         self.draw_badge(config.ENDING_KNOWLEDGE_TEXT.format(self.student.knowledge),
                         config.ENDING_KNOWLEDGE_Y, config.COLOR_MINT_LIGHT, config.COLOR_WHITE,
                         center_x)
@@ -1750,11 +1822,67 @@ class Game:
                     banner.right - config.EXAM_ICON_MARGIN - icon_width, icon_y,
                     config.PIXEL_SIZE, ink)
 
+    def get_goal_text(self):
+        """정보바의 목표 글자를 돌려준다(기획서 11절).
+
+        1~3학년 "다음 학년까지 지식 n", 4학년 "졸업까지 지식 n", 대학원 "다음 년차까지 지식 n".
+        n은 다음 목표까지 더 모아야 하는 지식이다(0 아래로 내려가지 않음).
+        """
+        left = self.student.get_knowledge_to_goal()
+        if self.student.is_in_grad_school():
+            return config.NEXT_GRAD_YEAR_TEXT.format(left)
+        if self.student.get_grade() >= config.MAX_GRADE:
+            return config.GRADUATION_GOAL_TEXT.format(left)
+        return config.NEXT_GRADE_TEXT.format(left)
+
+    def draw_goal_bar(self):
+        """정보바 바로 아래 왼쪽(상태 패널 위)에 목표 진행 막대를 도트 상자로 그린다.
+
+        상자 안 왼쪽에 "목표" 글자, 그 오른쪽에 막대. 막대는 지금 목표 구간
+        (앞 목표 -> 다음 목표)에서 지식이 얼마나 찼는지(Student.get_goal_progress)를
+        PIXEL_SIZE 단위로 끊어 채운다(도트 방식, 반투명 없음).
+        시험 기간 배너는 오른쪽(무대 위)에 뜨므로 서로 겹치지 않는다.
+        """
+        box = pygame.Rect(config.GOAL_BOX_X, config.GOAL_BOX_Y,
+                          config.GOAL_BOX_WIDTH, config.GOAL_BOX_HEIGHT)
+        inner = draw_pixel_box(self.screen, box, config.COLOR_INFO_BAR,
+                               config.COLOR_MINT_LIGHT, config.COLOR_MINT_DARK,
+                               drop=config.COLOR_DROP)
+        label = render_text(self.event_font, config.GOAL_LABEL_TEXT)
+        label_rect = label.get_rect()
+        label_rect.midleft = (inner.left + config.GOAL_BAR_PAD, inner.centery)
+        self.screen.blit(label, label_rect)
+
+        bar_left = label_rect.right + config.GOAL_LABEL_GAP
+        bar = pygame.Rect(bar_left, inner.centery - config.GOAL_BAR_HEIGHT // config.HALF,
+                          inner.right - config.GOAL_BAR_PAD - bar_left, config.GOAL_BAR_HEIGHT)
+        # 막대 테두리(남색 1칸)와 빈 부분(연한 색)은 상태 패널 게이지와 같은 모양이다
+        draw_pixel_box(self.screen, bar.inflate(config.BOX_INSET, config.BOX_INSET),
+                       config.COLOR_BAR_BG, light=config.COLOR_BAR_BG_SHADE)
+        cells = int(bar.width * self.student.get_goal_progress()) // config.PIXEL_SIZE
+        fill = pygame.Rect(bar.left, bar.top, cells * config.PIXEL_SIZE, bar.height)
+        pygame.draw.rect(self.screen, config.COLOR_YELLOW, fill)
+        pygame.draw.rect(self.screen, config.COLOR_YELLOW_LIGHT,
+                         (fill.left, fill.top, fill.width, config.PIXEL_SIZE))
+        pygame.draw.rect(self.screen, config.COLOR_YELLOW_DARK,
+                         (fill.left, fill.bottom - config.PIXEL_SIZE, fill.width,
+                          config.PIXEL_SIZE))
+
+    def draw_elapsed_time(self):
+        """오른쪽 아래([업그레이드 U] 버튼 밑)에 판 시작부터 흐른 게임 시간("경과 3분 12초")을 쓴다."""
+        text = render_text(self.font,
+                           config.ELAPSED_TEXT.format(format_time(self.student.elapsed)),
+                           config.COLOR_TEXT_SOFT)
+        rect = text.get_rect()
+        rect.center = (config.ELAPSED_CENTER_X, config.ELAPSED_CENTER_Y)
+        self.screen.blit(text, rect)
+
     def draw_info_bar(self):
         """상단 정보바를 그린다.
 
         민트색 도트 상자 위에 왼쪽 "N학년"(대학원이면 "대학원 n년차"),
-        가운데 "남은 시간 N초"(현재 학년·년차 남은 시간), 오른쪽 "연구비 N  지식 N"을 쓴다.
+        그 오른쪽(INFO_GOAL_X부터) 목표 글자("다음 학년까지 지식 n" 등, get_goal_text),
+        오른쪽 "연구비 N  지식 N"을 쓴다. 목표 진행 막대는 정보바 바로 아래(draw_goal_bar)다.
         """
         box = pygame.Rect(config.INFO_BOX_X, config.INFO_BOX_Y,
                           config.INFO_BOX_WIDTH, config.INFO_BOX_HEIGHT)
@@ -1771,11 +1899,10 @@ class Game:
         grade_rect.midleft = (config.INFO_BAR_MARGIN, config.INFO_TEXT_CENTER_Y)
         self.screen.blit(grade, grade_rect)
 
-        time_left = render_text(
-            self.font, config.TIME_LEFT_TEXT.format(self.student.get_grade_time_left()))
-        time_rect = time_left.get_rect()
-        time_rect.center = (config.INFO_TIME_X, config.INFO_TEXT_CENTER_Y)
-        self.screen.blit(time_left, time_rect)
+        goal = render_text(self.font, self.get_goal_text())
+        goal_rect = goal.get_rect()
+        goal_rect.midleft = (config.INFO_GOAL_X, config.INFO_TEXT_CENTER_Y)
+        self.screen.blit(goal, goal_rect)
 
         knowledge = render_text(
             self.font,

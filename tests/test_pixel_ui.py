@@ -108,7 +108,7 @@ def font():
 GAME_CONSTANTS = [
     "SCREEN_WIDTH", "SCREEN_HEIGHT", "FPS", "WINDOW_TITLE", "FONT_NAME", "MS_PER_SECOND",
     "STATE_TITLE", "STATE_PLAYING", "STATE_ENDING", "START_STATE",
-    "SECONDS_PER_GRADE", "MAX_GRADE", "TOTAL_SECONDS", "EXAM_SECONDS", "FIRST_GRADE", "ZERO_TIME",
+    "MAX_GRADE", "EXAM_SECONDS", "FIRST_GRADE", "ZERO_TIME",
     "GAUGE_MIN", "GAUGE_MAX", "HEALTH_START", "MENTAL_START", "KNOWLEDGE_START",
     "HEALTH_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC_EXAM",
     "DECAY_INTERVAL", "TIME_EPSILON", "LOW_GAUGE_LIMIT",
@@ -116,7 +116,6 @@ GAME_CONSTANTS = [
     "STUDY_KNOWLEDGE", "STUDY_KNOWLEDGE_EXAM",  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
     "MENTAL_SMILE_MIN", "MENTAL_FLAT_MIN", "BASE_RADIUS", "RADIUS_PER_GRADE", "GLASSES_GRADE",
     "MOUTH_SMILE", "MOUTH_FLAT", "MOUTH_CRY",
-    "TOP_GRADUATE_KNOWLEDGE", "NORMAL_GRADUATE_KNOWLEDGE",
     "ENDING_LEAVE", "ENDING_TOP", "ENDING_NORMAL", "ENDING_BARELY",
     "RECORD_FILENAME", "RECORD_KEY", "RECORD_ENCODING", "BEST_RECORD_START",
     "ACTION_FEED", "ACTION_REST", "ACTION_STUDY",
@@ -124,20 +123,29 @@ GAME_CONSTANTS = [
 
 # 화면 글자 (기획서·jeja-spec 의 문구) : main 과도 같아야 한다
 UI_TEXTS = [
-    "HEALTH_LABEL", "MENTAL_LABEL", "KNOWLEDGE_LABEL", "GRADE_TEXT", "TIME_LEFT_TEXT",
+    "HEALTH_LABEL", "MENTAL_LABEL", "KNOWLEDGE_LABEL", "GRADE_TEXT",
     # G단위: 행동 버튼 글자 3개·쿨타임 안내는 기획서 10절로 삭제(방침 버튼·자동 행동 안내로 바뀜)
     "KNOWLEDGE_TEXT", "EXAM_BANNER_TEXT", "TITLE_TEXT", "BEST_RECORD_TEXT",
     "START_HINT_TEXT", "ENDING_KNOWLEDGE_TEXT", "RESTART_HINT_TEXT",
 ]
 
 
+# (L단위) 기획서 11절(시간 제한 없애기)로 없어진 상수와 화면 글자
+L_REMOVED_CONSTANTS = ["SECONDS_PER_GRADE", "TOTAL_SECONDS", "TOP_GRADUATE_KNOWLEDGE",
+                       "NORMAL_GRADUATE_KNOWLEDGE", "TIME_LEFT_TEXT"]
+
+
 def test_game_constants_same_as_main(tmp_path):
     main_cfg = load_main_config(tmp_path)
     diff = [(n, getattr(main_cfg, n), getattr(config, n)) for n in GAME_CONSTANTS + UI_TEXTS
             if getattr(main_cfg, n) != getattr(config, n)]
-    # 사용자 승인으로 엔딩 기준만 500/300 -> 700/450(E단위) -> 1000/750(K단위)으로 바뀌었다. 그 밖에는 main 과 같아야 한다.
-    approved = [("NORMAL_GRADUATE_KNOWLEDGE", 300, 750), ("TOP_GRADUATE_KNOWLEDGE", 500, 1000)]
-    assert sorted(diff) == approved
+    # 엔딩 기준은 500/300 -> 700/450(E단위) -> 1000/750(K단위)으로 바뀌었다가
+    # L단위(기획서 11절)에서 지식 기준 자체가 없어졌다(걸린 시간 240/360초). 그 밖에는 main 과 같아야 한다.
+    assert diff == []
+    # (L단위) 기획서 11절로 없어진 상수: main 에는 있었고 지금은 없어야 한다
+    for gone in L_REMOVED_CONSTANTS:
+        assert hasattr(main_cfg, gone), gone
+        assert not hasattr(config, gone), gone
     # get_base_dir (record.json 위치) 도 그대로 (docstring 제외 코드 비교)
     old = _functions(git_show("config.py"))["get_base_dir"]
     new = _functions((ROOT / "config.py").read_text(encoding="utf-8"))["get_base_dir"]
@@ -316,6 +324,12 @@ H_CHANGED = {"Student.__init__", "Student.change_health", "Student.change_mental
 I_CHANGED = {"Student.update", "Student.is_time_over", "Student.is_exam_period",
              "Student.get_ending", "Student.get_grade_time_left"}
 
+# (L단위) 기획서 11절(시간 제한 없애기)이 규칙 자체를 바꾼 함수. 새 규칙은 test_idle_l.py 에서 확인한다.
+# - judge_ending: 지식 -> 졸업까지 걸린 시간(초)
+# - Student.get_grade: 경과 시간 -> 진급으로 오른 학년(self.grade)
+# - Student.get_graduation_ending: 지식 -> graduation_time, 졸업 전이면 None
+L_CHANGED = {"judge_ending", "Student.get_grade", "Student.get_graduation_ending"}
+
 
 @pytest.mark.parametrize("name", ["student.py", "game.py", "button.py"])
 def test_logic_functions_unchanged_from_main(name):
@@ -331,7 +345,7 @@ def test_logic_functions_unchanged_from_main(name):
     changed = []
     for fname, node in old.items():
         if (_is_drawing(fname) or fname == "Game.__init__" or fname in G_CHANGED
-                or fname in H_CHANGED or fname in I_CHANGED):
+                or fname in H_CHANGED or fname in I_CHANGED or fname in L_CHANGED):
             continue
         assert fname in new, f"{name}: {fname} 이 사라짐"
         new_node = _remove_event_hooks(fname, new[fname])
@@ -446,7 +460,12 @@ def test_config_is_valid_utf8_without_broken_chars():
     ("START_HINT_TEXT", "Enter를 눌러 시작"),
     ("RESTART_HINT_TEXT", "R을 눌러 다시 하기"),
     ("GRADE_TEXT", "{}학년"),
-    ("TIME_LEFT_TEXT", "남은 시간 {}초"),
+    # (L단위) TIME_LEFT_TEXT "남은 시간 {}초" 삭제 -> 목표 글자·경과 시간 (기획서 11절 화면)
+    ("NEXT_GRADE_TEXT", "다음 학년까지 지식 {}"),
+    ("GRADUATION_GOAL_TEXT", "졸업까지 지식 {}"),
+    ("ELAPSED_TEXT", "경과 {}"),
+    ("TIME_TEXT", "{}분 {}초"),
+    ("ENDING_TIME_TEXT", "졸업까지 {}"),
     ("BEST_RECORD_TEXT", "최고 기록: 지식 {}"),
     ("ENDING_KNOWLEDGE_TEXT", "누적 지식 {}"),
 ])
@@ -610,9 +629,11 @@ def test_policy_buttons_never_gray_selected_yellow(game):
     assert _policy_button_colors(game) == expected
 
 
-def _student(elapsed, health=80, mental=80):
+def _student(knowledge, health=80, mental=80):
+    """(L단위) 누적 지식 knowledge까지 공부한 제자(진급 판정으로 학년을 맞춘다)."""
     s = Student()
-    s.elapsed = elapsed
+    s.knowledge = knowledge
+    s.promote()
     s.health, s.mental = health, mental
     return s
 
@@ -629,10 +650,11 @@ def _face_bbox(surf):
     return min(xs), min(ys), max(xs) + 1, max(ys) + 1
 
 
-@pytest.mark.parametrize("elapsed, radius", [(0, 40), (60, 50), (120, 60), (180, 70), (240, 70)])
-def test_face_diameter_is_twice_radius(surface, elapsed, radius):
+@pytest.mark.parametrize("knowledge, radius", [(0, 40), (200, 50), (450, 60), (750, 70),
+                                              (1100, 70)])
+def test_face_diameter_is_twice_radius(surface, knowledge, radius):
     """실제로 그려진 얼굴(머리카락 포함)의 가로·세로 = 2 x 반지름, 중심 = 제자 무대 가운데."""
-    s = _student(elapsed)
+    s = _student(knowledge)
     assert s.get_radius() == radius
     surface.fill(config.COLOR_BG)
     s.draw(surface)
@@ -642,10 +664,10 @@ def test_face_diameter_is_twice_radius(surface, elapsed, radius):
     assert (left + right) // 2 == CX and (top + bottom) // 2 == CY
 
 
-@pytest.mark.parametrize("elapsed", [0, 60, 120, 180])
-def test_dark_circles_fully_visible_under_glasses(surface, elapsed):
+@pytest.mark.parametrize("knowledge", [0, 200, 450, 750])
+def test_dark_circles_fully_visible_under_glasses(surface, knowledge):
     """체력 30 미만 다크서클이 안경에 가리지 않고 양쪽 모두 온전히 보인다(2칸 x 2개)."""
-    s = _student(elapsed, health=29)
+    s = _student(knowledge, health=29)
     cell = s.get_radius() // config.FACE_CELL_DIVISOR
     surface.fill(config.COLOR_BG)
     s.draw(surface)
@@ -660,29 +682,29 @@ def test_dark_circles_fully_visible_under_glasses(surface, elapsed):
 
 @pytest.mark.parametrize("health", [30, 100])
 def test_no_dark_circle_color_when_healthy(surface, health):
-    for elapsed in (0, 120):
+    for knowledge in (0, 450):
         surface.fill(config.COLOR_BG)
-        _student(elapsed, health=health).draw(surface)
+        _student(knowledge, health=health).draw(surface)
         assert not any(color(surface, x, y) == config.COLOR_DARK_CIRCLE
                        for x in range(CX - 70, CX + 70) for y in range(CY - 70, CY + 70))
 
 
-@pytest.mark.parametrize("elapsed, glasses", [(0, False), (59.9, False), (60, False),
-                                              (119.9, False), (120, True), (180, True)])
-def test_glasses_lens_glass_color_only_with_glasses(surface, elapsed, glasses):
+@pytest.mark.parametrize("knowledge, glasses", [(0, False), (199, False), (200, False),
+                                                (449, False), (450, True), (750, True)])
+def test_glasses_lens_glass_color_only_with_glasses(surface, knowledge, glasses):
     surface.fill(config.COLOR_BG)
-    _student(elapsed).draw(surface)
+    _student(knowledge).draw(surface)
     found = any(color(surface, x, y) == config.COLOR_GLASS
                 for x in range(CX - 70, CX + 70) for y in range(CY - 70, CY + 70))
     assert found is glasses
 
 
 def test_three_mouths_produce_three_different_images(surface):
-    for elapsed in (0, 120, 180):
+    for knowledge in (0, 450, 750):
         images = set()
         for mental in (60, 59, 29):
             surface.fill(config.COLOR_BG)
-            _student(elapsed, mental=mental).draw(surface)
+            _student(knowledge, mental=mental).draw(surface)
             images.add(pygame.image.tobytes(surface, "RGB"))
         assert len(images) == 3
 
@@ -832,9 +854,9 @@ def test_gauges_inside_status_panel():
     assert config.HEALTH_BAR_Y + config.BAR_HEIGHT + P < config.MENTAL_LABEL_Y
 
 
-@pytest.mark.parametrize("elapsed", [0, 60, 120, 180])
-def test_student_and_shadow_inside_stage(elapsed):
-    r = _student(elapsed).get_radius()
+@pytest.mark.parametrize("knowledge", [0, 200, 450, 750])
+def test_student_and_shadow_inside_stage(knowledge):
+    r = _student(knowledge).get_radius()
     inner = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH,
                         config.PANEL_HEIGHT).inflate(-2 * P, -2 * P)
     assert inner.contains(pygame.Rect(CX - r, CY - r, 2 * r, 2 * r))
@@ -868,17 +890,21 @@ def test_texts_fit_in_boxes(font):
 
 
 def test_info_bar_texts_fit_and_do_not_overlap(font):
+    """(L단위) 정보바: 학년 | 목표 글자("다음 학년까지 지식 n", INFO_GOAL_X부터) | 연구비·지식.
+
+    예전 "남은 시간 60초"(INFO_TIME_X 가운데) 자리가 목표 글자로 바뀌었다. 자세한 경우는 test_idle_l.py.
+    """
     inner = pygame.Rect(config.INFO_BOX_X, config.INFO_BOX_Y, config.INFO_BOX_WIDTH,
                         config.INFO_BOX_HEIGHT).inflate(-2 * P, -2 * P)
     grade = _text_rect(font, "4학년", midleft=(config.INFO_BAR_MARGIN, config.INFO_TEXT_CENTER_Y))
-    time_left = _text_rect(font, "남은 시간 60초",
-                           center=(config.INFO_TIME_X, config.INFO_TEXT_CENTER_Y))
+    goal = _text_rect(font, config.NEXT_GRADE_TEXT.format(300),
+                      midleft=(config.INFO_GOAL_X, config.INFO_TEXT_CENTER_Y))
     knowledge = _text_rect(font, "지식 99999",
                            midright=(config.SCREEN_WIDTH - config.INFO_BAR_MARGIN,
                                      config.INFO_TEXT_CENTER_Y))
-    for r in (grade, time_left, knowledge):
+    for r in (grade, goal, knowledge):
         assert inner.contains(r), r
-    assert grade.right < time_left.left and time_left.right < knowledge.left
+    assert grade.right < goal.left and goal.right < knowledge.left
 
 
 def test_title_screen_layout_no_overlap(game):
@@ -949,6 +975,9 @@ def test_cap_only_on_graduation_and_cloud_only_on_leave(game):
 def test_cap_and_cloud_colors_not_used_in_game_screen(game):
     press(game, pygame.K_RETURN)
     game.student.elapsed = 230.0
+    game.student.knowledge = config.GRADE_GOALS[-1]   # (L단위) 4학년(졸업식장)은 지식으로
+    game.check_promotion()
+    assert game.student.get_grade() == config.MAX_GRADE
     game.draw()
     pixels = {color(game.screen, x, y) for x in range(config.SCREEN_WIDTH)
               for y in range(config.SCREEN_HEIGHT)}

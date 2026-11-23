@@ -112,3 +112,38 @@ def playing_game():
     assert g.state == config.STATE_PLAYING
     yield g
     pygame.quit()
+
+
+# ---------------------------------------------------------------
+# (L단위, 기획서 11절) 학년은 시간이 아니라 누적 지식으로 오른다.
+# 예전 테스트의 "elapsed = 60 x (학년-1)로 학년 맞추기" 자리에 쓰는 도우미.
+# ---------------------------------------------------------------
+def grade_knowledge(grade):
+    """grade학년이 되는 최소 누적 지식을 돌려준다: 1학년 0, 2학년 200, 3학년 450, 4학년 750."""
+    import config
+
+    if grade <= config.FIRST_GRADE:
+        return config.KNOWLEDGE_START
+    return config.GRADE_GOALS[grade - config.FIRST_GRADE - 1]
+
+
+def reach_grade(student, grade):
+    """student의 지식을 grade학년 목표까지 올리고 진급 판정(promote)으로 학년을 올린다.
+
+    지식이 이미 그보다 많으면 지식은 그대로 둔다. 실제 진급 규칙(지식 기준)을 그대로 거친다.
+    """
+    student.knowledge = max(student.knowledge, grade_knowledge(grade))
+    student.promote()
+    assert student.get_grade() == grade
+    return student
+
+
+def graduate(student, seconds):
+    """student를 seconds초에 졸업시킨다: 경과 시간을 맞추고 지식을 졸업 목표까지 올려 promote."""
+    import config
+
+    student.elapsed = seconds
+    student.knowledge = max(student.knowledge, config.GRADUATION_KNOWLEDGE)
+    student.promote()
+    assert student.has_graduated()
+    return student

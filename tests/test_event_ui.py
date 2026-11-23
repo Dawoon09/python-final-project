@@ -25,7 +25,7 @@ import pytest  # noqa: E402
 import config  # noqa: E402
 import game as game_module  # noqa: E402
 from button import sprite_size  # noqa: E402
-from conftest import press  # noqa: E402
+from conftest import press, reach_grade  # noqa: E402
 from game import Game  # noqa: E402
 from student import Student  # noqa: E402
 
@@ -35,7 +35,12 @@ CX, CY = config.STUDENT_CENTER_X, config.STUDENT_CENTER_Y
 FRAME = 1 / 60
 H, M, K = config.GAUGE_HEALTH, config.GAUGE_MENTAL, config.GAUGE_KNOWLEDGE
 FEED, REST, STUDY = config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY
-GRADE_STARTS = [0.0, 60.0, 120.0, 180.0]
+GRADE_STARTS = [0.0, 60.0, 120.0, 180.0]   # (L단위) 이제는 n번째 60초 주기의 시작 시각
+
+
+def grade_of_old_time(elapsed):
+    """(L단위) 예전 "elapsed초 = (elapsed // 60 + 1)학년" 규칙으로 학년을 구한다(4학년까지)."""
+    return min(config.MAX_GRADE, int(elapsed // config.CYCLE_SECONDS) + config.FIRST_GRADE)
 STAGE_INNER = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH,
                           config.PANEL_HEIGHT).inflate(-2 * P, -2 * P)
 STATUS_INNER = pygame.Rect(config.STATUS_PANEL_X, config.PANEL_Y, config.STATUS_PANEL_WIDTH,
@@ -55,10 +60,12 @@ def make_game(monkeypatch):
     monkeypatch.setattr(config, "EVENT_MAX_PER_GRADE", 0)
 
     def factory(elapsed=0.0, seed=0):
+        """(L단위) 경과 시간(주기·시험 기간)은 elapsed, 학년은 예전 시간 규칙의 학년을 지식으로 맞춘다."""
         g = Game(seed=seed)
         press(g, pygame.K_RETURN)
         assert g.state == config.STATE_PLAYING
         g.student.elapsed = elapsed
+        reach_grade(g.student, grade_of_old_time(elapsed))
         return g
 
     yield factory
@@ -305,9 +312,9 @@ def test_d_unit_constants():
     assert config.EVENT_NOTICE_SLIDE_TIME == 0.15
     assert config.EVENT_DIALOG_SLIDE_TIME < config.EVENT_INPUT_DELAY
     assert tuple(config.EVENT_DIALOG_RECT) == (300, 132, 472, 264)
-    # 새 제자: 학년별 이벤트 수 0, 특성 보정 0
+    # 새 제자: (L단위) 주기별 이벤트 수는 빈 사전(없는 주기 0), 특성 보정 0
     s = Student()
-    assert s.event_counts == {1: 0, 2: 0, 3: 0, 4: 0}
+    assert s.event_counts == {} and s.get_cycle_event_count() == 0
     for bonus in (config.BONUS_FEED_HEALTH, config.BONUS_REST_MENTAL,
                   config.BONUS_REST_HEALTH, config.BONUS_STUDY_HEALTH):
         assert s.get_trait_bonus(bonus) == 0
@@ -972,6 +979,7 @@ def diff_set(a, b, area=STAGE_INNER):
 def student(grade, looks=(), health=80, mental=80):
     s = Student()
     s.elapsed = GRADE_STARTS[grade - 1] + 5.0
+    reach_grade(s, grade)   # (L단위) 학년은 지식으로
     s.health, s.mental = health, mental
     for look in looks:
         s.add_look(look)

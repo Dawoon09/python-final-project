@@ -18,7 +18,7 @@ import pytest  # noqa: E402
 
 import config  # noqa: E402
 import game as game_module  # noqa: E402
-from conftest import press  # noqa: E402
+from conftest import press, reach_grade  # noqa: E402
 from game import Game  # noqa: E402
 from student import Student  # noqa: E402
 
@@ -73,10 +73,32 @@ def g(no_events, no_auto):
     pygame.quit()
 
 
+# (L단위) 예전 지식 기준(1000/750)을 같은 등급이 나오는 졸업 시각으로 바꾼다: 수석 200초, 무사 300초, 아슬아슬 400초
+OLD_TOP_KNOWLEDGE, OLD_NORMAL_KNOWLEDGE = 1000, 750
+
+
+def graduation_seconds_for(old_knowledge):
+    """예전 테스트의 "지식 old_knowledge로 졸업"과 같은 등급이 나오는 졸업 시각(초)."""
+    if old_knowledge >= OLD_TOP_KNOWLEDGE:
+        return 200.0
+    if old_knowledge >= OLD_NORMAL_KNOWLEDGE:
+        return 300.0
+    return 400.0
+
+
+def graduated_knowledge(old_knowledge):
+    """(L단위) 졸업하려면 지식 1100 이상이어야 하므로 예전 값에 졸업 지식을 더한 값으로 졸업한다."""
+    return config.GRADUATION_KNOWLEDGE + old_knowledge
+
+
 def graduate_with(game, knowledge):
-    """게임 중 game 을 지식 knowledge 로 240초 졸업시킨다(update 경로)."""
-    game.student.knowledge = knowledge
-    game.student.elapsed = config.TOTAL_SECONDS - FRAME / 2
+    """게임 중 game 을 졸업시킨다(update 경로의 진급 판정).
+
+    (L단위, 기획서 11절) 지식은 graduated_knowledge(knowledge) = 1100 + knowledge,
+    등급은 예전 지식 기준과 같은 등급이 나오도록 졸업 시각(graduation_seconds_for)으로 정한다.
+    """
+    game.student.knowledge = graduated_knowledge(knowledge)
+    game.student.elapsed = graduation_seconds_for(knowledge) - FRAME
     game.update(FRAME)
     assert game.state == config.STATE_ENDING
     assert game.ending != config.ENDING_LEAVE
@@ -374,16 +396,18 @@ def test_scholarship_candidate_only_when_owned(g):
 @pytest.mark.parametrize("elapsed, grade", [(1.0, 1), (70.0, 2), (130.0, 3), (190.0, 4)])
 @pytest.mark.parametrize("fame", [0, 3])
 def test_scholarship_money_per_grade(g, elapsed, grade, fame):
+    """장학금 = 30 x 지금 학년. (L단위) 학년은 지식으로 올린다(지식은 그대로인지 아래에서 본다)."""
     g.upgrades[SCHOL] = 1
     g.fame = fame
     g.student.elapsed = elapsed
+    reach_grade(g.student, grade)
     g.money = 7
     before = (g.student.health, g.student.mental, g.student.knowledge)
     g.start_event(config.SCHOLARSHIP_EVENT)
     assert g.money == 7 + 30 * grade      # 명성 배수 없음(팀장 승인)
     assert (g.student.health, g.student.mental, g.student.knowledge) == before
     assert g.notice is not None and "장학금을 받았다" in g.notice["text"]
-    assert g.student.get_grade_event_count() == 1
+    assert g.student.get_cycle_event_count() == 1   # (L단위) 학년별 -> 60초 주기별
 
 
 def test_scholarship_can_actually_appear(no_auto):
@@ -635,7 +659,8 @@ def test_round_end_saves_four_keys(g, isolated_record_path, finish):
         graduate_with(g, 40)
         money = 33 + 60
     data = read_record(isolated_record_path)
-    assert data == {"best_knowledge": 40, "money": money, "fame": 2,
+    best = 40 if finish == "leave" else graduated_knowledge(40)   # (L단위) 졸업은 1100 + 40
+    assert data == {"best_knowledge": best, "money": money, "fame": 2,
                     "upgrades": {**levels(), BED: 3}}
     assert all(type(v) is int for v in (data["best_knowledge"], data["money"], data["fame"]))
 
@@ -646,7 +671,8 @@ def test_round_end_with_zero_knowledge_still_saves(g, isolated_record_path):
 
 
 def test_best_knowledge_only_increases(g, isolated_record_path):
-    for k, best in [(300, 300), (100, 300), (300, 300), (301, 301), (0, 301)]:
+    # (L단위) 졸업 지식은 graduated_knowledge(k) = 1100 + k
+    for k, best in [(300, 1400), (100, 1400), (300, 1400), (301, 1401), (0, 1401)]:
         graduate_with(g, k)
         data = read_record(isolated_record_path)
         assert data["best_knowledge"] == best == g.best_record
@@ -663,7 +689,7 @@ def test_persistence_across_game_instances(g, isolated_record_path):
     money = g.money
     pygame.quit()
     g2 = Game()
-    assert (g2.best_record, g2.money, g2.fame) == (750, money, 2)
+    assert (g2.best_record, g2.money, g2.fame) == (graduated_knowledge(750), money, 2)
     assert g2.upgrades == {**levels(), MENU: 1, LIB: 1}
     g2.start_new_game()
     assert g2.student.upgrades is g2.upgrades
@@ -705,14 +731,15 @@ def test_title_shows_fame_and_money(isolated_record_path):
 
 
 def test_old_format_file(isolated_record_path):
-    write_raw(isolated_record_path, '{"best_knowledge": 300}')
+    # (L단위) 졸업 지식이 1100 이상이라, 기록(3000)보다 낮은 졸업(1200)으로 최고 기록 유지를 본다
+    write_raw(isolated_record_path, '{"best_knowledge": 3000}')
     game = Game()
-    assert (game.best_record, game.money, game.fame) == (300, 0, 0)
+    assert (game.best_record, game.money, game.fame) == (3000, 0, 0)
     assert game.upgrades == levels()
     game.start_new_game()
     graduate_with(game, 100)
     data = read_record(isolated_record_path)
-    assert set(data) == RECORD_KEYS and data["best_knowledge"] == 300
+    assert set(data) == RECORD_KEYS and data["best_knowledge"] == 3000
     pygame.quit()
 
 
@@ -1100,7 +1127,8 @@ def test_info_bar_money_text_fits(g, monkeypatch):
     texts = draw_and_collect(g, "draw_info_bar", monkeypatch)
     by_text = {t: r for t, r in texts}
     money_rect = by_text[config.MONEY_TEXT.format("연구비", 9_999_999)]
-    time_rect = next(r for t, r in texts if t.startswith("남은 시간"))
+    # (L단위) "남은 시간" 대신 목표 글자("다음 학년까지 지식 n" 등)가 연구비 왼쪽에 있다
+    time_rect = by_text[g.get_goal_text()]
     knowledge_rect = by_text["지식 9999"]
     box = pygame.Rect(config.INFO_BOX_X, config.INFO_BOX_Y, config.INFO_BOX_WIDTH,
                       config.INFO_BOX_HEIGHT)

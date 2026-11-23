@@ -87,14 +87,18 @@ def run_script(game, steps, monkeypatch):
     return script
 
 
-def force_graduation(knowledge):
-    """엔딩 강제 준비 함수: 지식을 정하고 경과 시간을 240초 직전으로 옮긴다(체력·멘탈은 넉넉히)."""
+def force_graduation(seconds, knowledge):
+    """엔딩 강제 준비 함수: 경과 시간을 seconds 직전으로 옮기고 4학년 + 지식 knowledge(1100 이상)로 맞춘다.
+
+    (L단위, 기획서 11절) 다음 프레임의 update 진급 판정에서 졸업하고, 등급은 걸린 시간으로 정해진다.
+    """
     def prepare(game):
         s = game.student
+        # 학년은 1학년 그대로: 진급 판정이 한 번에 4학년까지 올리고 졸업시킨다
         s.knowledge = knowledge
         s.health = config.GAUGE_MAX
         s.mental = config.GAUGE_MAX
-        s.elapsed = config.TOTAL_SECONDS - 1e-6
+        s.elapsed = seconds - 1e-6
     return prepare
 
 
@@ -114,15 +118,15 @@ def set_health(value):
 
 # ======================= 완료 기준: 실제 루프 한 바퀴 =======================
 
-@pytest.mark.parametrize("knowledge, ending", [
-    # E단위 700/450, K단위: 엔딩 기준 1000/750
-    (config.TOP_GRADUATE_KNOWLEDGE + 20, config.ENDING_TOP),
-    (config.NORMAL_GRADUATE_KNOWLEDGE, config.ENDING_NORMAL),
-    (120, config.ENDING_BARELY),
+@pytest.mark.parametrize("seconds, knowledge, ending", [
+    # E단위 700/450, K단위 1000/750 (지식) -> L단위: 걸린 시간 240/360초 (기획서 11절)
+    (200.0, config.GRADUATION_KNOWLEDGE + 20, config.ENDING_TOP),
+    (300.0, config.GRADUATION_KNOWLEDGE, config.ENDING_NORMAL),
+    (400.0, config.GRADUATION_KNOWLEDGE + 120, config.ENDING_BARELY),
 ])
 def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_record_path,
-                                                    knowledge, ending):
-    """Enter -> 공부 행동 + 3키(방침) -> 학식 + 1키 -> 240초 강제 졸업 -> R -> ESC 를 실제 Game.run() 루프로 확인.
+                                                    seconds, knowledge, ending):
+    """Enter -> 공부 행동 + 3키(방침) -> 학식 + 1키 -> 강제 졸업 -> R -> ESC 를 실제 Game.run() 루프로 확인.
 
     G단위: 키 1/2/3은 방침 선택이고 행동은 do_action으로 직접 시킨다(자동 행동은 conftest no_auto로 끔).
     """
@@ -134,7 +138,7 @@ def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_recor
         ("after_key3", None, []),
         ("key1_in_cooldown", do(config.ACTION_FEED), [key(pygame.K_1)]),
         ("after_key1", None, []),
-        ("force_end", force_graduation(knowledge), []),
+        ("force_end", force_graduation(seconds, knowledge), []),
         ("on_ending", None, []),
         ("key3_on_ending", None, [key(pygame.K_3)]),
         ("r", None, [key(pygame.K_r)]),
@@ -159,10 +163,11 @@ def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_recor
     assert after1["health"] == after3["health"] + config.FEED_HEALTH
     assert after1["last_action"] == config.ACTION_FEED
     assert after1["policy"] == config.POLICY_STUDY_FOCUS
-    # 강제 졸업 -> 엔딩 화면, 지식에 맞는 엔딩
+    # 강제 졸업 -> 엔딩 화면, 걸린 시간에 맞는 엔딩
     on_ending = by_label(script, "on_ending")
     assert on_ending["state"] == config.STATE_ENDING
     assert on_ending["ending"] == ending
+    assert seconds - 1e-6 <= on_ending["elapsed"] < seconds + 1.0
     assert on_ending["best"] == knowledge
     # 엔딩 화면의 3키는 무시(방침도 그대로)
     assert by_label(script, "r")["knowledge"] == knowledge
@@ -271,7 +276,7 @@ def test_no_numeric_literals_other_than_0_1(name):
 
 @pytest.mark.parametrize("name, expected", [
     ("SCREEN_WIDTH", 800), ("SCREEN_HEIGHT", 600),
-    ("SECONDS_PER_GRADE", 60), ("MAX_GRADE", 4), ("TOTAL_SECONDS", 240),
+    ("CYCLE_SECONDS", 60), ("MAX_GRADE", 4),   # L단위: SECONDS_PER_GRADE·TOTAL_SECONDS 삭제
     ("EXAM_SECONDS", 15), ("FONT_NAME", "malgungothic"),
     ("GAUGE_MIN", 0), ("GAUGE_MAX", 100),
     ("HEALTH_START", 80), ("MENTAL_START", 80), ("KNOWLEDGE_START", 0),
@@ -282,7 +287,9 @@ def test_no_numeric_literals_other_than_0_1(name):
     ("STUDY_KNOWLEDGE", 10), ("STUDY_KNOWLEDGE_EXAM", 20),  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
     ("MENTAL_SMILE_MIN", 60), ("MENTAL_FLAT_MIN", 30),
     ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
-    ("TOP_GRADUATE_KNOWLEDGE", 1000), ("NORMAL_GRADUATE_KNOWLEDGE", 750),  # K단위 승인 값
+    # L단위(기획서 11절): 졸업 등급은 걸린 시간, 진급 목표 200/450/750, 졸업 지식 1100
+    ("TOP_GRADUATE_SECONDS", 240), ("NORMAL_GRADUATE_SECONDS", 360),
+    ("GRADE_GOALS", [200, 450, 750]), ("GRADUATION_KNOWLEDGE", 1100),
     ("ENDING_LEAVE", "휴학"), ("ENDING_TOP", "수석 졸업"),
     ("ENDING_NORMAL", "무사 졸업"), ("ENDING_BARELY", "아슬아슬 졸업"),
     ("RECORD_FILENAME", "record.json"),
@@ -345,14 +352,27 @@ def _readme():
     "| 학식 먹이기 | +20 | - | - |",
     "| 쉬게 하기 | - | +20 | -2 |",
     "| 공부시키기 | -5 | -8 | +10 (시험 기간 +20) |",
-    "수석 졸업(1000 이상) / 무사 졸업(750~999) / 아슬아슬 졸업(750 미만)",
-    "엔딩 경계값(749/750/999/1000)",
+    # (L단위) 지식 기준 졸업 문구("수석 졸업(1000 이상)…", "엔딩 경계값(749/750/999/1000)")는
+    # 기획서 11절로 규칙이 없어져 뺐다. 새 규칙 문구는 test_readme_describes_no_time_limit에서 본다.
     "제자는 2초마다(첫 행동은 시작 2초 뒤)",   # G단위: 쿨타임 1초 대신 자동 행동 간격 2초
     "마지막 15초",
 ])
 def test_readme_mentions(text):
     """README 의 실행·빌드 명령, 조작키, 수치가 코드·기획서와 같다."""
     assert text in _readme(), text
+
+
+@pytest.mark.xfail(strict=True, reason="README가 아직 기획서 11절(시간 제한 없음)을 반영하지 않음 "
+                                       "- 검수 보고 '낮음' 항목. README를 고치면 이 표시를 지운다")
+@pytest.mark.parametrize("old, new", [
+    ("240초(1~4학년, 학년당 60초)", "누적 지식"),
+    ("60초마다 학년이 오르고", "200"),
+    ("수석 졸업(1000 이상)", "240초"),
+])
+def test_readme_describes_no_time_limit(old, new):
+    """(L단위) README가 예전 시간 제한 규칙을 말하지 않고 새 규칙(지식 진급·걸린 시간 등급)을 설명한다."""
+    text = _readme()
+    assert old not in text and new in text
 
 
 @pytest.mark.parametrize("name", ["main.py", "config.py", "student.py", "button.py",

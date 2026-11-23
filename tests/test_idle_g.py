@@ -18,7 +18,7 @@ import pytest  # noqa: E402
 import config  # noqa: E402
 import game as game_module  # noqa: E402
 from button import Button  # noqa: E402
-from conftest import press  # noqa: E402
+from conftest import press, reach_grade  # noqa: E402
 from game import Game  # noqa: E402
 from student import Student  # noqa: E402
 
@@ -440,15 +440,21 @@ def test_large_dt_leave_before_action_at_same_time(g, monkeypatch):
 
 
 def test_large_dt_graduation_stops_actions(g, monkeypatch):
+    """(L단위) 큰 dt 안에서 자동 공부로 졸업 목표(1100)에 닿으면 그 시각에 끝나고 뒤 행동은 없다.
+
+    4학년 1090, 236.5초(시험 기간, 공부 +20) -> 237초 자동 공부로 1110 -> 졸업(237초, 수석).
+    """
+    reach_grade(g.student, 4)
+    g.student.knowledge = config.GRADUATION_KNOWLEDGE - 10
     g.student.elapsed = 236.5
     g.auto_timer = 0.5
     g.student.health = g.student.mental = 100
     log = record_actions(g, monkeypatch)
     g.update(100.0)
-    assert g.state == config.STATE_ENDING and g.ending in (
-        config.ENDING_TOP, config.ENDING_NORMAL, config.ENDING_BARELY)
-    assert [t for t, _ in log] == pytest.approx([237.0, 239.0])
-    assert g.student.elapsed == pytest.approx(config.TOTAL_SECONDS)
+    assert g.state == config.STATE_ENDING and g.ending == config.ENDING_TOP
+    assert [t for t, _ in log] == pytest.approx([237.0])
+    assert g.student.elapsed == pytest.approx(237.0)
+    assert g.student.graduation_time == pytest.approx(237.0)
 
 
 # ======================= 8. 이벤트는 자동 행동 직후에만 판정 =======================
@@ -462,6 +468,9 @@ def test_events_roll_only_after_auto_actions(seeded, monkeypatch):
     for _ in range(int(8.1 * 60)):
         game.update(FRAME)
     assert calls == pytest.approx([2.0, 4.0, 6.0, 8.0, 10.0])   # 1.99 + 8.1 = 10.09초
+
+
+IDLE_RUN_MAX_FRAMES = 20 * 240 * 60   # (L단위) TOTAL_SECONDS 삭제: 예전 한 판(240초)의 20배를 안전장치로
 
 
 def _idle_run(game, choose=config.CHOICE_FIRST, draw_every=0):
@@ -479,7 +488,7 @@ def _idle_run(game, choose=config.CHOICE_FIRST, draw_every=0):
         log.append((round(s.elapsed, 6), game.state, s.health, s.mental, s.knowledge,
                     game.last_action, dict(s.event_counts)))
         assert 0 <= s.health <= 100 and 0 <= s.mental <= 100 and s.knowledge >= 0
-        assert frames < 20 * config.TOTAL_SECONDS * 60
+        assert frames < IDLE_RUN_MAX_FRAMES
     return log
 
 
@@ -492,15 +501,16 @@ def test_same_seed_same_idle_play(seeded):
 @pytest.mark.parametrize("seed", range(6))
 @pytest.mark.parametrize("policy", [SF, BAL, RF])
 def test_idle_play_keeps_event_rules(seeded, seed, policy):
-    """방치 플레이에서도 9절 규칙: 끝까지 간 학년은 이벤트 4~5회."""
+    """방치 플레이에서도 9절 규칙: 끝까지 간 60초 주기는 이벤트 4~5회 (L단위: 학년 -> 주기)."""
     game = seeded(seed)
     game.set_policy(policy)
     _idle_run(game, choose=seed % 2)
     s = game.student
-    last = s.get_grade() if game.ending == config.ENDING_LEAVE else config.MAX_GRADE + 1
-    for grade in range(config.FIRST_GRADE, last):
-        assert config.EVENT_MIN_PER_GRADE <= s.event_counts[grade] <= config.EVENT_MAX_PER_GRADE, \
-            (seed, policy, dict(s.event_counts))
+    completed = int(s.elapsed // config.CYCLE_SECONDS)
+    assert all(c <= config.EVENT_MAX_PER_GRADE for c in s.event_counts.values())
+    for cycle in range(config.CYCLE_INDEX_START, completed + config.CYCLE_INDEX_START):
+        assert config.EVENT_MIN_PER_GRADE <= s.event_counts.get(cycle, 0) \
+            <= config.EVENT_MAX_PER_GRADE, (seed, policy, dict(s.event_counts))
 
 
 # ======================= 9. 새 판에서 방침 초기화 =======================

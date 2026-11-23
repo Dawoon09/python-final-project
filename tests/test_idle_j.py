@@ -18,7 +18,7 @@ import pygame  # noqa: E402
 import pytest  # noqa: E402
 
 import config  # noqa: E402
-from conftest import press  # noqa: E402
+from conftest import press, reach_grade  # noqa: E402
 from game import Game  # noqa: E402
 
 ROOT = Path(config.__file__).parent
@@ -54,14 +54,20 @@ def g(no_events, no_auto):
 
 
 def set_term_time(game, term, t):
-    """term 1~4 = 학부 학년, ("grad", n) = 대학원 n년차. 그 학년/년차 안 시각 t 로 맞춘다."""
+    """term 1~4 = 학부 학년, ("grad", n) = 대학원 n년차. 60초 주기 안 시각 t 로 맞춘다.
+
+    (L단위) 학년은 시간이 아니라 진급으로 오르므로 학년(grade)을 직접 맞추고, 경과 시간은
+    "term번째 주기(대학원은 4 + n번째 주기)의 t초"로 둔다(계절·시간대는 주기 안 시각으로 정해진다).
+    """
     if isinstance(term, tuple):
         n = term[1]
+        game.student.grade = config.MAX_GRADE
         game.student.grad_year = n
-        game.student.elapsed = config.TOTAL_SECONDS + (n - 1) * 60 + t
+        game.student.elapsed = (config.MAX_GRADE + n - 1) * config.CYCLE_SECONDS + t
     else:
         game.student.grad_year = 0
-        game.student.elapsed = (term - 1) * 60 + t
+        game.student.grade = term
+        game.student.elapsed = (term - 1) * config.CYCLE_SECONDS + t
 
 
 TERMS = [1, 2, 3, 4, ("grad", 1), ("grad", 3)]
@@ -128,12 +134,17 @@ def test_frame_accumulated_season_boundary(g):
     assert g.get_time_of_day() == "day"
 
 
-def test_undergrad_240_is_winter_end(g):
-    """졸업 순간(240초, 4학년 학년 안 60초)은 겨울 끝(밤)으로 본다."""
-    g.student.elapsed = config.TOTAL_SECONDS
-    assert g.student.get_grade() == 4
+def test_cycle_boundary_240_is_next_spring(g):
+    """(L단위, 예전 '졸업 순간 240초는 겨울 끝') 240초는 이제 5번째 60초 주기의 시작(봄 낮)이고
+    학년과 상관없다. 바로 앞(239.99초)은 4번째 주기의 겨울 밤."""
+    g.student.elapsed = 239.99
+    assert (g.get_season(), g.get_time_of_day()) == ("winter", "night")
+    g.student.elapsed = 240.0
+    assert g.student.get_grade() == 1
+    assert g.student.get_cycle_index() == 5
+    assert (g.get_season(), g.get_time_of_day()) == ("spring", "day")
+    g.student.elapsed = 600.0 + 50.0      # 11번째 주기의 50초: 겨울
     assert g.get_season() == "winter"
-    assert g.get_time_of_day() == "night"
 
 
 def test_season_methods_need_no_screen():
@@ -200,18 +211,27 @@ def test_sky_continuous_across_boundaries(g, before, after):
 
 
 def test_sky_continuous_undergrad_end_to_grad_school(g):
-    """졸업 순간(240초, 겨울 끝) 하늘 = 대학원 1년차 시작(봄 낮) 하늘."""
-    g.student.elapsed = config.TOTAL_SECONDS
+    """(L단위) 대학원 진학(C)은 주기 시계를 이어 가므로, 졸업 순간 하늘 = 대학원 1년차 시작 하늘."""
+    g.student.elapsed = 200.0 - FRAME
+    g.student.health = g.student.mental = 100
+    g.student.knowledge = config.GRADUATION_KNOWLEDGE
+    g.update(FRAME)
+    assert g.state == config.STATE_ENDING and g.student.graduation_time == pytest.approx(200.0)
     a = g.get_sky_color()
-    set_term_time(g, ("grad", 1), 0.0)
+    press(g, pygame.K_c)
+    assert g.state == config.STATE_PLAYING and g.grad_year == 1
+    assert g.student.elapsed == pytest.approx(200.0)
     b = g.get_sky_color()
-    assert a == b == tuple(config.SKY_COLORS["spring"]["day"])
+    assert a == b
 
 
 def test_sky_smooth_over_full_run_into_grad_school(g, no_decay):
-    """60fps 로 240초 + 대학원 70초(년차 경계 포함)를 흘리며 프레임마다 하늘색 변화가 작다."""
+    """60fps 로 240초(지식으로 1~4학년 진급, 240초에 졸업) + 대학원 70초(년차 오름 포함)를 흘리며
+    프레임마다 하늘색 변화가 작다. (L단위) 학년·년차는 지식 목표로 오른다."""
     colors = [g.get_sky_color()]
-    for _ in range(240 * 60 + 5):
+    for frame in range(1, 240 * 60 + 5):
+        if frame % 3600 == 0:     # 60초마다 다음 목표까지 지식을 채운다(4번째에 졸업)
+            g.student.knowledge = g.student.get_next_goal()
         g.update(FRAME)
         if g.state != config.STATE_PLAYING:
             break
@@ -221,7 +241,9 @@ def test_sky_smooth_over_full_run_into_grad_school(g, no_decay):
     press(g, pygame.K_c)
     assert g.state == config.STATE_PLAYING and g.grad_year == 1
     colors.append(g.get_sky_color())
-    for _ in range(70 * 60):
+    for frame in range(70 * 60):
+        if frame == 30 * 60:
+            g.student.knowledge = g.student.get_next_goal()   # 1500: 2년차
         g.update(FRAME)
         colors.append(g.get_sky_color())
     assert g.grad_year == 2
@@ -242,11 +264,16 @@ def test_place_by_grade(g, term, place, t):
     assert g.get_place() == place
 
 
-def test_place_changes_by_update_at_60s(g, no_decay):
+def test_place_changes_by_knowledge_promotion(g, no_decay):
+    """(L단위, 예전 '60초마다 장소가 바뀜') 장소는 진급(지식 200/450/750)으로 바뀌고 시간으로는 안 바뀐다."""
     places = []
     for _ in range(4):
         places.append(g.get_place())
         for _ in range(3600):
+            g.update(FRAME)
+        assert g.get_place() == places[-1]          # 60초가 흘러도 그대로
+        if g.student.get_grade() < config.MAX_GRADE:
+            g.student.knowledge = g.student.get_next_goal()
             g.update(FRAME)
     assert places == ["lawn", "lecture", "library", "ceremony"]
 
@@ -375,8 +402,8 @@ def test_background_not_on_title_or_ending(g, monkeypatch):
     g.state = config.STATE_TITLE
     g.draw()
     g.state = config.STATE_PLAYING
-    g.student.knowledge = 500
-    g.student.elapsed = config.TOTAL_SECONDS - FRAME / 2
+    g.student.knowledge = config.GRADUATION_KNOWLEDGE   # (L단위) 지식 1100 -> 다음 update 에서 졸업
+    g.student.elapsed = 200.0
     monkeypatch.setattr(config, "HEALTH_DECAY_PER_SEC", 0)
     g.update(FRAME)
     assert g.state == config.STATE_ENDING
@@ -534,6 +561,8 @@ def test_scenery_regenerations_bounded_over_full_run(g, monkeypatch, no_decay):
     = 64 정도(K단위 갱신, 여유 두어 80 이하). 매 프레임 그리지 않는다."""
     calls = count_make_scenery(g, monkeypatch)
     for i in range(240 * 60):
+        if i and i % 3600 == 0:   # (L단위) 60초마다 지식으로 진급시켜 장소 4곳을 모두 지난다
+            g.student.knowledge = g.student.get_next_goal()
         g.update(FRAME)
         if g.state != config.STATE_PLAYING:
             break

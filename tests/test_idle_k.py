@@ -49,14 +49,20 @@ def g(no_events, no_auto):
 
 
 def set_term_time(game, term, t):
-    """term 1~4 = 학부 학년, ("grad", n) = 대학원 n년차. 그 학년/년차 안 시각 t 로 맞춘다."""
+    """term 1~4 = 학부 학년, ("grad", n) = 대학원 n년차. 60초 주기 안 시각 t 로 맞춘다.
+
+    (L단위) 학년은 시간이 아니라 진급으로 오르므로 학년(grade)을 직접 맞추고, 경과 시간은
+    "term번째 주기(대학원은 4 + n번째 주기)의 t초"로 둔다(계절·시간대는 주기 안 시각으로 정해진다).
+    """
     if isinstance(term, tuple):
         n = term[1]
+        game.student.grade = config.MAX_GRADE
         game.student.grad_year = n
-        game.student.elapsed = config.TOTAL_SECONDS + (n - 1) * 60 + t
+        game.student.elapsed = (config.MAX_GRADE + n - 1) * config.CYCLE_SECONDS + t
     else:
         game.student.grad_year = 0
-        game.student.elapsed = (term - 1) * 60 + t
+        game.student.grade = term
+        game.student.elapsed = (term - 1) * config.CYCLE_SECONDS + t
 
 
 def blank_screen(game):

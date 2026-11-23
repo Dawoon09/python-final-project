@@ -11,15 +11,16 @@ def clamp(value, low, high):
     return max(low, min(value, high))
 
 
-def judge_ending(knowledge):
-    """240초를 버틴 제자의 누적 지식으로 졸업 엔딩 이름을 돌려준다.
+def judge_ending(seconds):
+    """졸업까지 걸린 게임 시간 seconds(초)로 졸업 엔딩 이름을 돌려준다(기획서 11절).
 
-    지식 1000 이상 "수석 졸업", 750~999 "무사 졸업", 750 미만 "아슬아슬 졸업".
+    240초 이하 "수석 졸업", 240초 초과 360초 이하 "무사 졸업", 360초 초과 "아슬아슬 졸업".
+    소수 덧셈 오차(239.9999… 등)는 TIME_EPSILON 만큼 봐준다.
     (휴학은 체력·멘탈로 정하므로 여기서 다루지 않는다.)
     """
-    if knowledge >= config.TOP_GRADUATE_KNOWLEDGE:
+    if seconds <= config.TOP_GRADUATE_SECONDS + config.TIME_EPSILON:
         return config.ENDING_TOP
-    if knowledge >= config.NORMAL_GRADUATE_KNOWLEDGE:
+    if seconds <= config.NORMAL_GRADUATE_SECONDS + config.TIME_EPSILON:
         return config.ENDING_NORMAL
     return config.ENDING_BARELY
 
@@ -35,7 +36,7 @@ class Student:
         """게이지를 시작값으로 정하고 경과 시간을 0으로 둔다.
 
         랜덤 이벤트로 생기는 성장 기록(특성·외형·연계 플래그·나온 선택지형 이벤트·
-        학년별 이벤트 수)도 여기서 비운다. 새 판에서 Student를 새로 만들면 모두 초기화된다.
+        주기별 이벤트 수)과 진급 기록(오른 학년·졸업 시각)도 여기서 비운다. 새 판에서 Student를 새로 만들면 모두 초기화된다.
         upgrades는 업그레이드 레벨 사전 {업그레이드 id: 레벨}이다. Game이 가진 사전을
         그대로(같은 객체로) 넘기므로, 판 도중에 업그레이드를 사도 효과가 바로 적용된다.
         주지 않으면 모든 업그레이드가 0레벨이다(화면 없는 테스트용).
@@ -52,65 +53,141 @@ class Student:
         self.looks = []            # 얻은 외형 id (얻은 순서대로)
         self.flags = set()         # 연계 플래그 ("MT 참석" 등)
         self.seen_events = set()   # 이번 판에 이미 나온 선택지형 이벤트 id
-        self.event_counts = {grade: config.EVENT_COUNT_START for grade in config.ALL_GRADES}  # 학년별 이벤트 수
+        self.event_counts = {}     # {60초 주기 번호: 그 주기에 나온 이벤트 수}. 없는 주기는 0번
         self.last_event_time = None  # 직전 이벤트가 뜬 게임 시각(초). 이번 판에 아직 없으면 None
         self.grad_year = config.GRAD_YEAR_UNDERGRAD  # 대학원 년차. 0이면 학부(1~4학년)
+        self.grade = config.FIRST_GRADE  # 지금까지 오른 학년(1~4). 지식이 줄어도 내려가지 않는다
+        self.graduation_time = None  # 졸업한 순간의 경과 시간(초). 아직 졸업 전이면 None
 
     # ------------------------------------------------------------
-    # 대학원 (기획서 10절, I단위)
+    # 진급과 졸업 (기획서 11절, L단위): 학년은 누적 지식으로 오른다
+    # ------------------------------------------------------------
+    def get_grade(self):
+        """지금 학년(1~4)을 돌려준다. 대학원에서는 4로 둔다.
+
+        학년은 시간이 아니라 누적 지식으로 오르며(promote), 한 번 오른 학년은 내려가지 않는다.
+        대학원에서 4로 두므로 캐릭터 크기는 4학년(반지름 70) 그대로이고 안경을 쓴다.
+        """
+        if self.is_in_grad_school():
+            return config.MAX_GRADE
+        return self.grade
+
+    def get_grad_goal(self, year):
+        """대학원 year년차를 마치는(다음 년차로 오르는) 누적 지식 목표를 돌려준다.
+
+        졸업 지식 1100에 해마다 (400 + 100 x (k-1))를 k = 1..year까지 더한다.
+        year가 0이면 졸업 지식 1100 그대로다. 예: 1년차 1500, 2년차 2000, 3년차 2600.
+        """
+        goal = config.GRADUATION_KNOWLEDGE
+        for k in range(config.GRAD_FIRST_YEAR, year + config.GRAD_YEAR_STEP):
+            goal += (config.GRAD_GOAL_FIRST_STEP
+                     + config.GRAD_GOAL_STEP_GROWTH * (k - config.GRAD_FIRST_YEAR))
+        return goal
+
+    def get_next_goal(self):
+        """다음 목표(누적 지식)를 돌려준다.
+
+        1학년 200(2학년 진급), 2학년 450, 3학년 750, 4학년 1100(졸업),
+        대학원 n년차는 n+1년차로 오르는 목표(1500, 2000, 2600 …).
+        """
+        if self.is_in_grad_school():
+            return self.get_grad_goal(self.grad_year)
+        if self.grade < config.MAX_GRADE:
+            return config.GRADE_GOALS[self.grade - config.FIRST_GRADE]
+        return config.GRADUATION_KNOWLEDGE
+
+    def get_goal_start(self):
+        """지금 목표 구간이 시작된 누적 지식(앞 목표)을 돌려준다(진행 막대의 왼쪽 끝).
+
+        1학년 0, 2학년 200, 3학년 450, 4학년 750, 대학원 n년차는 (n-1)년차 목표(1년차는 1100).
+        """
+        if self.is_in_grad_school():
+            return self.get_grad_goal(self.grad_year - config.GRAD_YEAR_STEP)
+        if self.grade == config.FIRST_GRADE:
+            return config.KNOWLEDGE_START
+        return config.GRADE_GOALS[self.grade - config.FIRST_GRADE - config.GRADE_STEP]
+
+    def get_goal_progress(self):
+        """다음 목표까지의 진행률(0~1)을 돌려준다(정보바 아래 목표 진행 막대용).
+
+        (지식 - 구간 시작) / (목표 - 구간 시작). 진급 뒤 휴식으로 지식이 구간 시작보다
+        줄었으면 0, 목표 이상이면 1로 자른다.
+        """
+        start = self.get_goal_start()
+        ratio = (self.knowledge - start) / (self.get_next_goal() - start)
+        return clamp(ratio, config.GOAL_PROGRESS_MIN, config.GOAL_PROGRESS_MAX)
+
+    def get_knowledge_to_goal(self):
+        """다음 목표까지 더 모아야 하는 지식(0 이상)을 돌려준다: "다음 학년까지 지식 n"의 n."""
+        return max(config.GAUGE_MIN, self.get_next_goal() - self.knowledge)
+
+    def has_graduated(self):
+        """학부를 졸업했으면 True(졸업 순간의 경과 시간이 기록되어 있다)."""
+        return self.graduation_time is not None
+
+    def promote(self):
+        """지금 누적 지식으로 진급·졸업·대학원 년차 오름을 판정하고, 오른 횟수를 돌려준다.
+
+        지식이 바뀔 때마다(행동·이벤트·선택 직후) Game.check_promotion이 부른다.
+        - 학부: 지식이 다음 학년 목표 이상이면 학년 +1. 한 번에 여러 목표를 넘으면 그만큼 오른다.
+          4학년에서 졸업 목표(1100) 이상이면 그 순간의 경과 시간을 graduation_time에 적는다(졸업).
+          졸업은 진급 횟수에 넣지 않는다.
+        - 대학원: 지식이 년차 목표 이상이면 년차 +1 (여러 번 가능, 끝없이).
+        체력이나 멘탈이 0이면(휴학·수료) 아무것도 하지 않고 0을 돌려준다(휴학이 졸업보다 먼저).
+        이미 졸업했고 대학원에 아직 안 들어갔으면 0이다.
+        """
+        count = config.PROMOTION_COUNT_START
+        if self.is_dropped_out():
+            return count
+        if self.is_in_grad_school():
+            while self.knowledge >= self.get_next_goal():
+                self.grad_year += config.GRAD_YEAR_STEP
+                count += config.GRAD_YEAR_STEP
+            return count
+        if self.has_graduated():
+            return count
+        while self.grade < config.MAX_GRADE and self.knowledge >= self.get_next_goal():
+            self.grade += config.GRADE_STEP
+            count += config.GRADE_STEP
+        if self.grade == config.MAX_GRADE and self.knowledge >= config.GRADUATION_KNOWLEDGE:
+            self.graduation_time = self.elapsed
+        return count
+
+    # ------------------------------------------------------------
+    # 60초 주기 (기획서 11절): 계절·낮밤·시험 기간·이벤트 횟수용 시계
+    # ------------------------------------------------------------
+    def get_cycle_index(self):
+        """지금 60초 주기 번호를 돌려준다: 경과 시간 // 60 + 1 (0~60초 1번, 60~120초 2번 …).
+
+        1/60초를 3600번 더하면 59.9999…가 될 수 있어서 TIME_EPSILON 만큼 봐준다.
+        대학원에 들어가도 시계는 이어서 흐르므로 번호도 이어진다.
+        """
+        passed = int((self.elapsed + config.TIME_EPSILON) // config.CYCLE_SECONDS)
+        return passed + config.CYCLE_INDEX_START
+
+    def get_cycle_time(self):
+        """지금 주기 안에서 흐른 시간(0~60초 미만)을 돌려준다: 경과 시간 % 60."""
+        cycle_start = (self.get_cycle_index() - config.CYCLE_INDEX_START) * config.CYCLE_SECONDS
+        return max(config.ZERO_TIME, self.elapsed - cycle_start)
+
+    # ------------------------------------------------------------
+    # 대학원 (기획서 10절·11절)
     # ------------------------------------------------------------
     def is_in_grad_school(self):
         """대학원에 다니는 중이면 True(대학원 년차가 1 이상)."""
         return self.grad_year > config.GRAD_YEAR_UNDERGRAD
 
     def enter_grad_school(self):
-        """졸업한(240초를 버틴) 제자가 대학원 1년차로 들어간다.
+        """졸업한 제자가 대학원 1년차로 들어간다.
 
-        게이지·특성·외형·지식·연계 플래그·직전 이벤트 시각은 그대로 둔다.
-        학부에서 아직 졸업하지 않았거나(240초 전), 휴학 상태이거나, 이미 대학원이면
+        게이지·특성·외형·지식·연계 플래그·직전 이벤트 시각·경과 시간(주기 시계)은 그대로 둔다.
+        아직 졸업하지 않았거나, 휴학 상태이거나, 이미 대학원이면
         아무것도 하지 않고 False를 돌려준다. 들어갔으면 True.
-        경과 시간은 240초에서 이어서 흐른다(대학원 1년차 = 240~300초, 2년차 = 300~360초 …).
         """
-        if self.is_in_grad_school() or self.is_dropped_out() or not self.is_time_over():
+        if self.is_in_grad_school() or self.is_dropped_out() or not self.has_graduated():
             return False
-        self.elapsed = config.TOTAL_SECONDS  # 소수 오차 없이 1년차 시작 시각에 맞춘다
         self.grad_year = config.GRAD_FIRST_YEAR
         return True
-
-    def get_grad_year_end(self):
-        """지금 대학원 년차가 끝나는 게임 시각(초) = 240 + 60 x 년차 를 돌려준다."""
-        return config.TOTAL_SECONDS + self.grad_year * config.SECONDS_PER_GRADE
-
-    def advance_grad_year(self):
-        """대학원에서 지금 년차의 60초가 다 지났으면 다음 년차로 올린다(끝없이).
-
-        dt가 커서 여러 해가 한꺼번에 지나가도 지난 해 수만큼 오른다. 학부에서는 아무것도 안 한다.
-        학년과 같은 규칙으로, 년차가 끝나는 바로 그 시각부터 다음 년차로 본다.
-        """
-        if not self.is_in_grad_school():
-            return
-        while self.elapsed + config.TIME_EPSILON >= self.get_grad_year_end():
-            self.grad_year += config.GRAD_YEAR_STEP
-
-    def get_term_start(self):
-        """지금 학년(대학원이면 지금 년차)이 시작된 게임 시각(초)을 돌려준다.
-
-        학부: (학년-1) x 60 -> 0/60/120/180. 대학원 n년차: 240 + (n-1) x 60.
-        """
-        if self.is_in_grad_school():
-            return (config.TOTAL_SECONDS
-                    + (self.grad_year - config.GRAD_FIRST_YEAR) * config.SECONDS_PER_GRADE)
-        return (self.get_grade() - config.FIRST_GRADE) * config.SECONDS_PER_GRADE
-
-    def get_term_key(self):
-        """이벤트 수를 셀 때 쓰는 "학년 칸" 번호를 돌려준다.
-
-        학부는 학년(1~4) 그대로, 대학원 n년차는 4 + n(5, 6, 7 …)이다.
-        그래서 대학원도 해마다 이벤트 수를 따로 센다(최소 4회 보장·최대 5회).
-        """
-        if self.is_in_grad_school():
-            return config.MAX_GRADE + self.grad_year
-        return self.get_grade()
 
     def get_grad_decay_ratio(self):
         """대학원 n년차의 자연 감소 배수 = 1 + 0.5 x n 을 돌려준다(학부는 1)."""
@@ -147,28 +224,19 @@ class Student:
         그래서 프레임 속도와 상관없이 1초에 정확히 한 번 줄어들고,
         dt가 커서 여러 초가 한꺼번에 지나도 지난 초 수만큼 줄어든다.
         소수 덧셈 오차 때문에 1초를 놓치지 않도록 아주 작은 허용치(TIME_EPSILON)를 둔다.
-        경과 시간은 전체 시간(240초)에서 멈춘다. dt가 커서 240초를 넘겨도
-        240초까지만 흐르고, 그 뒤로는 자연 감소도 일어나지 않는다.
+        판에 시간 제한이 없으므로(기획서 11절) 경과 시간은 멈추지 않고 계속 흐른다.
         감소가 일어날 때마다 경과 시간을 "그 감소가 일어난 시각"으로 맞춰 두어서,
-        dt가 커도 감소마다 시험 기간인지(멘탈 -2) 정확히 판단한다.
-        대학원에서는 240초에서 멈추지 않고 끝없이 흐른다. 60초마다 년차가 오르며
-        (advance_grad_year), 감소마다 그 시각의 년차 배수를 쓴다.
+        dt가 커도 감소마다 시험 기간인지(멘탈 -2, 60초 주기의 45~60초) 정확히 판단한다.
+        학년·대학원 년차는 시간이 아니라 지식으로 오르므로 여기서 바뀌지 않는다.
         """
-        if not self.is_in_grad_school():
-            time_left = max(config.ZERO_TIME, config.TOTAL_SECONDS - self.elapsed)
-            dt = min(dt, time_left)
         end_time = self.elapsed + dt
         self.decay_timer += dt
         while self.decay_timer + config.TIME_EPSILON >= config.DECAY_INTERVAL:
             self.decay_timer -= config.DECAY_INTERVAL
             # 이번 1초 감소가 일어나는 시각 = 끝 시각 - 아직 남겨 둔 시간
             self.elapsed = end_time - self.decay_timer
-            self.advance_grad_year()
             self.decay_once()
         self.elapsed = end_time
-        self.advance_grad_year()
-        if self.is_time_over():
-            self.elapsed = config.TOTAL_SECONDS  # 소수 오차를 없애고 240에서 멈춘다
 
     def decay_once(self):
         """1초분 자연 감소를 한 번 적용한다: 체력 -(체력 감소량), 멘탈 -(멘탈 감소량)."""
@@ -217,48 +285,39 @@ class Student:
         return self.health <= config.GAUGE_MIN or self.mental <= config.GAUGE_MIN
 
     # ------------------------------------------------------------
-    # 시험 기간과 엔딩 (5일차)
+    # 시험 기간과 엔딩
     # ------------------------------------------------------------
-    def is_time_over(self):
-        """경과 시간이 전체 시간(240초)에 도달했으면 True(졸업 시점)를 돌려준다.
-
-        1/60초를 14400번 더하면 239.9999…가 될 수 있어서 TIME_EPSILON 만큼 봐준다.
-        대학원은 끝없이 이어지므로 언제나 False다(대학원은 체력·멘탈 0으로만 끝난다).
-        """
-        if self.is_in_grad_school():
-            return False
-        return self.elapsed + config.TIME_EPSILON >= config.TOTAL_SECONDS
-
     def is_exam_period(self):
-        """지금이 시험 기간(각 학년 마지막 15초)이면 True를 돌려준다.
+        """지금이 시험 기간(60초 주기의 마지막 15초)이면 True를 돌려준다.
 
-        학년 안에서 흐른 시간이 45초 이상이면 시험 기간이다(45~60초, 105~120초 …).
-        60초가 되면 다음 학년이 시작되므로 시험 기간이 아니다.
-        240초(졸업 시점)부터는 시험 기간이 아니다.
-        대학원도 해마다 마지막 15초가 시험 기간이다(1년차 285~300초 …).
-        get_grade와 똑같이 TIME_EPSILON 만큼 봐준다.
+        주기 안에서 흐른 시간이 45초 이상이면 시험 기간이다(45~60초, 105~120초 …).
+        학년과 상관없이 주기마다 반복되고, 대학원에서도 같다.
+        get_cycle_index와 똑같이 TIME_EPSILON 만큼 봐준다.
         """
-        if self.is_time_over():
-            return False
-        exam_start = config.SECONDS_PER_GRADE - config.EXAM_SECONDS
-        return self.get_time_in_grade() + config.TIME_EPSILON >= exam_start
+        exam_start = config.CYCLE_SECONDS - config.EXAM_SECONDS
+        return self.get_cycle_time() + config.TIME_EPSILON >= exam_start
 
     def get_graduation_ending(self):
-        """지금 지식으로 졸업 엔딩 이름을 돌려준다(judge_ending 사용)."""
-        return judge_ending(self.knowledge)
+        """졸업까지 걸린 시간으로 졸업 엔딩 이름을 돌려준다(judge_ending 사용).
+
+        아직 졸업하지 않았으면 None.
+        """
+        if not self.has_graduated():
+            return None
+        return judge_ending(self.graduation_time)
 
     def get_ending(self):
         """지금 엔딩이 났는지 보고 엔딩 이름을 돌려준다. 아직 아니면 None.
 
-        체력이나 멘탈이 0이면 휴학을 먼저 돌려준다(240초 시점과 겹쳐도 휴학 우선).
-        그렇지 않고 240초가 되었으면 지식에 따른 졸업 엔딩을 돌려준다.
+        체력이나 멘탈이 0이면 휴학을 먼저 돌려준다(졸업 목표를 넘은 순간과 겹쳐도 휴학 우선).
+        그렇지 않고 학부에서 졸업했으면 걸린 시간에 따른 졸업 엔딩을 돌려준다.
         대학원에서 체력이나 멘탈이 0이면 "대학원 n년차 수료"를 돌려준다(휴학이 아니다).
         """
         if self.is_dropped_out():
             if self.is_in_grad_school():
                 return config.ENDING_GRAD_TEXT.format(self.grad_year)
             return config.ENDING_LEAVE
-        if self.is_time_over():
+        if not self.is_in_grad_school():
             return self.get_graduation_ending()
         return None
 
@@ -307,31 +366,8 @@ class Student:
         return config.STUDY_KNOWLEDGE
 
     # ------------------------------------------------------------
-    # 학년과 성장 (4일차)
+    # 성장 (4일차): 학년(get_grade)에 따라 크기·안경이 바뀐다
     # ------------------------------------------------------------
-    def get_grade(self):
-        """경과 시간으로 지금 학년(1~4)을 계산해 돌려준다.
-
-        0~60초 미만 1학년, 60~120초 미만 2학년, 120~180초 미만 3학년, 180초부터 4학년.
-        240초(졸업 시점)에도 4학년으로 둔다. 대학원에서도 4로 둔다
-        (그래서 캐릭터 크기는 4학년 반지름 70 그대로이고 안경을 쓴다).
-        1/60초를 3600번 더하면 59.9999…가 될 수 있어서 TIME_EPSILON 만큼 봐준다.
-        """
-        passed_grades = int((self.elapsed + config.TIME_EPSILON)
-                            // config.SECONDS_PER_GRADE)
-        return min(config.FIRST_GRADE + passed_grades, config.MAX_GRADE)
-
-    def get_grade_time_left(self):
-        """현재 학년의 남은 시간(정수 초, 60 -> 1)을 돌려준다.
-
-        학년 안에서 흐른 시간의 정수 부분을 60에서 뺀다(= 남은 시간을 올림).
-        그래서 학년이 막 시작하면 60, 59초가 지나 1초 미만이 남으면 1이 된다.
-        4학년에서 240초가 지나면 0으로 둔다(음수가 되지 않음).
-        대학원에서는 지금 년차의 남은 시간(60 -> 1)이다.
-        """
-        passed_seconds = int(self.get_time_in_grade() + config.TIME_EPSILON)
-        return max(config.GAUGE_MIN, config.SECONDS_PER_GRADE - passed_seconds)
-
     def get_radius(self):
         """캐릭터 반지름을 돌려준다: 40 + (학년-1) x 10 -> 40/50/60/70."""
         return (config.BASE_RADIUS
@@ -388,25 +424,20 @@ class Student:
         if option[config.OPTION_FLAG] is not None:
             self.add_flag(option[config.OPTION_FLAG])
 
-    def get_time_in_grade(self):
-        """지금 학년(대학원이면 지금 년차) 안에서 흐른 시간(초)을 돌려준다(시작 = 0)."""
-        return self.elapsed - self.get_term_start()
-
-    def get_grade_event_count(self):
-        """지금 학년(대학원이면 지금 년차)에 나온 이벤트 수를 돌려준다."""
-        return self.event_counts.get(self.get_term_key(), config.EVENT_COUNT_START)
+    def get_cycle_event_count(self):
+        """지금 60초 주기에 나온 이벤트 수를 돌려준다."""
+        return self.event_counts.get(self.get_cycle_index(), config.EVENT_COUNT_START)
 
     def count_event(self):
-        """지금 학년(대학원이면 지금 년차)의 이벤트 수를 하나 늘리고,
-        지금 게임 시각을 직전 이벤트 시각으로 적어 둔다."""
-        key = self.get_term_key()
-        self.event_counts[key] = self.get_grade_event_count() + config.EVENT_COUNT_STEP
+        """지금 주기의 이벤트 수를 하나 늘리고, 지금 게임 시각을 직전 이벤트 시각으로 적어 둔다."""
+        key = self.get_cycle_index()
+        self.event_counts[key] = self.get_cycle_event_count() + config.EVENT_COUNT_STEP
         self.last_event_time = self.elapsed
 
     def is_event_gap_passed(self):
         """직전 이벤트 이후 게임 시간이 최소 간격(EVENT_MIN_GAP, 8초) 이상 지났으면 True.
 
-        이번 판에 이벤트가 아직 없었으면 True. 학년이 바뀌어도 이어서 센다.
+        이번 판에 이벤트가 아직 없었으면 True. 주기·학년이 바뀌어도 이어서 센다.
         대화창이 떠 있는 동안은 경과 시간(elapsed)이 멈추므로 간격에 들어가지 않는다.
         """
         if self.last_event_time is None:
@@ -414,24 +445,25 @@ class Student:
         return self.elapsed - self.last_event_time + config.TIME_EPSILON >= config.EVENT_MIN_GAP
 
     def can_have_event(self):
-        """지금 학년 이벤트 수가 최대(5) 미만이면 True(아직 이벤트가 나올 수 있음)."""
-        return self.get_grade_event_count() < config.EVENT_MAX_PER_GRADE
+        """지금 주기 이벤트 수가 최대(5) 미만이면 True(아직 이벤트가 나올 수 있음)."""
+        return self.get_cycle_event_count() < config.EVENT_MAX_PER_GRADE
 
     def needs_guaranteed_event(self):
         """최소 보장 조건이면 True(다음 행동 때 확률과 상관없이 이벤트가 뜬다).
 
-        학년 안 0~45초를 11.25초씩 4구간으로 나눈다. 지금까지 끝난 구간 수
-        k = min(4, 학년 안 경과 // 11.25) 보다 그 학년 이벤트 수가 적으면 보장한다.
+        60초 주기 안 0~45초를 11.25초씩 4구간으로 나눈다. 지금까지 끝난 구간 수
+        k = min(4, 주기 안 경과 // 11.25) 보다 그 주기 이벤트 수가 적으면 보장한다.
         """
-        passed = int((self.get_time_in_grade() + config.TIME_EPSILON)
+        passed = int((self.get_cycle_time() + config.TIME_EPSILON)
                      // config.EVENT_GUARANTEE_INTERVAL)
         finished_sections = min(config.EVENT_MIN_PER_GRADE, passed)
-        return self.get_grade_event_count() < finished_sections
+        return self.get_cycle_event_count() < finished_sections
 
     def can_see_event(self, event):
         """이벤트 event가 지금 후보가 될 수 있으면 True.
 
-        학년 조건(표에 적힌 학년에서만), 연계 조건(필요한 플래그가 켜져 있음),
+        학년 조건(표에 적힌 학년 중 지금 학년이 있어야 함. 학년은 지식으로 오른 학년),
+        연계 조건(필요한 플래그가 켜져 있음),
         선택지형은 이번 판에 아직 안 나왔어야 한다(자동형은 반복 가능).
         대학원에서는 선택지형이 나오지 않는다(자동형만, 학년 조건은 4학년으로 본다).
         """

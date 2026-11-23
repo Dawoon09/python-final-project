@@ -24,11 +24,25 @@ import config  # noqa: E402
 from game import Game  # noqa: E402
 from student import Student  # noqa: E402
 
+from conftest import reach_grade  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 GAME_FILES = ["main.py", "game.py", "student.py", "button.py", "config.py"]
 P = config.PIXEL_SIZE
 CX, CY = config.STUDENT_CENTER_X, config.STUDENT_CENTER_Y
 FRAME = 1 / 60
+# (L단위) 시간 제한이 없어져 대본 시나리오를 넉넉한 시간(15분) 안에서 엔딩까지 돌린다
+SCRIPT_FRAMES = 15 * 60 * 60
+
+
+def old_grade_at(student, elapsed):
+    """(L단위) 예전 테스트의 "elapsed초 = (elapsed // 60 + 1)학년"을 재현한다.
+
+    경과 시간(주기·시험 기간)은 elapsed로 두고, 학년은 지식으로 올린다(reach_grade).
+    """
+    student.elapsed = elapsed
+    grade = min(config.MAX_GRADE, int(elapsed // config.CYCLE_SECONDS) + config.FIRST_GRADE)
+    reach_grade(student, grade)
 
 
 # ======================= 공통 도우미 =======================
@@ -292,7 +306,7 @@ def test_particle_kinds_and_colors_per_action():
 def test_particles_spawn_near_student_edge(game):
     for elapsed in (0.0, 60.0, 120.0, 180.0):
         game.start_new_game()
-        game.student.elapsed = elapsed
+        old_grade_at(game.student, elapsed)
         game.do_action(config.ACTION_FEED)
         r = game.student.get_radius()
         for p in game.particles:
@@ -502,7 +516,7 @@ def test_popups_and_particles_never_drawn_outside_stage(game):
 @pytest.mark.parametrize("elapsed", [0.0, 60.0, 120.0, 180.0, 230.0])
 def test_real_popups_fit_inside_stage_and_above_head(game, elapsed):
     """실제 공부(팝업 3개)를 4학년(반지름 70)까지 해 봐도 글자가 무대 안에서 잘리지 않고, 머리와 겹치지 않는다."""
-    game.student.elapsed = elapsed
+    old_grade_at(game.student, elapsed)
     game.do_action(config.ACTION_STUDY)
     inner = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH,
                         config.PANEL_HEIGHT).inflate(-2 * P, -2 * P)
@@ -688,7 +702,7 @@ def test_lift_moves_face_without_resizing(elapsed, lift):
     surf = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
     surf.fill(config.COLOR_BG)
     s = Student()
-    s.elapsed = elapsed
+    old_grade_at(s, elapsed)
     r = s.get_radius()
     s.draw(surf, lift)
     left, top, right, bottom = _face_bbox(surf)
@@ -850,11 +864,14 @@ def test_leave_by_study_action_clears_effects(game, attr, value):
 
 
 def test_graduation_clears_effects(game):
+    """(L단위) 4학년에서 졸업 목표에 닿으면 졸업하고 연출이 비워진다(240초 -> 수석)."""
+    reach_grade(game.student, 4)
     game.student.elapsed = 239.5
     game.do_action(config.ACTION_FEED)
     assert game.particles
+    game.student.knowledge = config.GRADUATION_KNOWLEDGE
     game.update(0.5)
-    assert game.state == config.STATE_ENDING and game.ending == config.ENDING_BARELY
+    assert game.state == config.STATE_ENDING and game.ending == config.ENDING_TOP
     assert_effects_cleared(game)
 
 
@@ -875,18 +892,18 @@ def _script(kind):
     """프레임 번호 -> 이벤트 목록. kind 별로 다른 엔딩이 나오게 행동 순서를 정한다."""
     events = {}
     if kind == "leave":
-        for f in range(10, 14400, 62):
+        for f in range(10, SCRIPT_FRAMES, 62):
             events[f] = [("key", pygame.K_3)]
     elif kind == "balanced":
         order = [pygame.K_3, pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_1, pygame.K_2]
-        for i, f in enumerate(range(5, 14400, 61)):
+        for i, f in enumerate(range(5, SCRIPT_FRAMES, 61)):
             events[f] = [("key", order[i % len(order)])]
     elif kind == "clicks":
         # (G단위) 방침 버튼을 호버·클릭한 뒤 행동한다(방침 배수가 공부 결과를 바꾼다)
         names = [config.POLICY_STUDY_FOCUS, config.POLICY_BALANCED, config.POLICY_REST_FOCUS,
                  config.POLICY_BALANCED]
         actions = [config.ACTION_STUDY, config.ACTION_FEED, config.ACTION_STUDY, config.ACTION_REST]
-        for i, f in enumerate(range(3, 14400, 45)):
+        for i, f in enumerate(range(3, SCRIPT_FRAMES, 45)):
             events[f] = [("move", names[i % 4]), ("click", names[i % 4]),
                          ("act", actions[i % 4])]
     return events
@@ -896,7 +913,7 @@ def _run(g, kind, with_draw):
     g.handle_event(key(pygame.K_RETURN))
     script = _script(kind)
     log = []
-    for f in range(14400 + 30):
+    for f in range(SCRIPT_FRAMES + 30):
         for what, arg in script.get(f, []):
             if what == "key":
                 g.do_action(LEGACY_KEY_ACTIONS[arg])   # (G단위) 예전 행동 키 -> do_action
@@ -999,8 +1016,8 @@ def _particle_rect(g, p):
 def test_particles_never_overlap_popups_every_frame(game, k, elapsed):
     """1~4학년(시험 기간 포함) x 세 행동: 1/60초 프레임마다 팝업 글자(그림자 포함)와
     파티클 사각형이 겹치지 않는다. 깜빡여 숨은 프레임도 자리로는 검사(더 엄격)."""
-    game.student.elapsed = elapsed
     game.student.health, game.student.mental, game.student.knowledge = 60, 60, 10
+    old_grade_at(game.student, elapsed)
     game.do_action(LEGACY_KEY_ACTIONS[k])
     assert game.popups and len(game.particles) == config.PARTICLE_COUNT
     frames = 0
@@ -1020,8 +1037,8 @@ def test_particles_never_overlap_popups_every_frame(game, k, elapsed):
 @pytest.mark.parametrize("elapsed", [0.0, 60.0, 120.0, 180.0, 225.0])
 def test_particles_and_popups_pixels_never_overlap(game, k, elapsed):
     """화면 픽셀로도 확인: 파티클만 그린 화면과 팝업만 그린 화면에서 바뀐 픽셀이 겹치지 않는다."""
-    game.student.elapsed = elapsed
     game.student.health, game.student.mental, game.student.knowledge = 60, 60, 10
+    old_grade_at(game.student, elapsed)
     game.do_action(LEGACY_KEY_ACTIONS[k])
     for step in range(12):
         parts, pops = game.particles, game.popups

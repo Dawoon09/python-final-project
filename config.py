@@ -32,11 +32,16 @@ START_STATE = STATE_TITLE
 # ---------------------------------------------------------------
 # 3. 시간
 # ---------------------------------------------------------------
-SECONDS_PER_GRADE = 60                      # 학년당 시간(초)
+# 기획서 11절: 판에 시간 제한이 없다. 학년은 누적 지식으로 오르고,
+# 60초 "주기"는 계절·낮밤·시험 기간·이벤트 횟수를 세는 보기용 시계로만 쓴다.
+CYCLE_SECONDS = 60                          # 주기 하나의 길이(초): 봄·여름·가을·겨울 한 바퀴
+CYCLE_INDEX_START = 1                       # 첫 주기 번호 (0~60초 = 1번 주기)
 MAX_GRADE = 4                               # 마지막 학년
-TOTAL_SECONDS = SECONDS_PER_GRADE * MAX_GRADE  # 전체 시간 240초
-EXAM_SECONDS = 15                           # 각 학년 마지막 15초가 시험 기간
+EXAM_SECONDS = 15                           # 각 주기 마지막 15초(45~60초)가 시험 기간
 FIRST_GRADE = 1                             # 처음 학년
+GRADE_STEP = 1                              # 진급 목표를 넘을 때마다 오르는 학년
+PROMOTION_COUNT_START = 0                   # 한 번 판정에서 오른 횟수(진급 수)의 시작값
+SECONDS_PER_MINUTE = 60                     # "3분 12초"처럼 보일 때 1분 = 60초
 ZERO_TIME = 0.0                             # 시간 값의 시작값·하한(초): 타이머 초기값·하한
 
 # ---------------------------------------------------------------
@@ -118,8 +123,12 @@ MOUTH_CRY = "cry"           # 우는 입 (입꼬리가 내려간 ∩자)
 # ---------------------------------------------------------------
 # 8. 엔딩 기준
 # ---------------------------------------------------------------
-TOP_GRADUATE_KNOWLEDGE = 1000   # 지식 1000 이상: 수석 졸업 (방치형 전환 후 기준, 기획서 10절)
-NORMAL_GRADUATE_KNOWLEDGE = 750  # 지식 750 이상 999 이하: 무사 졸업, 미만: 아슬아슬 졸업
+# 진급과 졸업 (기획서 11절): 누적 지식이 목표 "이상"이 되면 진급한다. 학년은 내려가지 않는다.
+GRADE_GOALS = [200, 450, 750]   # 2학년·3학년·4학년 진급 목표(누적 지식)
+GRADUATION_KNOWLEDGE = 1100     # 4학년에서 누적 지식 1100 이상이면 졸업
+# 졸업 등급은 졸업까지 걸린 게임 시간(대화창 정지 시간은 빼고 센다)으로 정한다
+TOP_GRADUATE_SECONDS = 240      # 240초 이하: 수석 졸업
+NORMAL_GRADUATE_SECONDS = 360   # 240초 초과 360초 이하: 무사 졸업, 초과: 아슬아슬 졸업
 
 ENDING_LEAVE = "휴학"
 ENDING_TOP = "수석 졸업"
@@ -411,18 +420,38 @@ ORIGIN = (0, 0)             # 창 왼쪽 위 꼭짓점. 사각형을 만든 뒤 
 SCREEN_CENTER_X = SCREEN_WIDTH // 2  # 화면 가운데 x
 HALF = 2                    # 절반을 구할 때 나누는 값
 
-# 상단 정보바: 왼쪽 "N학년", 가운데 "남은 시간 N초", 오른쪽 "지식 N" (Game이 그린다)
+# 상단 정보바: 왼쪽 "N학년", 그 오른쪽 "다음 학년까지 지식 N", 오른쪽 "연구비 N  지식 N" (Game이 그린다)
 INFO_BOX_X = 12             # 정보바 상자 왼쪽 x
 INFO_BOX_Y = 8              # 정보바 상자 위쪽 y
 INFO_BOX_WIDTH = SCREEN_WIDTH - INFO_BOX_X * 2  # 정보바 상자 가로 길이(좌우 여백 같게)
 INFO_BOX_HEIGHT = 44        # 정보바 상자 세로 길이
 INFO_BAR_HEIGHT = INFO_BOX_Y + INFO_BOX_HEIGHT + PIXEL_SIZE  # 정보바 구역 전체 높이(그림자 포함, 56)
 INFO_TEXT_CENTER_Y = INFO_BOX_Y + INFO_BOX_HEIGHT // 2  # 정보바 글자의 세로 가운데
-INFO_TIME_X = SCREEN_WIDTH // 2  # "남은 시간" 글자의 가운데 x (화면 가운데)
 INFO_BAR_MARGIN = 32        # 정보바 글자와 창 가장자리 사이 여백
+# 목표 글자의 왼쪽 x. 가장 긴 학년 글자("대학원 12년차", 약 142px)가 32~174를 쓰므로 그 오른쪽에 둔다.
+# 가장 긴 목표 글자(약 248px) -> 200~448, 오른쪽 "연구비 12345  지식 1234"(약 250px)는 518부터라 겹치지 않는다
+INFO_GOAL_X = 200
 GRADE_TEXT = "{}학년"            # 학년 글자 틀
-TIME_LEFT_TEXT = "남은 시간 {}초"  # 현재 학년 남은 시간 글자 틀
 KNOWLEDGE_TEXT = "{} {}"         # 지식 글자 틀: "지식 120"
+NEXT_GRADE_TEXT = "다음 학년까지 지식 {}"     # 1~3학년 목표 글자
+GRADUATION_GOAL_TEXT = "졸업까지 지식 {}"     # 4학년 목표 글자
+NEXT_GRAD_YEAR_TEXT = "다음 년차까지 지식 {}"  # 대학원 목표 글자
+
+# 목표 진행 막대 (정보바 바로 아래 왼쪽, 상태 패널 위). 시험 기간 배너는 그 오른쪽(무대 위)에 뜬다
+GOAL_BOX_X = 12             # 목표 상자 왼쪽 x (상태 패널과 같은 줄)
+GOAL_BOX_Y = 64             # 목표 상자 위쪽 y (정보바 구역 56 아래)
+GOAL_BOX_WIDTH = 256        # 목표 상자 가로 길이 (상태 패널과 같다) -> 오른쪽 끝 268
+GOAL_BOX_HEIGHT = 40        # 목표 상자 세로 길이 -> 아래 끝 104 (+그림자 1칸), 패널(116)과 겹치지 않음
+GOAL_LABEL_TEXT = "목표"     # 막대 앞 글자
+GOAL_LABEL_GAP = 8          # 글자와 막대 사이 간격
+GOAL_BAR_PAD = 8            # 상자 안쪽 왼쪽·오른쪽 여백
+GOAL_BAR_HEIGHT = 16        # 막대 세로 길이(도트 4칸)
+GOAL_PROGRESS_MIN = 0.0     # 진행률 최솟값 (목표 시작점 아래로 지식이 줄면 0)
+GOAL_PROGRESS_MAX = 1.0     # 진행률 최댓값
+
+# 경과 시간 ("경과 3분 12초"): 오른쪽 아래, [업그레이드 U] 버튼 밑 (자동 행동 막대와 같은 높이)
+ELAPSED_TEXT = "경과 {}"
+TIME_TEXT = "{}분 {}초"      # 시간 글자 틀: "3분 12초"
 
 # 가운데 구역: 왼쪽 상태 패널(게이지) + 오른쪽 제자 무대
 PANEL_Y = 116               # 두 패널의 위쪽 y (시험 기간 배너 아래)
@@ -486,9 +515,9 @@ AUTO_HINT_Y = 566           # 안내 문구 위쪽 y
 # 14. 시험 기간 배너 (상단 정보바 바로 아래, 패널 위)
 # ---------------------------------------------------------------
 EXAM_BANNER_TEXT = "시험 기간! 공부 효과 2배, 멘탈 감소 2배"
-EXAM_BANNER_X = 12          # 배너 왼쪽 x
+EXAM_BANNER_X = 284         # 배너 왼쪽 x (무대와 같은 줄. 왼쪽은 목표 진행 막대 자리)
 EXAM_BANNER_Y = 64          # 배너 위쪽 y (정보바 구역 56 아래)
-EXAM_BANNER_WIDTH = SCREEN_WIDTH - EXAM_BANNER_X * 2  # 배너 가로 길이(좌우 여백 같게)
+EXAM_BANNER_WIDTH = 504     # 배너 가로 길이 (무대와 같다) -> 오른쪽 끝 788
 EXAM_BANNER_HEIGHT = 40     # 배너 세로 길이 -> 아래 끝 104 (+그림자 1칸), 패널(116)과 겹치지 않음
 EXAM_ICON_MARGIN = 24       # 배너 양 끝에서 느낌표 아이콘까지 거리
 
@@ -528,6 +557,8 @@ ENDING_STARS = [
 ENDING_NAME_Y = 136         # 엔딩 이름 가운데 y
 ENDING_KNOWLEDGE_TEXT = "누적 지식 {}"  # 누적 지식 글자 틀
 ENDING_KNOWLEDGE_Y = 356    # 누적 지식 가운데 y
+ENDING_TIME_TEXT = "졸업까지 {}"   # 졸업 엔딩에서 걸린 시간 글자 틀: "졸업까지 3분 52초"
+ENDING_TIME_Y = 320         # 걸린 시간 가운데 y (학사모 아래 끝 296과 누적 지식 배지 사이)
 RESTART_HINT_TEXT = "R을 눌러 다시 하기"
 RESTART_HINT_Y = 428        # 다시 하기 안내 가운데 y
 
@@ -670,12 +701,13 @@ COLOR_HINT_DIM = COLOR_TEXT_SOFT   # 화살표가 숨었을 때의 안내 글자
 # ---------------------------------------------------------------
 # 발생 규칙 수치
 EVENT_CHANCE = 0.25                 # 행동이 실제로 실행된 직후 이벤트가 뜰 확률
-EVENT_GUARANTEE_INTERVAL = 11.25    # 최소 보장 구간 길이(초): 학년 안 0~45초를 4구간으로 나눈다
-EVENT_MIN_PER_GRADE = 4             # 학년당 최소 보장 이벤트 수 (보장 구간 개수)
-EVENT_MAX_PER_GRADE = 5             # 학년당 최대 이벤트 수
+EVENT_GUARANTEE_INTERVAL = 11.25    # 최소 보장 구간 길이(초): 60초 주기 안 0~45초를 4구간으로 나눈다
+# (이름은 예전 그대로 _PER_GRADE지만 기획서 11절부터는 "60초 주기당" 횟수다)
+EVENT_MIN_PER_GRADE = 4             # 주기당 최소 보장 이벤트 수 (보장 구간 개수)
+EVENT_MAX_PER_GRADE = 5             # 주기당 최대 이벤트 수
 EVENT_CHOICE_RATIO = 0.5            # 선택지형 후보가 있을 때 선택지형을 고를 확률
 EVENT_NOTICE_TIME = 2.0             # 자동형 알림 배너가 보이는 시간(초)
-# 최소 간격: 확률로 뜨는 이벤트는 직전 이벤트(같은 판, 학년이 바뀌어도 이어서 셈) 이후
+# 최소 간격: 확률로 뜨는 이벤트는 직전 이벤트(같은 판, 주기·학년이 바뀌어도 이어서 셈) 이후
 # 게임 시간이 이만큼 지나야 뜰 수 있다. 최소 보장으로 뜨는 이벤트는 예외.
 # 대화창이 떠 있는 동안은 게임 시간이 멈추므로 간격에 들어가지 않는다.
 EVENT_MIN_GAP = 8.0
@@ -690,8 +722,8 @@ ALL_GRADES = [1, 2, 3, 4]           # 모든 학년 (자동형 이벤트가 나�
 CHOICE_FIRST = 0                    # 첫 번째 선택지 번호(리스트 위치)
 CHOICE_SECOND = 1                   # 두 번째 선택지 번호(리스트 위치)
 CHOICE_NUMBER_START = 1             # 화면에 보이는 선택지 번호는 1부터 센다: "[1] …", "[2] …"
-EVENT_COUNT_STEP = 1                # 이벤트가 한 번 나올 때 학년 이벤트 수가 늘어나는 양
-EVENT_COUNT_START = 0               # 학년별 이벤트 수의 시작값 (새 판에서는 0번)
+EVENT_COUNT_STEP = 1                # 이벤트가 한 번 나올 때 그 주기 이벤트 수가 늘어나는 양
+EVENT_COUNT_START = 0               # 주기별 이벤트 수의 시작값 (아직 안 나온 주기는 0번)
 
 # 특성 (얻으면 그 판 끝까지 유지). 값은 화면 배지에 쓸 이름이다
 TRAIT_FITNESS = "체력 단련"          # 학식 먹이기 체력 +20 -> +25
@@ -1160,6 +1192,9 @@ UPGRADE_BUTTON_TEXT = "업그레이드 U"
 UPGRADE_BUTTON_X = BUTTON_START_X + POLICY_AREA_WIDTH + BUTTON_GAP   # 600
 UPGRADE_BUTTON_Y = BUTTON_Y                                          # 476
 UPGRADE_BUTTON_ENDING_Y = 516
+# 경과 시간 글자 가운데: [업그레이드 U] 버튼 가운데 x, 자동 행동 진행 막대 가운데 y
+ELAPSED_CENTER_X = UPGRADE_BUTTON_X + BUTTON_WIDTH // 2   # 688
+ELAPSED_CENTER_Y = AUTO_BAR_Y + AUTO_BAR_HEIGHT // 2      # 548
 
 # 업그레이드 패널 (J단위에서 배치 변경): 왼쪽 상태 패널 자리(x 12~268, y 116~468)에 겹쳐 그린다.
 # 그래서 패널이 열려 있어도 오른쪽 제자 무대(제자·배경)는 그대로 보인다. 반투명 없이 도트 상자
@@ -1207,12 +1242,19 @@ COLOR_UPGRADE_CURSOR = COLOR_PINK_DARK  # 고른 줄 화살표 색
 # ---------------------------------------------------------------
 GRAD_YEAR_UNDERGRAD = 0     # 대학원 년차 값: 0이면 학부(1~4학년)
 GRAD_FIRST_YEAR = 1         # 대학원에 들어가면 1년차부터
-GRAD_YEAR_STEP = 1          # 60초마다 대학원 년차가 오르는 양 (끝없이)
+GRAD_YEAR_STEP = 1          # 년차 목표를 넘을 때마다 대학원 년차가 오르는 양 (끝없이)
+# 대학원 n년차 -> n+1년차 목표(누적 지식) = 졸업 지식 1100 + (400 + 100 x (k-1))를 k = 1..n까지 더한 값
+# -> 1년차 1500, 2년차 2000, 3년차 2600 … (기획서 11절)
+GRAD_GOAL_FIRST_STEP = 400  # 1년차에 더 모아야 하는 지식
+GRAD_GOAL_STEP_GROWTH = 100  # 해마다 더 모아야 하는 지식이 늘어나는 양
 GRAD_DECAY_BONUS = 0.5      # n년차 체력·멘탈 자연 감소 배수 = 1 + 0.5 x n
 GRAD_MONEY_BONUS = 0.25     # n년차 연구비 획득 배수 = 1 + 0.25 x n
 FAME_STEP = 1               # 졸업한 판에서 환생하면 오르는 명성
 
 GRAD_YEAR_TEXT = "대학원 {}년차"        # 정보바 왼쪽 글자 (학부는 GRADE_TEXT)
+PROMOTION_TEXT = "{}학년 진급!"          # 진급 알림 글자 (2초, 자동형 알림과 같은 모양)
+GRAD_PROMOTION_TEXT = "대학원 {}년차!"   # 대학원 년차가 오를 때 알림 글자
+PROMOTION_NOTICE_RIGHT = 780             # 진급 알림 상자 오른쪽 끝 x (무대 안쪽 오른쪽 위 구석)
 ENDING_GRAD_TEXT = "대학원 {}년차 수료"  # 대학원에서 체력·멘탈 0이 되면 엔딩 이름
 REINCARNATE_HINT_TEXT = "R: 환생 (명성 +1)"   # 졸업·수료 엔딩 안내 첫 줄
 GRAD_SCHOOL_HINT_TEXT = "C: 대학원 진학"      # 졸업 엔딩 안내 둘째 줄
@@ -1233,13 +1275,13 @@ ENDING_NAME_MAX_WIDTH_OPEN = 456  # 옮겨 그릴 때 큰 글씨 엔딩 이름�
 #   배경은 제자 무대 안쪽(x 288~784, y 120~456)에 그리고, 제자·파티클·팝업·알림보다 먼저 그린다.
 #   좌표는 무대 안쪽 왼쪽 위를 (0, 0)으로 하는 도트 칸(4 x 4 픽셀) 단위다(가로 124칸, 세로 84칸).
 # ---------------------------------------------------------------
-# 계절: 학년(대학원은 년차) 안 0~15초 봄, 15~30초 여름, 30~45초 가을, 45~60초 겨울(시험 기간)
+# 계절: 60초 주기 안 0~15초 봄, 15~30초 여름, 30~45초 가을, 45~60초 겨울(시험 기간) (기획서 11절)
 SEASON_SPRING = "spring"
 SEASON_SUMMER = "summer"
 SEASON_AUTUMN = "autumn"
 SEASON_WINTER = "winter"
-SEASONS = [SEASON_SPRING, SEASON_SUMMER, SEASON_AUTUMN, SEASON_WINTER]  # 학년 안 순서
-SEASON_SECONDS = SECONDS_PER_GRADE // len(SEASONS)   # 계절 하나의 길이 15초 (= 시험 기간 길이)
+SEASONS = [SEASON_SPRING, SEASON_SUMMER, SEASON_AUTUMN, SEASON_WINTER]  # 주기 안 순서
+SEASON_SECONDS = CYCLE_SECONDS // len(SEASONS)   # 계절 하나의 길이 15초 (= 시험 기간 길이)
 INDEX_STEP = 1                     # 목록에서 다음 칸까지의 거리 (마지막 칸 번호 = 길이 - 1)
 SINGLE_COUNT = 1                   # 사각형 조각 하나를 그릴 때의 개수
 

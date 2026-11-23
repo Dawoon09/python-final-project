@@ -1,6 +1,10 @@
 """I단위 검수: 졸업 후 환생(R, 명성+1)·대학원(C, 끝없이, 년차 배수)·엔딩 화면 분기
 (기획서 10절 "졸업 후: 환생과 대학원", jeja-spec 15절).
 
+(L단위, 기획서 11절) 졸업은 4학년에서 누적 지식 1100, 등급은 걸린 시간, 대학원 년차는 지식 목표
+(1500 / 2000 / 2600 …)로 오른다. 60초 주기 시계는 대학원에서도 이어진다. 시간으로 년차가 오르던
+테스트는 지식 목표로 바꿨다.
+
 이 파일은 conftest 의 AUTO_OFF_FILES / EVENTS_OFF_FILES 에 없으므로 자동 행동·이벤트가 켜진 채로 돈다.
 자동 행동이 끼어들면 안 되는 테스트는 no_auto, 이벤트가 끼어들면 안 되는 테스트는 no_events 를 직접 쓴다.
 """
@@ -19,7 +23,7 @@ import pytest  # noqa: E402
 
 import config  # noqa: E402
 import game as game_module  # noqa: E402
-from conftest import press  # noqa: E402
+from conftest import graduate, press, reach_grade  # noqa: E402
 from game import Game  # noqa: E402
 from student import Student  # noqa: E402
 
@@ -54,10 +58,29 @@ def no_decay(monkeypatch):
     monkeypatch.setattr(config, "MENTAL_DECAY_PER_SEC_EXAM", 0)
 
 
-def graduate_with(game, knowledge):
-    """게임 중 game 을 지식 knowledge 로 240초 졸업시킨다(update 경로)."""
-    game.student.knowledge = knowledge
-    game.student.elapsed = config.TOTAL_SECONDS - FRAME / 2
+# (L단위) 예전 지식 기준(1000/750)과 같은 등급이 나오는 졸업 시각: 수석 200초, 무사 300초, 아슬아슬 400초
+OLD_TOP_KNOWLEDGE, OLD_NORMAL_KNOWLEDGE = 1000, 750
+
+
+def graduation_seconds_for(old_knowledge):
+    """예전 테스트의 "지식 old_knowledge로 졸업"과 같은 등급이 나오는 졸업 시각(초)."""
+    if old_knowledge >= OLD_TOP_KNOWLEDGE:
+        return 200.0
+    if old_knowledge >= OLD_NORMAL_KNOWLEDGE:
+        return 300.0
+    return 400.0
+
+
+def graduate_with(game, knowledge, seconds=None):
+    """게임 중 game 을 졸업시킨다(update 경로의 진급 판정).
+
+    (L단위) 지식은 졸업 지식 1100 그대로(대학원 1년차 목표 1500 아래), 등급은 예전 지식 knowledge 와
+    같은 등급이 나오는 졸업 시각으로 정한다. seconds 를 주면 그 시각에 졸업한다.
+    """
+    if seconds is None:
+        seconds = graduation_seconds_for(knowledge)
+    game.student.knowledge = config.GRADUATION_KNOWLEDGE
+    game.student.elapsed = seconds - FRAME
     game.update(FRAME)
     assert game.state == config.STATE_ENDING
     assert game.ending in GRADUATIONS
@@ -80,12 +103,18 @@ def to_grad(game, knowledge=500):
 
 
 def grad_student(year=1):
-    """학부 240초를 마친 Student 를 대학원 year 년차 시작 시각으로 만든다(감소 없이 시각만 맞춤)."""
+    """졸업한 Student 를 대학원 year 년차로 만든다(감소 없이 값만 맞춤).
+
+    (L단위) 240초에 지식 1100으로 졸업 -> 대학원 진학 -> 년차 목표(1500, 2000 …)까지 지식을 넣어
+    진급 판정으로 년차를 올린다. 경과 시간은 (4 + year - 1)번째 60초 주기의 시작으로 둔다.
+    """
     s = Student()
-    s.elapsed = config.TOTAL_SECONDS
+    graduate(s, 240.0)
     assert s.enter_grad_school()
-    s.elapsed = config.TOTAL_SECONDS + (year - 1) * config.SECONDS_PER_GRADE
-    s.advance_grad_year()
+    s.elapsed = 240.0 + (year - 1) * config.CYCLE_SECONDS
+    if year > config.GRAD_FIRST_YEAR:
+        s.knowledge = s.get_grad_goal(year - 1)
+        s.promote()
     assert s.grad_year == year
     return s
 
@@ -160,7 +189,7 @@ def test_c_on_graduation_enters_grad_school(g, knowledge):
     assert g.state == config.STATE_PLAYING and g.ending is None
     assert g.grad_year == 1
     assert g.fame == 2                      # 대학원 진학은 명성을 올리지 않는다
-    assert g.student.knowledge == knowledge
+    assert g.student.knowledge == config.GRADUATION_KNOWLEDGE   # (L단위) 졸업한 지식 그대로
 
 
 def test_r_on_grad_ending_reincarnates(g):
@@ -261,7 +290,7 @@ def test_enter_grad_school_keeps_everything(g):
     s.seen_events.add("mt_invite")
     s.event_counts[2] = 3
     g.money = 77
-    graduate_with(g, 810)                 # K단위: 무사 졸업 750~999 안(예전 610)
+    graduate_with(g, 810)                 # (L단위) 300초 졸업 = 무사(예전 지식 810)
     before = dict(health=s.health, mental=s.mental, knowledge=s.knowledge,
                   traits=list(s.traits), looks=list(s.looks), flags=set(s.flags),
                   seen=set(s.seen_events), counts=dict(s.event_counts),
@@ -272,7 +301,7 @@ def test_enter_grad_school_keeps_everything(g):
     press(g, pygame.K_c)
     assert g.student is s                 # 같은 제자
     assert s.health == before["health"] and s.mental == before["mental"]
-    assert s.knowledge == 810
+    assert s.knowledge == config.GRADUATION_KNOWLEDGE
     assert s.traits == before["traits"] and s.looks == before["looks"]
     assert s.flags == before["flags"] and s.seen_events == before["seen"]
     assert s.event_counts == before["counts"]
@@ -280,18 +309,19 @@ def test_enter_grad_school_keeps_everything(g):
     assert g.money == money               # 진학으로 연구비가 바뀌지 않는다
     assert g.upgrades is upgrades and g.upgrades[MENU] == 2
     assert s.upgrades is g.upgrades
-    assert s.elapsed == config.TOTAL_SECONDS
+    assert s.elapsed == pytest.approx(300.0) == s.graduation_time   # (L단위) 주기 시계는 이어서 흐른다
     assert g.graduation_bonus == 0
     assert g.auto_timer == pytest.approx(g.get_auto_interval())
     assert g.notice is None and g.current_event is None
 
 
 def test_enter_grad_school_student_rules():
+    """(L단위) 졸업(지식 1100으로 graduation_time 기록)한 제자만 대학원에 간다. 시간은 상관없다."""
     s = Student()
-    assert s.enter_grad_school() is False          # 240초 전
-    s.elapsed = 239.5
-    assert s.enter_grad_school() is False
-    s.elapsed = config.TOTAL_SECONDS
+    assert s.enter_grad_school() is False          # 졸업 전
+    s.elapsed = 240.0
+    assert s.enter_grad_school() is False          # 240초가 지나도 졸업 전이면 못 간다
+    graduate(s, 240.0)
     s.health = 0
     assert s.enter_grad_school() is False          # 휴학 상태
     s.health = 50
@@ -303,74 +333,85 @@ def test_enter_grad_school_student_rules():
 
 # ======================= 년차 진행 경계 =======================
 
-def test_year_boundaries_exact(no_decay):
-    s = grad_student()
-    s.update(59.99)
-    assert s.grad_year == 1
-    assert s.get_term_key() == 5
-    s.update(0.01)
-    assert s.grad_year == 2
-    assert s.get_term_start() == pytest.approx(300)
-    assert s.get_term_key() == 6
-    s.update(59.99)
-    assert s.grad_year == 2
-    s.update(0.01)
-    assert s.grad_year == 3
+@pytest.mark.parametrize("year, goal", [(1, 1500), (2, 2000), (3, 2600), (4, 3300)])
+def test_year_boundaries_by_knowledge(no_decay, year, goal):
+    """(L단위, 예전 '60초마다 년차') n년차 -> n+1년차 목표 누적 지식: 1500 / 2000 / 2600 / 3300."""
+    s = grad_student(year)
+    assert s.get_next_goal() == goal
+    s.knowledge = goal - 1
+    assert s.promote() == 0 and s.grad_year == year
+    s.knowledge = goal
+    assert s.promote() == 1 and s.grad_year == year + 1
 
 
-def test_year_boundary_frame_by_frame(no_decay):
+def test_time_alone_never_advances_year(no_decay):
+    """(L단위, 예전 '3600프레임에 2년차') 시간만 흘러서는 년차가 오르지 않는다(주기 번호만 바뀐다)."""
     s = grad_student()
-    for _ in range(3599):
+    for _ in range(3600):
         s.update(FRAME)
+    s.promote()
     assert s.grad_year == 1
-    assert s.get_grade_time_left() == 1
-    s.update(FRAME)
-    assert s.grad_year == 2
-    assert s.get_grade_time_left() == 60
+    assert s.get_cycle_index() == 6
 
 
-@pytest.mark.parametrize("dt, year", [(60, 2), (119.9, 2), (120, 3), (150, 3),
-                                      (180, 4), (600, 11)])
-def test_year_progress_large_dt(no_decay, dt, year):
+@pytest.mark.parametrize("dt", [60, 119.9, 120, 150, 180, 600])
+def test_large_dt_keeps_year_and_flows(no_decay, dt):
+    """(L단위) 큰 dt 도 경과 시간만 늘리고 년차는 그대로다."""
     s = grad_student()
     s.update(dt)
+    s.promote()
+    assert s.grad_year == 1
+    assert s.elapsed == pytest.approx(240.0 + dt)
+
+
+@pytest.mark.parametrize("knowledge, year", [(1499, 1), (1500, 2), (2000, 3), (2599, 3),
+                                             (2600, 4), (3300, 5), (9599, 10), (9600, 11), (10000, 11)])
+def test_many_years_at_once(no_decay, knowledge, year):
+    """(L단위) 지식이 한 번에 여러 년차 목표를 넘으면 그만큼 오른다(끝없이)."""
+    s = grad_student()
+    s.knowledge = knowledge
+    s.promote()
     assert s.grad_year == year
-    assert s.elapsed == pytest.approx(config.TOTAL_SECONDS + dt)
 
 
 def test_grad_grade_size_and_glasses_stay(no_decay):
     s = grad_student()
     for _ in range(5):
         s.update(60)
+        s.knowledge = s.get_next_goal()      # (L단위) 년차는 지식으로 오른다
+        s.promote()
         assert s.get_grade() == 4
         assert s.get_radius() == 70
         assert s.has_glasses()
-        assert not s.is_time_over()
+    assert s.grad_year == 6
 
 
-def test_grad_time_left(no_decay):
+def test_grad_knowledge_to_goal(no_decay):
+    """(L단위, 예전 '년차 남은 시간') 대학원 목표까지 남은 지식: 1년차 1100 -> 400, 2년차 1500 -> 500."""
     s = grad_student()
-    assert s.get_grade_time_left() == 60
-    s.update(59.5)
-    assert s.get_grade_time_left() == 1
-    s.update(0.5)
-    assert s.get_grade_time_left() == 60
-    s.update(30)
-    assert s.get_grade_time_left() == 30
+    assert s.get_knowledge_to_goal() == 400
+    s.knowledge = 1499
+    assert s.get_knowledge_to_goal() == 1
+    s.knowledge = 1500
+    s.promote()
+    assert s.get_knowledge_to_goal() == 500
+    assert s.get_goal_start() == 1500
 
 
 def test_game_update_continues_past_240(g, no_decay):
     to_grad(g)
+    t0 = g.student.elapsed
     g.update(150)
     assert g.state == config.STATE_PLAYING
-    assert g.student.elapsed == pytest.approx(390)
-    assert g.grad_year == 3
+    assert g.student.elapsed == pytest.approx(t0 + 150)
+    assert g.grad_year == 1               # (L단위) 시간만으로는 년차가 오르지 않는다
 
 
 # ======================= 시험 기간 (년차마다 마지막 15초) =======================
 
 @pytest.mark.parametrize("year", [1, 2, 3])
-def test_exam_period_each_year(no_decay, year):
+def test_exam_period_each_cycle_in_grad(no_decay, year):
+    """(L단위) 대학원에서도 시험 기간은 60초 주기의 마지막 15초이고, 주기가 끝나도 년차는 그대로다."""
     s = grad_student(year)
     s.update(44.99)
     assert not s.is_exam_period()
@@ -379,7 +420,7 @@ def test_exam_period_each_year(no_decay, year):
     s.update(14.99)
     assert s.is_exam_period() and s.grad_year == year
     s.update(0.01)
-    assert not s.is_exam_period() and s.grad_year == year + 1
+    assert not s.is_exam_period() and s.grad_year == year
 
 
 def test_exam_study_bonus_in_grad(no_decay):
@@ -415,7 +456,7 @@ def test_grad_decay_with_health_care(year, care, ratio):
     s.upgrades[CARE] = care
     assert s.get_health_decay() == pytest.approx(ratio)
     assert s.get_mental_decay() == pytest.approx(ratio)
-    s.elapsed = s.get_term_start() + 50      # 시험 기간
+    s.elapsed = (s.get_cycle_index() - 1) * config.CYCLE_SECONDS + 50      # 시험 기간(주기 안 50초)
     assert s.get_mental_decay() == pytest.approx(2 * ratio)
 
 
@@ -437,11 +478,14 @@ def test_grad_decay_in_year2_exam():
     assert s.mental == pytest.approx(100 - 44 * 2.0 - 2 * 4.0)
 
 
-def test_decay_at_year_boundary_uses_new_year():
+def test_decay_after_year_promotion_uses_new_year():
+    """(L단위) 지식으로 2년차가 되면 다음 감소부터 2년차 배수(2.0)를 쓴다."""
     s = grad_student(1)
     s.elapsed = 299.5
     s.decay_timer = 0.5
     s.health = s.mental = 80
+    s.knowledge = 1500
+    s.promote()
     s.update(0.5)                     # 300초 시각의 감소 -> 2년차, 시험 기간 아님
     assert s.grad_year == 2
     assert s.health == pytest.approx(78.0)   # 2년차 배수 2.0 (1년차였다면 1.5)
@@ -507,6 +551,7 @@ def test_no_choice_candidates_in_grad():
     # 같은 상태라도 학부 4학년이면 선택지형이 후보에 있다
     u = Student()
     u.elapsed = 200
+    reach_grade(u, 4)   # (L단위) 4학년은 지식으로
     assert any(u.can_see_event(e) for e in config.CHOICE_EVENTS)
 
 
@@ -515,7 +560,7 @@ def test_grad_auto_events_min4_max5_per_year(seed, monkeypatch):
     game = Game(seed=seed)
     press(game, pygame.K_RETURN)
     monkeypatch.setattr(config, "EVENT_MAX_PER_GRADE", 0)   # 학부는 이벤트 없이 바로 졸업
-    graduate_with(game, 500)
+    graduate_with(game, 500, seconds=240.0)    # (L단위) 240초 졸업 -> 대학원은 5번 주기부터
     monkeypatch.setattr(config, "EVENT_MAX_PER_GRADE", 5)
     press(game, pygame.K_c)
     seen_state_event = False
@@ -529,7 +574,7 @@ def test_grad_auto_events_min4_max5_per_year(seed, monkeypatch):
             game.choose_option(0)
         assert game.state == config.STATE_PLAYING
     assert not seen_state_event
-    assert game.grad_year == 4
+    assert game.grad_year >= 1   # (L단위) 년차는 자동 공부로 번 지식에 따라 오른다
     counts = game.student.event_counts
     for key in (5, 6, 7):
         assert config.EVENT_MIN_PER_GRADE <= counts.get(key, 0) <= config.EVENT_MAX_PER_GRADE, \
@@ -539,7 +584,8 @@ def test_grad_auto_events_min4_max5_per_year(seed, monkeypatch):
     pygame.quit()
 
 
-def test_grad_event_gap_and_counter_uses_term_key(no_decay):
+def test_grad_event_gap_and_counter_uses_cycle_key(no_decay):
+    """(L단위) 대학원 이벤트 수도 60초 주기 번호로 센다: 2년차를 300초(6번 주기)에 시작."""
     s = grad_student(2)
     s.update(1.0)
     s.count_event()
@@ -552,14 +598,16 @@ def test_grad_event_gap_and_counter_uses_term_key(no_decay):
     s.event_counts[6] = 5
     assert not s.can_have_event()
     s.update(60)
-    assert s.grad_year == 3 and s.can_have_event()
+    assert s.get_cycle_index() == 7 and s.can_have_event()
+    assert s.grad_year == 2
 
 
 # ======================= 대학원 수료 엔딩 =======================
 
 def test_grad_ending_text_by_year(g):
     to_grad(g)
-    g.update(61.0)                         # 2년차
+    g.student.knowledge = 1500             # (L단위) 2년차는 지식 1500
+    g.update(1.0)
     assert g.grad_year == 2
     drop_in_grad(g)
     assert g.ending == "대학원 2년차 수료"
@@ -585,11 +633,11 @@ def test_grad_ending_saves_record_and_best(g):
     g.fame = 1
     g.best_record = 100
     to_grad(g, 500)
-    g.student.knowledge = 900
+    g.student.knowledge = 1400             # (L단위) 졸업 1100 보다 크고 2년차 1500 보다 작게
     drop_in_grad(g)
-    assert g.best_record == 900
+    assert g.best_record == 1400
     data = read_record(g.record_path)
-    assert data["best_knowledge"] == 900
+    assert data["best_knowledge"] == 1400
     assert data["money"] == g.money
     assert data["fame"] == 1
 
@@ -655,42 +703,48 @@ def test_reincarnate_from_grad(g):
 
 # ======================= 학부 240초 규칙은 그대로 =======================
 
-def test_undergrad_still_stops_at_240(no_decay):
+def test_undergrad_time_no_longer_stops_at_240(no_decay):
+    """(L단위, 예전 '학부는 240초에서 멈춤') 학부도 시간이 계속 흐르고, 지식이 없으면 1학년 그대로다."""
     s = Student()
     s.update(300)
-    assert s.elapsed == config.TOTAL_SECONDS
-    assert s.is_time_over() and s.get_grade() == 4
-    assert not s.is_exam_period()
-    assert s.get_grade_time_left() == 0
+    assert s.elapsed == pytest.approx(300)
+    assert s.get_grade() == 1 and not s.has_graduated()
+    assert s.get_ending() is None
     s.update(10)
-    assert s.elapsed == config.TOTAL_SECONDS
+    assert s.elapsed == pytest.approx(310)
     assert s.grad_year == 0
 
 
 def test_undergrad_frames_reach_240():
+    """(L단위) 1/60초 x 14400프레임 = 240초가 흘러도 졸업이 아니다(4번째 주기가 끝나고 5번째 시작)."""
     s = Student()
     s.health = s.mental = 10 ** 6   # 감소에 상관없이 시간만 본다
     for _ in range(240 * 60):
         s.update(FRAME)
-    assert s.is_time_over()
-    assert s.elapsed == config.TOTAL_SECONDS
+    assert s.elapsed == pytest.approx(240.0)
+    assert not s.has_graduated() and s.get_cycle_index() == 5
 
 
-def test_undergrad_term_key_and_start():
+def test_undergrad_cycle_index_and_time():
+    """(L단위, 예전 학년 키) 주기 번호 = 경과 // 60 + 1, 주기 안 시간 = 경과 % 60. 학년과 무관."""
     s = Student()
-    for t, grade in [(0, 1), (59.9, 1), (60, 2), (120, 3), (180, 4), (239.9, 4)]:
+    for t, cycle in [(0, 1), (59.9, 1), (60, 2), (120, 3), (180, 4), (239.9, 4), (240, 5),
+                     (659.5, 11)]:
         s.elapsed = t
-        assert s.get_term_key() == grade
-        assert s.get_term_start() == (grade - 1) * 60
+        assert s.get_cycle_index() == cycle
+        assert s.get_cycle_time() == pytest.approx(t - (cycle - 1) * 60)
+        assert s.get_grade() == 1
 
 
 def test_undergrad_graduation_still_works(g, no_decay):
-    g.student.knowledge = 1000
+    """(L단위) 4학년에서 지식이 1100에 닿는 순간 졸업. 시간이 흐르는 것만으로는 졸업하지 않는다."""
+    g.student.knowledge = config.GRADUATION_KNOWLEDGE - 1
     g.update(239.99)
-    assert g.state == config.STATE_PLAYING
+    assert g.state == config.STATE_PLAYING and g.student.get_grade() == 4
+    g.student.knowledge = config.GRADUATION_KNOWLEDGE
     g.update(0.01)
     assert g.ending == config.ENDING_TOP and g.grad_year == 0
-    assert g.student.elapsed == config.TOTAL_SECONDS
+    assert g.student.graduation_time == pytest.approx(240.0)
 
 
 # ======================= 화면: 정보바·엔딩 안내·긴 이름 =======================
@@ -701,12 +755,14 @@ def test_info_bar_shows_grad_year(g, monkeypatch, no_decay):
     to_grad(g)
     texts = texts_of(record_texts(g, monkeypatch))
     assert "대학원 1년차" in texts
-    assert config.TIME_LEFT_TEXT.format(60) in texts
+    # (L단위) "남은 시간" -> "다음 년차까지 지식 n" (1100 -> 1500)
+    assert config.NEXT_GRAD_YEAR_TEXT.format(400) in texts
     assert "4학년" not in texts
-    g.update(75.5)
+    g.student.knowledge = 1550
+    g.update(1.0)
     texts = texts_of(record_texts(g, monkeypatch))
     assert "대학원 2년차" in texts
-    assert config.TIME_LEFT_TEXT.format(45) in texts
+    assert config.NEXT_GRAD_YEAR_TEXT.format(450) in texts
 
 
 @pytest.mark.parametrize("knowledge", [100, 750, 1000])   # 아슬아슬 / 무사 / 수석
@@ -773,6 +829,7 @@ def test_draw_grad_playing_smoke(g):
     # 2년차까지 살아남게 한다(1년차 60초 체력 45 소모, 2년차 15초 15 소모)
     g.upgrades[CARE] = 5
     g.student.health = g.student.mental = 100
+    g.student.knowledge = 1500            # (L단위) 2년차 목표
     for _ in range(3):
         g.update(25)
         g.draw()
@@ -782,10 +839,12 @@ def test_draw_grad_playing_smoke(g):
 # ======================= 코드 규칙 =======================
 
 I_FUNCTIONS = {
-    "student.py": ["is_in_grad_school", "enter_grad_school", "get_grad_year_end",
-                   "advance_grad_year", "get_term_start", "get_term_key", "get_grad_decay_ratio"],
+    # (L단위) get_grad_year_end·advance_grad_year·get_term_start·get_term_key 삭제 ->
+    # 년차 목표(get_grad_goal)·진급 판정(promote)·60초 주기(get_cycle_index·get_cycle_time)
+    "student.py": ["is_in_grad_school", "enter_grad_school", "get_grad_goal", "promote",
+                   "get_cycle_index", "get_cycle_time", "get_grad_decay_ratio"],
     "game.py": ["grad_year", "is_graduation_ending", "is_grad_school_ending", "can_reincarnate",
-                "reincarnate", "enter_grad_school", "get_grad_money_multiplier",
+                "reincarnate", "enter_grad_school", "get_grad_money_multiplier", "check_promotion",
                 "draw_big_text", "draw_ending", "draw_info_bar"],
 }
 

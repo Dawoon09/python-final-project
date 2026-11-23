@@ -1,6 +1,10 @@
 """5일차 검수: 타이틀/엔딩 화면(기능 10), 휴학 엔딩(기능 9), 시험 기간(기능 11), 졸업 엔딩(기능 12).
 
 완료 기준: 처음부터 끝까지 한 판을 플레이할 수 있음.
+
+(L단위, 기획서 11절) 판에 시간 제한이 없다. 졸업은 4학년에서 누적 지식 1100 이상이 되는 순간이고,
+등급은 졸업까지 걸린 시간(240초 이하 수석 / 360초 이하 무사 / 초과 아슬아슬)으로 정한다.
+시험 기간은 60초 주기의 마지막 15초다. 240초 제한을 전제로 한 테스트는 새 규칙으로 바꿨다.
 """
 
 import os
@@ -15,13 +19,14 @@ import pytest  # noqa: E402
 
 import config  # noqa: E402
 import student as student_module  # noqa: E402
-from conftest import press  # noqa: E402
+from conftest import press, reach_grade  # noqa: E402
 from game import Game  # noqa: E402
 from student import Student, judge_ending  # noqa: E402
 from button import sprite_size  # noqa: E402
 
 FRAME = 1 / 60
-GRADE_STARTS = [0, 60, 120, 180]
+# (L단위) 60초 주기의 시작 시각. 240초 이후에도 주기가 계속 이어진다
+CYCLE_STARTS = [0, 60, 120, 180, 240, 300]
 GRADUATIONS = (config.ENDING_TOP, config.ENDING_NORMAL, config.ENDING_BARELY)
 
 
@@ -84,11 +89,13 @@ def count_color(surf, rgb, rect):
 
 def test_config_values():
     assert config.START_STATE == config.STATE_TITLE
-    assert config.TOTAL_SECONDS == 240 and config.SECONDS_PER_GRADE == 60
+    assert config.CYCLE_SECONDS == 60   # (L단위) TOTAL_SECONDS·SECONDS_PER_GRADE 삭제
     assert config.EXAM_SECONDS == 15
     assert config.MENTAL_DECAY_PER_SEC_EXAM == 2 and config.MENTAL_DECAY_PER_SEC == 1
     assert config.STUDY_KNOWLEDGE_EXAM == 20 and config.STUDY_KNOWLEDGE == 10
-    assert config.TOP_GRADUATE_KNOWLEDGE == 1000 and config.NORMAL_GRADUATE_KNOWLEDGE == 750  # K단위 승인 값
+    # (L단위) 졸업 기준: 지식 1000/750 -> 걸린 시간 240/360초, 졸업 지식 1100
+    assert config.TOP_GRADUATE_SECONDS == 240 and config.NORMAL_GRADUATE_SECONDS == 360
+    assert config.GRADUATION_KNOWLEDGE == 1100
     assert (config.ENDING_LEAVE, config.ENDING_TOP, config.ENDING_NORMAL,
             config.ENDING_BARELY) == ("휴학", "수석 졸업", "무사 졸업", "아슬아슬 졸업")
     assert config.EXAM_BANNER_TEXT == "시험 기간! 공부 효과 2배, 멘탈 감소 2배"
@@ -184,9 +191,11 @@ def test_ending_r_fully_resets(playing_game):
 def test_ending_r_after_graduation_resets(playing_game):
     g = playing_game
     s = g.student
-    s.elapsed, s.health, s.mental, s.knowledge = 239.5, 100, 100, config.TOP_GRADUATE_KNOWLEDGE + 100
+    # (L단위) 4학년에서 지식이 졸업 목표 이상이면 다음 판정(update)에서 졸업, 240초 -> 수석
+    s.elapsed, s.health, s.mental, s.knowledge = 239.5, 100, 100, config.GRADUATION_KNOWLEDGE + 100
     g.update(0.5)
     assert g.ending == config.ENDING_TOP
+    assert s.graduation_time == 240
     press(g, pygame.K_r)
     s = g.student
     assert g.state == config.STATE_PLAYING
@@ -350,11 +359,15 @@ def test_student_get_ending():
     s = Student()
     s.mental = 0
     assert s.get_ending() == config.ENDING_LEAVE
+    # (L단위) 시간이 아무리 흘러도 졸업하지 않는다. 4학년에서 지식 1100 이상 + 진급 판정이면 졸업
     s = Student()
-    s.elapsed = 239.99
+    s.elapsed = 240.0
+    assert s.get_ending() is None
+    s.elapsed = 10000.0
     assert s.get_ending() is None
     s.elapsed = 240.0
-    s.knowledge = config.TOP_GRADUATE_KNOWLEDGE
+    s.knowledge = config.GRADUATION_KNOWLEDGE
+    s.promote()
     assert s.get_ending() == config.ENDING_TOP
     s.health = 0
     assert s.get_ending() == config.ENDING_LEAVE
@@ -362,111 +375,117 @@ def test_student_get_ending():
 
 # ======================= 기능 12: 졸업 엔딩 =======================
 
-@pytest.mark.parametrize("knowledge, ending", [
-    (0, config.ENDING_BARELY), (1, config.ENDING_BARELY), (749, config.ENDING_BARELY),
-    (750, config.ENDING_NORMAL), (751, config.ENDING_NORMAL), (999, config.ENDING_NORMAL),
-    (1000, config.ENDING_TOP), (1001, config.ENDING_TOP), (100000, config.ENDING_TOP),
+@pytest.mark.parametrize("seconds, ending", [
+    # (L단위) 졸업 등급은 걸린 시간으로: 240 이하 수석, 360 이하 무사, 초과 아슬아슬
+    (0, config.ENDING_TOP), (100.0, config.ENDING_TOP), (239.999, config.ENDING_TOP),
+    (240, config.ENDING_TOP), (240.0001, config.ENDING_NORMAL), (300, config.ENDING_NORMAL),
+    (360, config.ENDING_NORMAL), (360.0001, config.ENDING_BARELY), (361, config.ENDING_BARELY),
+    (100000, config.ENDING_BARELY),
 ])
-def test_judge_ending_boundaries(knowledge, ending):
-    assert judge_ending(knowledge) == ending
+def test_judge_ending_boundaries(seconds, ending):
+    assert judge_ending(seconds) == ending
     s = Student()
-    s.knowledge = knowledge
+    s.elapsed = seconds
+    s.knowledge = config.GRADUATION_KNOWLEDGE
+    s.promote()
+    assert s.graduation_time == seconds
     assert s.get_graduation_ending() == ending
 
 
-@pytest.mark.parametrize("knowledge, ending", [
-    (749, config.ENDING_BARELY), (750, config.ENDING_NORMAL),
-    (999, config.ENDING_NORMAL), (1000, config.ENDING_TOP),
+@pytest.mark.parametrize("elapsed, ending", [
+    (200.0, config.ENDING_TOP), (239.0, config.ENDING_TOP), (241.0, config.ENDING_NORMAL),
+    (359.0, config.ENDING_NORMAL), (361.0, config.ENDING_BARELY),
 ])
-def test_graduation_in_game_flow(playing_game, knowledge, ending):
+def test_graduation_in_game_flow(playing_game, elapsed, ending):
+    """(L단위) 4학년 1090에서 공부(+10, 시험 기간이면 +20)로 1100에 닿는 순간 졸업, 등급은 그 시각."""
     g = playing_game
     s = g.student
-    s.elapsed, s.health, s.mental, s.knowledge = 239.0, 100, 100, knowledge
-    g.update(0.5)
-    assert g.state == config.STATE_PLAYING
-    g.update(0.5)
+    s.elapsed, s.health, s.mental = elapsed, 100, 100
+    reach_grade(s, 4)
+    s.knowledge = config.GRADUATION_KNOWLEDGE - 10
+    g.do_action(config.ACTION_STUDY)
+    assert s.knowledge >= config.GRADUATION_KNOWLEDGE
     assert g.state == config.STATE_ENDING
     assert g.ending == ending
-    assert g.student.elapsed == 240
+    assert s.graduation_time == elapsed
 
 
-@pytest.mark.parametrize("knowledge, ending", [
-    (config.NORMAL_GRADUATE_KNOWLEDGE - 10, config.ENDING_BARELY),
-    (config.TOP_GRADUATE_KNOWLEDGE - 10, config.ENDING_NORMAL),
-])
-def test_graduation_after_last_study_crosses_boundary(playing_game, knowledge, ending):
-    """마지막 학년 시험 기간에 공부(+20)해서 기준을 넘긴 뒤 졸업하면 넘긴 값으로 판정된다."""
+def test_graduation_after_exam_study_crosses_goal(playing_game):
+    """(L단위) 시험 기간 공부(+20)로 졸업 목표를 넘기면 그 순간 졸업(1090 -> 1110)."""
     g = playing_game
     s = g.student
-    s.elapsed, s.health, s.mental, s.knowledge = 238.0, 100, 100, knowledge
+    s.elapsed, s.health, s.mental = 225.0, 100, 100
+    reach_grade(s, 4)
+    s.knowledge = config.GRADUATION_KNOWLEDGE - 10
+    assert s.is_exam_period()
     g.do_action(config.ACTION_STUDY)
-    assert s.knowledge == knowledge + 20
-    g.update(2.0)
-    expected = {config.ENDING_BARELY: config.ENDING_NORMAL,
-                config.ENDING_NORMAL: config.ENDING_TOP}[ending]
-    assert g.ending == expected
+    assert s.knowledge == config.GRADUATION_KNOWLEDGE + 10
+    assert g.ending == config.ENDING_TOP and s.graduation_time == 225.0
 
 
-def test_graduation_at_exactly_14400_frames(playing_game):
+def test_no_graduation_by_time_alone(playing_game):
+    """(L단위, 예전 '14400프레임에 졸업') 240초(14400프레임)가 지나도 지식이 모자라면 계속 논다."""
     g = playing_game
-    for frame in range(1, 14401):
+    for _ in range(14400 + 600):
         g.student.health = g.student.mental = 100  # 휴학하지 않게 유지
         g.update(FRAME)
-        if frame == 14399:
-            assert g.state == config.STATE_PLAYING
-            assert g.student.elapsed < 240
-    assert g.state == config.STATE_ENDING
-    assert g.ending in GRADUATIONS
-    assert g.student.elapsed == 240
-
-
-def test_student_14400_frames_time_over():
-    s = Student()
-    for _ in range(14399):
-        s.update(FRAME)
-    assert not s.is_time_over()
-    s.update(FRAME)
-    assert s.is_time_over()
-    assert s.elapsed == 240
+    assert g.state == config.STATE_PLAYING
+    assert g.ending is None
+    assert abs(g.student.elapsed - 250) < 1e-6
 
 
 @pytest.mark.parametrize("start, dt", [(230.0, 50.0), (0.0, 1000.0), (239.9, 0.2),
                                        (239.999, 5.0)])
-def test_big_dt_stops_at_240(start, dt):
+def test_big_dt_time_keeps_flowing(start, dt):
+    """(L단위, 예전 '240초에서 멈춤') 시간 제한이 없으므로 경과 시간은 240초를 넘어 계속 흐른다."""
     s = Student()
     s.elapsed = start
     s.update(dt)
-    assert s.elapsed == 240
+    assert s.elapsed == pytest.approx(start + dt)
     s.update(dt)
-    assert s.elapsed == 240
+    assert s.elapsed == pytest.approx(start + 2 * dt)
 
 
-def test_big_dt_decays_only_up_to_240():
-    """230초에서 dt=50: 감소는 231~240초 10번뿐(4학년 225~239 시험 기간이라 멘탈 -2)."""
+def test_big_dt_decays_every_second_past_240():
+    """230초에서 dt=50: 감소는 231~280초 50번. 시험 기간(주기 4의 225~240)인 231~239초만 멘탈 -2."""
     s = Student()
     s.elapsed, s.health, s.mental = 230.0, 100, 100
     s.update(50.0)
-    # 231..239: 9번 -2, 240: 시험 기간 아님 -1
-    assert (s.health, s.mental) == (90, 100 - 9 * 2 - 1)
+    assert (s.health, s.mental) == (50, 100 - 9 * 2 - 41)
 
 
-def test_big_dt_in_game_graduates(playing_game):
+def test_big_dt_in_game_does_not_graduate_without_knowledge(playing_game):
     g = playing_game
     s = g.student
-    s.elapsed, s.health, s.mental, s.knowledge = 230.0, 100, 100, config.NORMAL_GRADUATE_KNOWLEDGE + 50
+    s.elapsed, s.health, s.mental = 230.0, 100, 100
+    reach_grade(s, 4)
+    s.knowledge = config.GRADUATION_KNOWLEDGE - 1
     g.update(50.0)
-    assert g.state == config.STATE_ENDING and g.ending == config.ENDING_NORMAL
-    assert g.student.elapsed == 240
+    assert g.state == config.STATE_PLAYING and g.ending is None
+    assert s.elapsed == pytest.approx(280.0)
 
 
-@pytest.mark.parametrize("health, mental", [(1, 1), (1, 100), (100, 1)])
-def test_zero_at_240_leave_wins(playing_game, health, mental):
+@pytest.mark.parametrize("health, mental", [(5, 100), (100, 8), (5, 8)])
+def test_zero_and_graduation_same_moment_leave_wins(playing_game, health, mental):
+    """(L단위) 공부로 졸업 목표를 넘는 순간 체력·멘탈도 0이 되면 휴학이 먼저다."""
     g = playing_game
     s = g.student
-    s.elapsed, s.health, s.mental, s.knowledge = 239.0, health, mental, 600
-    g.update(1.0)
-    assert s.elapsed == 240
+    reach_grade(s, 4)
+    s.health, s.mental, s.knowledge = health, mental, config.GRADUATION_KNOWLEDGE - 10
+    g.do_action(config.ACTION_STUDY)
+    assert s.knowledge >= config.GRADUATION_KNOWLEDGE
     assert g.state == config.STATE_ENDING
+    assert g.ending == config.ENDING_LEAVE
+    assert s.graduation_time is None
+
+
+def test_zero_by_decay_with_goal_reached_leave_wins(playing_game):
+    """자연 감소로 0이 된 같은 판정에서 지식이 졸업 목표 이상이어도 휴학이 먼저다."""
+    g = playing_game
+    s = g.student
+    reach_grade(s, 4)
+    s.health, s.mental, s.knowledge = 1, 100, config.GRADUATION_KNOWLEDGE
+    g.update(1.0)
     assert g.ending == config.ENDING_LEAVE
 
 
@@ -559,7 +578,7 @@ def test_title_screen_has_no_game_elements(title_game):
 
 # ======================= 기능 11: 시험 기간 =======================
 
-@pytest.mark.parametrize("base", GRADE_STARTS)
+@pytest.mark.parametrize("base", CYCLE_STARTS)
 @pytest.mark.parametrize("offset, exam", [
     (0.0, False), (30.0, False), (44.9, False), (44.999, False), (45.0, True),
     (50.0, True), (59.9, True), (59.999, True),
@@ -570,15 +589,16 @@ def test_exam_period_boundaries(base, offset, exam):
     assert s.is_exam_period() is exam
 
 
-@pytest.mark.parametrize("elapsed", [60.0, 120.0, 180.0, 240.0])
-def test_exam_period_ends_at_grade_boundary(elapsed):
+@pytest.mark.parametrize("elapsed", [60.0, 120.0, 180.0, 240.0, 300.0, 360.0])
+def test_exam_period_ends_at_cycle_boundary(elapsed):
     s = Student()
     s.elapsed = elapsed
     assert s.is_exam_period() is False
 
 
 @pytest.mark.parametrize("frames, exam", [(2699, False), (2700, True), (3599, True),
-                                          (3600, False), (6299, False), (6300, True)])
+                                          (3600, False), (6299, False), (6300, True),
+                                          (17099, False), (17100, True), (18000, False)])
 def test_exam_period_by_frames(frames, exam):
     s = Student()
     for _ in range(frames):
@@ -586,11 +606,9 @@ def test_exam_period_by_frames(frames, exam):
     assert s.is_exam_period() is exam
 
 
-@pytest.mark.parametrize("base", GRADE_STARTS)
+@pytest.mark.parametrize("base", CYCLE_STARTS)
 @pytest.mark.parametrize("offset, gain", [(44.9, 10), (45.0, 20), (59.9, 20), (60.0, 10)])
 def test_study_knowledge_in_exam(base, offset, gain):
-    if base == 180 and offset == 60.0:
-        pytest.skip("240초는 졸업 시점(게임이 끝나 공부 불가)")
     s = Student()
     s.elapsed = base + offset
     s.knowledge = 100
@@ -619,7 +637,8 @@ def test_rest_and_feed_unchanged_in_exam():
 
 @pytest.mark.parametrize("start, mental_drop", [(43.0, 1), (44.0, 2), (58.0, 2), (59.0, 1),
                                                 (103.0, 1), (104.0, 2), (119.0, 1),
-                                                (224.0, 2), (238.0, 2), (239.0, 1)])
+                                                (224.0, 2), (238.0, 2), (239.0, 1),
+                                                (283.0, 1), (284.0, 2), (299.0, 1)])
 def test_decay_amount_at_boundaries(start, mental_drop):
     """start초에서 1초 흘림 -> start+1초 시점의 감소가 시험 기간이면 멘탈 -2. 체력은 항상 -1."""
     s = Student()
@@ -630,10 +649,13 @@ def test_decay_amount_at_boundaries(start, mental_drop):
 
 
 def _drops_per_second(step):
-    """0~240초를 step 단위로 흘리며 초마다의 멘탈 감소량 목록을 만든다(게이지는 매번 100으로 채움)."""
+    """0~240초를 step 단위로 흘리며 초마다의 멘탈 감소량 목록을 만든다(게이지는 매번 100으로 채움).
+
+    (L단위) is_time_over가 없어져 240초(주기 4개)까지만 직접 센다.
+    """
     s = Student()
     drops = []
-    while not s.is_time_over():
+    while s.elapsed < 240 - 1e-6:
         s.health = s.mental = 100
         s.update(step)
         if s.mental != 100:
@@ -642,10 +664,10 @@ def _drops_per_second(step):
 
 
 @pytest.mark.parametrize("step", [1.0, FRAME, 0.1])
-def test_double_decay_15_times_per_grade(step):
+def test_double_decay_15_times_per_cycle(step):
     drops = _drops_per_second(step)
     assert len(drops) == 240
-    for base in GRADE_STARTS:
+    for base in CYCLE_STARTS[:4]:
         doubled = [t for t, d in drops if d == 2 and base < t <= base + 60]
         assert doubled == list(range(base + 45, base + 60)), base
     assert sum(1 for _, d in drops if d == 2) == 60
@@ -680,6 +702,7 @@ def _banner_pixel(g):
 @pytest.mark.parametrize("elapsed, shown", [
     (0.0, False), (44.9, False), (45.0, True), (59.9, True), (60.0, False),
     (105.0, True), (165.0, True), (225.0, True), (239.9, True),
+    (240.0, False), (285.0, True), (300.0, False), (645.0, True),
 ])
 def test_banner_only_in_exam(playing_game, elapsed, shown):
     g = playing_game
@@ -763,7 +786,8 @@ def test_random_full_play_gauges_in_range(seed):
         # (G단위) 키 1/2/3은 방침이므로 행동은 do_action으로 무작위로 시킨다
         actions = [config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY]
         frames = 0
-        while g.state == config.STATE_PLAYING:
+        # (L단위) 시간 제한이 없으므로 240초 상한 대신 넉넉한 상한(20분) 안에 엔딩에 닿는지 본다
+        while g.state == config.STATE_PLAYING and frames < 20 * 60 * 60:
             if rng.random() < 0.05:
                 g.do_action(rng.choice(actions))
             g.update(FRAME)
@@ -771,8 +795,6 @@ def test_random_full_play_gauges_in_range(seed):
             s = g.student
             assert 0 <= s.health <= 100 and 0 <= s.mental <= 100
             assert s.knowledge >= 0
-            assert s.elapsed <= 240
-        assert frames <= 14400
         assert g.ending in (config.ENDING_LEAVE, *GRADUATIONS)
         g.draw()
     finally:
@@ -793,7 +815,10 @@ def _smart_bot_action(s):
 
 
 def test_full_play_title_to_graduation_and_restart(title_game):
-    """타이틀 -> Enter -> 60fps로 240초 동안 1초마다 행동 -> 졸업 엔딩 -> R -> 새 판.
+    """타이틀 -> Enter -> 60fps로 1초마다 행동 -> 지식 1100에 졸업 엔딩 -> R -> 새 판.
+
+    (L단위) 예전에는 240초(14400프레임)에 졸업했지만, 이제는 졸업 목표에 닿는 순간 졸업하고
+    등급은 걸린 시간(graduation_time)으로 정한다.
 
     (G단위) 키 1/2/3이 방침 선택이 되어 행동은 do_action으로 시킨다(자동 행동은 conftest가 끔).
     """
@@ -814,9 +839,11 @@ def test_full_play_title_to_graduation_and_restart(title_game):
             g.draw()
             if _banner_pixel(g) == config.COLOR_YELLOW:
                 banner_frames += 1
-    assert frames == 14400
     assert g.ending in GRADUATIONS
-    assert g.ending == judge_ending(g.student.knowledge)
+    assert g.student.knowledge >= config.GRADUATION_KNOWLEDGE
+    # 졸업은 그 프레임의 update 전(do_action) 또는 update 안에서 일어난다
+    assert (frames - 1) * FRAME - 1e-6 <= g.student.graduation_time <= frames * FRAME + 1e-6
+    assert g.ending == judge_ending(g.student.graduation_time)
     assert banner_frames > 0
     g.draw()
     assert count_color(g.screen, config.COLOR_CAP, CAP_REGION) > 0
@@ -854,9 +881,10 @@ def test_real_run_loop_enter_then_esc():
 
 # ======================= 정적 검사 =======================
 
-def test_judge_ending_takes_only_knowledge():
+def test_judge_ending_takes_only_seconds():
+    """(L단위) judge_ending은 졸업까지 걸린 시간(초) 하나만 받는다(예전: 지식)."""
     import inspect
-    assert list(inspect.signature(judge_ending).parameters) == ["knowledge"]
+    assert list(inspect.signature(judge_ending).parameters) == ["seconds"]
     assert callable(getattr(student_module, "judge_ending"))
 
 

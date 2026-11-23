@@ -67,11 +67,16 @@ def best_in_file(path):
     return data[config.RECORD_KEY]
 
 
-def graduate_with(g, knowledge):
-    """게임 중 g를 지식 knowledge로 240초 졸업시킨다(update 경로)."""
+def graduate_with(g, knowledge, seconds=200.0):
+    """게임 중 g를 지식 knowledge로 seconds초 무렵 졸업시킨다(update 경로).
+
+    (L단위, 기획서 11절) 졸업은 4학년에서 누적 지식이 1100 이상이 되는 순간이라
+    knowledge는 졸업 지식 이상이어야 한다. 등급은 걸린 시간(기본 200초 -> 수석)으로 정해진다.
+    """
     assert g.state == config.STATE_PLAYING
+    assert knowledge >= config.GRADUATION_KNOWLEDGE
     g.student.knowledge = knowledge
-    g.student.elapsed = config.TOTAL_SECONDS - FRAME / 2
+    g.student.elapsed = seconds - FRAME
     g.update(FRAME)
     assert g.state == config.STATE_ENDING
     assert g.ending != config.ENDING_LEAVE
@@ -124,10 +129,11 @@ def test_saved_on_any_ending(rec, finish):
     g.start_new_game()
     if finish == "leave":
         leave_with(g, 120)
-    else:
-        graduate_with(g, 120)
-    assert best_in_file(rec) == 120
-    assert g.best_record == 120
+    else:   # (L단위) 졸업하려면 지식 1100 이상
+        graduate_with(g, 1220)
+    knowledge = 120 if finish == "leave" else 1220
+    assert best_in_file(rec) == knowledge
+    assert g.best_record == knowledge
 
 
 def test_leave_by_study_action_saves(rec):
@@ -143,26 +149,31 @@ def test_leave_by_study_action_saves(rec):
 def test_save_format_exact(rec):
     g = Game()
     g.start_new_game()
-    graduate_with(g, 820)   # K단위: 무사 졸업 750~999 안의 값(예전 520)
+    graduate_with(g, 1820, seconds=300.0)   # (L단위) 300초 졸업 = 무사 졸업(240초 초과 360초 이하)
+    assert g.ending == config.ENDING_NORMAL
     data = read_record(rec)
     # (H단위) 4개 키 형식. 무사 졸업 보너스 100(명성 0), 업그레이드는 모두 0레벨
-    assert data == {"best_knowledge": 820, "money": 100, "fame": 0,
+    assert data == {"best_knowledge": 1820, "money": 100, "fame": 0,
                     "upgrades": {uid: 0 for uid in config.UPGRADE_IDS}}
     assert type(data["best_knowledge"]) is int
 
 
 # (H단위) 판이 끝나면 연구비 등과 함께 언제나 저장하므로 파일은 항상 다시 쓰인다(팀장 승인).
 # 최고 기록은 여전히 더 클 때만 바뀐다.
+# (L단위) 졸업 지식이 1100 이상이므로 기준 기록을 1300으로 올렸다. 지식 0은 휴학으로 끝낸다
 @pytest.mark.parametrize("new, expected_best, rewritten", [
-    (299, 300, True), (300, 300, True), (301, 301, True), (0, 300, True),
+    (1299, 1300, True), (1300, 1300, True), (1301, 1301, True), (0, 1300, True),
 ])
 def test_only_higher_updates(rec, new, expected_best, rewritten):
-    original = '{"best_knowledge":   300}'  # 일부러 공백을 넣어 다시 쓰였는지 구별
+    original = '{"best_knowledge":   1300}'  # 일부러 공백을 넣어 다시 쓰였는지 구별
     write_raw(rec, original)
     g = Game()
-    assert g.best_record == 300
+    assert g.best_record == 1300
     g.start_new_game()
-    graduate_with(g, new)
+    if new >= config.GRADUATION_KNOWLEDGE:
+        graduate_with(g, new)
+    else:
+        leave_with(g, new)
     assert g.best_record == expected_best
     assert best_in_file(rec) == expected_best
     assert (Path(rec).read_text(encoding="utf-8") != original) is rewritten
@@ -171,18 +182,19 @@ def test_only_higher_updates(rec, new, expected_best, rewritten):
 def test_new_game_loads_and_title_shows(rec):
     g = Game()
     g.start_new_game()
-    graduate_with(g, 345)
+    graduate_with(g, 1345)
     pygame.quit()
     g2 = Game()
-    assert g2.best_record == 345
+    assert g2.best_record == 1345
     texts = title_texts(g2)
-    assert "최고 기록: 지식 345" in texts
+    assert "최고 기록: 지식 1345" in texts
 
 
 def test_restart_many_rounds_keeps_max(rec):
     g = Game()
     g.start_new_game()
-    sequence = [100, 450, 200, 450, 30, 600, 10]
+    # (L단위) 졸업(짝수 번째)은 지식 1100 이상이어야 하므로 값을 올렸다
+    sequence = [1100, 450, 1200, 1450, 1130, 1600, 1110]
     expected = 0
     for i, k in enumerate(sequence):
         if i % 2:
@@ -195,9 +207,9 @@ def test_restart_many_rounds_keeps_max(rec):
         press(g, pygame.K_r)
         assert g.state == config.STATE_PLAYING
         assert g.student.knowledge == 0  # 새 판은 초기화
-    assert g.best_record == 600
+    assert g.best_record == 1600
     pygame.quit()
-    assert Game().best_record == 600
+    assert Game().best_record == 1600
 
 
 @pytest.mark.parametrize("content", [
@@ -239,8 +251,8 @@ def test_broken_file_is_overwritten_by_next_record(rec):
     write_raw(rec, "{broken")
     g = Game()
     g.start_new_game()
-    graduate_with(g, 50)
-    assert best_in_file(rec) == 50
+    graduate_with(g, 1150)
+    assert best_in_file(rec) == 1150
 
 
 def test_record_path_is_directory_no_crash(tmp_path):
@@ -248,7 +260,7 @@ def test_record_path_is_directory_no_crash(tmp_path):
     g = Game(record_path=str(tmp_path))
     assert g.best_record == 0
     g.start_new_game()
-    graduate_with(g, config.NORMAL_GRADUATE_KNOWLEDGE + 50)
+    graduate_with(g, config.GRADUATION_KNOWLEDGE + 50, seconds=300.0)
     assert g.ending == config.ENDING_NORMAL
     assert g.save_best_record() is False
     g.draw()
@@ -359,28 +371,28 @@ def test_gitignore_has_record_json():
 LEGACY_ACTION_GAP = 1.0   # 예전 쿨타임(1초). 사람이 행동하는 최소 간격으로만 쓴다
 
 
-def play(g, policy):
-    """타이틀에서 Enter -> 1/60초씩 update, 쿨타임이 풀릴 때마다 policy(student)의 행동을 한다.
+def play(g, policy, interval=LEGACY_ACTION_GAP, cap_seconds=1800):
+    """타이틀에서 Enter -> 1/60초씩 update, interval초마다 policy(student)의 행동을 한다.
 
     policy가 None을 돌려주면 그 프레임엔 아무것도 안 한다. 엔딩이 나면 끝.
+    (L단위) 시간 제한이 없으므로 cap_seconds(기본 30분)까지 엔딩이 없으면 멈춘다.
     """
     press(g, pygame.K_RETURN)
     assert g.state == config.STATE_PLAYING
     frames = 0
     # (G단위) 쿨타임은 없어졌지만 이 시나리오는 "1초(예전 쿨타임)마다 행동 가능"한 사람을 흉내 낸다
     wait = 0.0
-    while g.state == config.STATE_PLAYING:
+    while g.state == config.STATE_PLAYING and frames < cap_seconds * 60:
         if wait <= 1e-9:
             action = policy(g.student)
             if action is not None:
                 assert g.do_action(action)
-                wait = LEGACY_ACTION_GAP
+                wait = interval
         if g.state != config.STATE_PLAYING:
             break
         g.update(FRAME)
         wait -= FRAME
         frames += 1
-        assert frames <= config.TOTAL_SECONDS * 60 + 1
     return frames
 
 
@@ -416,9 +428,10 @@ def care_only(s):
 
 
 def assert_graduation(g, frames, ending):
-    assert g.ending == ending, (g.ending, g.student.knowledge)
-    assert frames == config.TOTAL_SECONDS * 60
-    assert g.student.elapsed == config.TOTAL_SECONDS
+    """(L단위) 졸업 엔딩: 등급은 졸업까지 걸린 시간, 그 순간 지식은 1100 이상."""
+    assert g.ending == ending, (g.ending, g.student.graduation_time, g.student.knowledge)
+    assert g.student.knowledge >= config.GRADUATION_KNOWLEDGE
+    assert abs(g.student.graduation_time - frames * FRAME) <= FRAME + 1e-6
     assert g.student.health > 0 and g.student.mental > 0
     assert g.best_record == g.student.knowledge
     texts = []
@@ -432,45 +445,50 @@ def assert_graduation(g, frames, ending):
     assert tuple(g.screen.get_at(cap_body))[:3] == config.COLOR_CAP
 
 
+# (L단위) 실측(이벤트·자동 행동 끔, 탐욕 수동 행동): 1초 간격 176초 수석, 1.5초 286.5초 무사,
+# 2.0초 420초 아슬아슬, 2.5초 570초 아슬아슬.
 def test_reach_top_graduate_greedy(rec):
     g = Game()
     t = time.perf_counter()
     frames = play(g, greedy)
     assert_graduation(g, frames, config.ENDING_TOP)
-    assert g.student.knowledge >= config.TOP_GRADUATE_KNOWLEDGE
+    assert g.student.graduation_time <= config.TOP_GRADUATE_SECONDS
     assert time.perf_counter() - t < 3
 
 
 def test_reach_normal_graduate(rec):
+    """(L단위) 예전: 지식 850에서 공부 중단 -> 이제는 1.5초마다 행동해 240~360초에 졸업."""
     g = Game()
     t = time.perf_counter()
-    # E단위 450~699 -> 550, K단위: 무사 졸업 기준 750~999 -> 공부 중단 지식을 그 사이(850)로
-    frames = play(g, make_steady(850))
+    frames = play(g, greedy, interval=1.5)
     assert_graduation(g, frames, config.ENDING_NORMAL)
-    assert config.NORMAL_GRADUATE_KNOWLEDGE <= g.student.knowledge < config.TOP_GRADUATE_KNOWLEDGE
-    assert time.perf_counter() - t < 3
+    assert (config.TOP_GRADUATE_SECONDS < g.student.graduation_time
+            <= config.NORMAL_GRADUATE_SECONDS)
+    assert time.perf_counter() - t < 5
 
 
-def test_reach_barely_graduate_care_only(rec):
+def test_care_only_never_graduates(rec):
+    """(L단위, 예전 '학식·휴식만 해도 아슬아슬 졸업') 지식이 0이면 30분이 지나도 졸업하지 않는다."""
     g = Game()
-    frames = play(g, care_only)
-    assert_graduation(g, frames, config.ENDING_BARELY)
-    assert g.student.knowledge == 0
+    frames = play(g, care_only, cap_seconds=1800)
+    assert frames == 1800 * 60
+    assert g.state == config.STATE_PLAYING and g.ending is None
+    assert g.student.knowledge == 0 and g.student.get_grade() == 1
 
 
-def test_reach_barely_graduate_with_some_study(rec):
-    """공부를 조금(200 근처) 해도 아슬아슬."""
+def test_reach_barely_graduate_slow_study(rec):
+    """(L단위) 2초마다만 행동하면 360초를 넘겨 졸업 -> 아슬아슬."""
     g = Game()
-    frames = play(g, make_steady(200))
+    frames = play(g, greedy, interval=2.0)
     assert_graduation(g, frames, config.ENDING_BARELY)
-    assert 0 < g.student.knowledge < config.NORMAL_GRADUATE_KNOWLEDGE
+    assert g.student.graduation_time > config.NORMAL_GRADUATE_SECONDS
 
 
 def test_reach_leave_by_only_study(rec):
     g = Game()
     play(g, lambda s: config.ACTION_STUDY)
     assert g.ending == config.ENDING_LEAVE
-    assert g.student.elapsed < config.SECONDS_PER_GRADE
+    assert g.student.elapsed < config.CYCLE_SECONDS
     assert g.student.health == 0 or g.student.mental == 0
     assert best_in_file(rec) == g.student.knowledge
 
@@ -485,15 +503,19 @@ def test_reach_leave_by_idle(rec):
 
 
 def test_all_endings_in_one_session_with_restart(rec):
-    """한 세션에서 R로 이어서 휴학 -> 아슬아슬 -> 무사 -> 수석을 모두 보고 최고 기록이 유지된다."""
+    """한 세션에서 R로 이어서 휴학 -> 아슬아슬 -> 무사 -> 수석을 모두 보고 최고 기록이 유지된다.
+
+    (L단위) 등급이 걸린 시간으로 바뀌어 행동 간격(2.0 / 1.5 / 1.0초)으로 등급을 나눈다.
+    """
     g = Game()
     seen = []
     best = 0
-    for policy in (lambda s: config.ACTION_STUDY, care_only, make_steady(850), greedy):
+    for policy, interval in ((lambda s: config.ACTION_STUDY, 1.0), (greedy, 2.0),
+                             (greedy, 1.5), (greedy, 1.0)):
         if g.state == config.STATE_ENDING:
             press(g, pygame.K_r)
             g.state = config.STATE_TITLE  # play()가 Enter부터 시작하므로 타이틀로 맞춘다
-        play(g, policy)
+        play(g, policy, interval=interval)
         seen.append(g.ending)
         best = max(best, g.student.knowledge)
         assert g.best_record == best
@@ -503,9 +525,9 @@ def test_all_endings_in_one_session_with_restart(rec):
 
 
 @pytest.mark.parametrize("interval, allowed", [
-    # 이벤트·자동 행동 끈 수동 행동 실측(지식은 E단위와 같음): 1.5초 938, 2.0초 638, 2.5초 480,
-    # 3.0초 378, 4.0초 228. K단위 기준 1000/750 으로 1.5초는 무사, 2.0초 이하 간격 수동만으로는 아슬아슬.
-    # (방치형은 자동 행동 + 업그레이드를 전제로 기준을 올렸다. 방치형 분포는 test_idle_final.py)
+    # (L단위) 이벤트·자동 행동 끈 수동 행동 실측(졸업까지 걸린 시간): 1.0초 176초, 1.5초 286.5초,
+    # 2.0초 420초, 2.5초 570초, 3.0초 804초, 4.0초 1308초. 240/360초 기준으로 등급이 나뉜다.
+    (1.0, {config.ENDING_TOP}),
     (1.5, {config.ENDING_NORMAL}),
     (2.0, {config.ENDING_BARELY}),
     (2.5, {config.ENDING_BARELY}),
@@ -518,13 +540,14 @@ def test_balance_human_like_interval(rec, interval, allowed):
     press(g, pygame.K_RETURN)
     wait = 0.0
     while g.state == config.STATE_PLAYING:
-        if wait <= 1e-9:   # (G단위) 쿨타임 없음: interval(>=1.5초)마다 행동
+        if wait <= 1e-9:   # (G단위) 쿨타임 없음: interval(>=1.0초)마다 행동
             g.do_action(greedy(g.student))
             wait = interval
         if g.state != config.STATE_PLAYING:
             break
         g.update(FRAME)
         wait -= FRAME
+    assert g.student.has_graduated()
     assert g.ending in allowed, (interval, g.ending, g.student.knowledge)
 
 
