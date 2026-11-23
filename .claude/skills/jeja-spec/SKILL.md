@@ -267,3 +267,11 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 - `grad_year`(0이면 학부, n이면 대학원 n년차), `reincarnate()`, `enter_grad_school()`
 - `load_record()`/`save_record()`: record.json = {"best_knowledge", "money", "fame", "upgrades"}
 - 배경 계산은 화면 없이 확인 가능하게: `get_season()`("spring"/"summer"/"autumn"/"winter"), `get_time_of_day()`("day"/"evening"/"night"), `get_sky_color()`, `last_action`
+
+## 16. 시간 제한 없애기 (기획서 11절) — 앞 절과 다르면 이 절이 우선
+
+- 진급 목표(누적 지식 이상): 2학년 200, 3학년 450, 4학년 750, 졸업 1100. 학년은 내려가지 않음. 0이 되면 휴학이 졸업보다 먼저.
+- 졸업 등급 = 걸린 게임 시간: 수석 ≤ 240초, 무사 ≤ 360초, 아슬아슬 > 360초. 경계: 240/240.0001, 360/360.0001.
+- 60초 주기: cycle_time = elapsed % 60. 계절·낮밤·시험 기간(45~60)·이벤트 보장 구간은 주기 기준. 이벤트 횟수 키 = 주기 번호(elapsed // 60 + 1).
+- 대학원 n년차 → n+1 목표 누적: 1500, 2000, 2600, …(1100 + Σ_{k=1..n}(400+100(k−1))).
+- 테스트가 쓰는 이름: Student.get_grade()(지식 기준), Student.get_next_goal(), Student.get_cycle_time(), Student.get_cycle_index(), Student.graduation_time(졸업 순간 elapsed, 없으면 None), Game.check_promotion()(진급·졸업 판정, 진급 수 반환)
