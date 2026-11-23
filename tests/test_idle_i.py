@@ -125,7 +125,7 @@ def spec_money(gain, fame, year):
 def test_constants():
     assert config.GRAD_YEAR_UNDERGRAD == 0
     assert config.GRAD_FIRST_YEAR == 1
-    assert config.GRAD_DECAY_BONUS == 0.25
+    assert config.GRAD_DECAY_BONUS == 0.5    # K단위 승인(예전 0.25). 연구비 배수는 0.25 그대로
     assert config.GRAD_MONEY_BONUS == 0.25
     assert config.FAME_STEP == 1
     assert config.GRAD_YEAR_TEXT.format(3) == "대학원 3년차"
@@ -142,7 +142,7 @@ def test_constants():
 
 # ======================= 엔딩 화면 키 규칙 =======================
 
-@pytest.mark.parametrize("knowledge", [100, 450, 700])
+@pytest.mark.parametrize("knowledge", [100, 750, 1000])   # 아슬아슬 / 무사 / 수석
 def test_r_on_graduation_reincarnates(g, knowledge):
     g.fame = 2
     graduate_with(g, knowledge)
@@ -152,7 +152,7 @@ def test_r_on_graduation_reincarnates(g, knowledge):
     assert g.grad_year == 0 and g.student.elapsed == 0 and g.student.knowledge == 0
 
 
-@pytest.mark.parametrize("knowledge", [100, 450, 700])
+@pytest.mark.parametrize("knowledge", [100, 750, 1000])   # 아슬아슬 / 무사 / 수석
 def test_c_on_graduation_enters_grad_school(g, knowledge):
     g.fame = 2
     graduate_with(g, knowledge)
@@ -261,7 +261,7 @@ def test_enter_grad_school_keeps_everything(g):
     s.seen_events.add("mt_invite")
     s.event_counts[2] = 3
     g.money = 77
-    graduate_with(g, 610)
+    graduate_with(g, 810)                 # K단위: 무사 졸업 750~999 안(예전 610)
     before = dict(health=s.health, mental=s.mental, knowledge=s.knowledge,
                   traits=list(s.traits), looks=list(s.looks), flags=set(s.flags),
                   seen=set(s.seen_events), counts=dict(s.event_counts),
@@ -272,7 +272,7 @@ def test_enter_grad_school_keeps_everything(g):
     press(g, pygame.K_c)
     assert g.student is s                 # 같은 제자
     assert s.health == before["health"] and s.mental == before["mental"]
-    assert s.knowledge == 610
+    assert s.knowledge == 810
     assert s.traits == before["traits"] and s.looks == before["looks"]
     assert s.flags == before["flags"] and s.seen_events == before["seen"]
     assert s.event_counts == before["counts"]
@@ -392,7 +392,8 @@ def test_exam_study_bonus_in_grad(no_decay):
 
 # ======================= 자연 감소 배수 =======================
 
-@pytest.mark.parametrize("year, ratio", [(1, 1.25), (2, 1.5), (3, 1.75), (4, 2.0)])
+# K단위: n년차 자연 감소 배수 = 1 + 0.5 x n (예전 0.25)
+@pytest.mark.parametrize("year, ratio", [(1, 1.5), (2, 2.0), (3, 2.5), (4, 3.0)])
 def test_grad_decay_ratio(year, ratio):
     s = grad_student(year)
     assert s.get_grad_decay_ratio() == pytest.approx(ratio)
@@ -406,8 +407,9 @@ def test_undergrad_decay_ratio_is_one():
     assert s.get_health_decay() == 1 and s.get_mental_decay() == 1
 
 
-@pytest.mark.parametrize("year, care, ratio", [(1, 2, 1.0), (2, 2, 1.2), (3, 5, 0.875),
-                                               (1, 5, 0.625), (2, 1, 1.35)])
+# (1 - 0.1 x 건강 관리) x (1 + 0.5 x 년차)
+@pytest.mark.parametrize("year, care, ratio", [(1, 2, 1.2), (2, 2, 1.6), (3, 5, 1.25),
+                                               (1, 5, 0.75), (2, 1, 1.8)])
 def test_grad_decay_with_health_care(year, care, ratio):
     s = grad_student(year)
     s.upgrades[CARE] = care
@@ -421,18 +423,18 @@ def test_grad_actual_decay_one_second():
     s = grad_student(1)
     s.health = s.mental = 80
     s.update(1.0)
-    assert s.health == pytest.approx(78.75)
-    assert s.mental == pytest.approx(78.75)
+    assert s.health == pytest.approx(78.5)    # 80 - 1 x 1.5
+    assert s.mental == pytest.approx(78.5)
 
 
 def test_grad_decay_in_year2_exam():
     s = grad_student(2)
-    s.health = s.mental = 80
+    s.health = s.mental = 100                 # K단위: 2년차 배수 2.0 이라 80 으로는 46초 안에 0이 된다
     s.update(46.0)
     # 년차 안 1~44초 시각의 감소: 평소, 45·46초 시각의 감소: 시험 기간(멘탈 x2)
     # (학부와 같은 규칙: 감소가 일어난 시각으로 판정)
-    assert s.health == pytest.approx(80 - 46 * 1.5)
-    assert s.mental == pytest.approx(80 - 44 * 1.5 - 2 * 3.0)
+    assert s.health == pytest.approx(100 - 46 * 2.0)
+    assert s.mental == pytest.approx(100 - 44 * 2.0 - 2 * 4.0)
 
 
 def test_decay_at_year_boundary_uses_new_year():
@@ -442,8 +444,8 @@ def test_decay_at_year_boundary_uses_new_year():
     s.health = s.mental = 80
     s.update(0.5)                     # 300초 시각의 감소 -> 2년차, 시험 기간 아님
     assert s.grad_year == 2
-    assert s.health == pytest.approx(78.5)
-    assert s.mental == pytest.approx(78.5)
+    assert s.health == pytest.approx(78.0)   # 2년차 배수 2.0 (1년차였다면 1.5)
+    assert s.mental == pytest.approx(78.0)
 
 
 # ======================= 연구비 배수 =======================
@@ -607,7 +609,7 @@ def test_reincarnate_persists_and_resets_round(g):
     g.money = 40
     g.set_policy(config.POLICY_STUDY_FOCUS)
     g.student.add_trait("체력 단련")
-    graduate_with(g, 700)
+    graduate_with(g, 1000)                    # 수석 졸업 보너스 200
     old_student = g.student
     money = g.money
     assert money == 240
@@ -683,7 +685,7 @@ def test_undergrad_term_key_and_start():
 
 
 def test_undergrad_graduation_still_works(g, no_decay):
-    g.student.knowledge = 700
+    g.student.knowledge = 1000
     g.update(239.99)
     assert g.state == config.STATE_PLAYING
     g.update(0.01)
@@ -707,7 +709,7 @@ def test_info_bar_shows_grad_year(g, monkeypatch, no_decay):
     assert config.TIME_LEFT_TEXT.format(45) in texts
 
 
-@pytest.mark.parametrize("knowledge", [100, 450, 700])
+@pytest.mark.parametrize("knowledge", [100, 750, 1000])   # 아슬아슬 / 무사 / 수석
 def test_graduation_ending_hints(g, monkeypatch, knowledge):
     graduate_with(g, knowledge)
     texts = texts_of(record_texts(g, monkeypatch))
@@ -767,6 +769,10 @@ def test_short_ending_names_keep_big_font(g, monkeypatch, ending):
 
 def test_draw_grad_playing_smoke(g):
     to_grad(g)
+    # K단위: 1년차 감소 배수 1.5 라 80 으로는 60초를 못 버틴다. 건강 관리 5레벨(x0.5) + 가득 찬 게이지로
+    # 2년차까지 살아남게 한다(1년차 60초 체력 45 소모, 2년차 15초 15 소모)
+    g.upgrades[CARE] = 5
+    g.student.health = g.student.mental = 100
     for _ in range(3):
         g.update(25)
         g.draw()

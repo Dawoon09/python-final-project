@@ -32,18 +32,18 @@ CAFE, GYM, CHARM, SCHOL = (config.UPGRADE_CAFE, config.UPGRADE_GYM, config.UPGRA
                            config.UPGRADE_SCHOLARSHIP)
 RECORD_KEYS = {"best_knowledge", "money", "fame", "upgrades"}
 
-# 기획서 10절 업그레이드 표: id -> (최대 레벨, 기본 가격)
+# 기획서 10절 업그레이드 표: id -> (최대 레벨, 기본 가격). K단위 사용자 승인으로 기본 가격 x3
 SPEC_TABLE = {
-    "menu": (5, 80), "bed": (5, 80), "reference_book": (5, 120),
-    "time_management": (5, 150), "health_care": (5, 150),
-    "library": (1, 300), "cafe": (1, 300), "gym": (1, 300),
-    "lucky_charm": (3, 200), "scholarship": (1, 250),
+    "menu": (5, 240), "bed": (5, 240), "reference_book": (5, 360),
+    "time_management": (5, 450), "health_care": (5, 450),
+    "library": (1, 900), "cafe": (1, 900), "gym": (1, 900),
+    "lucky_charm": (3, 600), "scholarship": (1, 750),
 }
 
 
 def spec_cost(base, level):
-    """기획서 가격 = 내림(기본 가격 x 1.6^레벨). 정수 산술로 정확히 계산한다(16^L / 10^L)."""
-    return base * 16 ** level // 10 ** level
+    """기획서 가격 = 내림(기본 가격 x 1.8^레벨). 정수 산술로 정확히 계산한다(18^L / 10^L)."""
+    return base * 18 ** level // 10 ** level
 
 
 def levels(**kw):
@@ -109,7 +109,7 @@ def test_upgrade_table_matches_spec():
 
 
 def test_money_constants():
-    assert config.UPGRADE_COST_GROWTH == 1.6
+    assert config.UPGRADE_COST_GROWTH == 1.8   # K단위 승인(예전 1.6)
     assert config.FAME_MONEY_BONUS == 0.1
     assert config.GRADUATION_BONUS == {config.ENDING_TOP: 200, config.ENDING_NORMAL: 100,
                                        config.ENDING_BARELY: 50}
@@ -426,8 +426,12 @@ def test_cost_every_level_and_max(g, uid):
 
 
 def test_known_cost_values(g):
-    expect = {MENU: [80, 128, 204, 327, 524], BOOK: [120, 192, 307, 491, 786],
-              TIME: [150, 240, 384, 614, 983], CHARM: [200, 320, 512]}
+    # 기획서 10절 표의 "레벨별 가격" 열 그대로
+    expect = {MENU: [240, 432, 777, 1399, 2519], BED: [240, 432, 777, 1399, 2519],
+              BOOK: [360, 648, 1166, 2099, 3779],
+              TIME: [450, 810, 1458, 2624, 4723], CARE: [450, 810, 1458, 2624, 4723],
+              LIB: [900], CAFE: [900], GYM: [900],
+              CHARM: [600, 1080, 1944], SCHOL: [750]}
     for uid, costs in expect.items():
         for level, cost in enumerate(costs):
             g.upgrades[uid] = level
@@ -464,10 +468,10 @@ def test_purchase_applies_immediately_to_current_student(g):
 
 def test_purchase_saves_immediately(g, isolated_record_path):
     g.money = 500
-    assert g.buy_upgrade(BED)
+    assert g.buy_upgrade(BED)                   # 240
     data = read_record(isolated_record_path)
     assert set(data) == RECORD_KEYS
-    assert data["money"] == 420
+    assert data["money"] == 260
     assert data["upgrades"][BED] == 1
     assert data["upgrades"] == g.upgrades
 
@@ -577,9 +581,9 @@ def test_money_not_lost_on_leave(g):
 # ======================= 졸업 보너스 =======================
 
 @pytest.mark.parametrize("knowledge, ending, bonus", [
-    (0, config.ENDING_BARELY, 50), (449, config.ENDING_BARELY, 50),
-    (450, config.ENDING_NORMAL, 100), (699, config.ENDING_NORMAL, 100),
-    (700, config.ENDING_TOP, 200), (1500, config.ENDING_TOP, 200),
+    (0, config.ENDING_BARELY, 50), (749, config.ENDING_BARELY, 50),
+    (750, config.ENDING_NORMAL, 100), (999, config.ENDING_NORMAL, 100),
+    (1000, config.ENDING_TOP, 200), (1500, config.ENDING_TOP, 200),
 ])
 @pytest.mark.parametrize("fame", [0, 1, 3])
 def test_graduation_bonus(g, knowledge, ending, bonus, fame):
@@ -593,7 +597,7 @@ def test_graduation_bonus(g, knowledge, ending, bonus, fame):
 
 
 def test_graduation_bonus_shown_on_ending(g):
-    graduate_with(g, 450)
+    graduate_with(g, 750)   # 무사 졸업(보너스 100)
     texts = []
     real = game_module.render_text
 
@@ -609,7 +613,7 @@ def test_graduation_bonus_shown_on_ending(g):
 
 
 def test_new_round_resets_graduation_bonus(g):
-    graduate_with(g, 700)
+    graduate_with(g, 1000)
     assert g.graduation_bonus == 200
     press(g, pygame.K_r)
     assert g.state == config.STATE_PLAYING
@@ -651,15 +655,15 @@ def test_best_knowledge_only_increases(g, isolated_record_path):
 
 
 def test_persistence_across_game_instances(g, isolated_record_path):
-    g.money = 1000
-    g.buy_upgrade(MENU)
-    g.buy_upgrade(LIB)
+    g.money = 2000                              # K단위 가격: 학식 메뉴 240 + 도서관 900
+    assert g.buy_upgrade(MENU)
+    assert g.buy_upgrade(LIB)
     g.fame = 2   # (I단위에서 환생으로 오른다) 판 끝에 함께 저장
-    graduate_with(g, 450)
+    graduate_with(g, 750)
     money = g.money
     pygame.quit()
     g2 = Game()
-    assert (g2.best_record, g2.money, g2.fame) == (450, money, 2)
+    assert (g2.best_record, g2.money, g2.fame) == (750, money, 2)
     assert g2.upgrades == {**levels(), MENU: 1, LIB: 1}
     g2.start_new_game()
     assert g2.student.upgrades is g2.upgrades
@@ -671,13 +675,13 @@ def test_persistence_across_game_instances(g, isolated_record_path):
 
 def test_persistence_across_rounds_in_same_game(g):
     g.money = 1000
-    g.buy_upgrade(BOOK)
+    assert g.buy_upgrade(BOOK)
     leave_with(g, 10)
     press(g, pygame.K_r)
     assert g.upgrades[BOOK] == 1 and g.student.upgrades is g.upgrades
     g.do_action(STUDY)
     assert g.student.knowledge == 12
-    assert g.money == 1000 - 120 + 12
+    assert g.money == 1000 - 360 + 12
 
 
 def test_title_shows_fame_and_money(isolated_record_path):
@@ -881,7 +885,7 @@ def test_enter_buys_cursor_item(g, key):
     press(g, pygame.K_DOWN)
     press(g, pygame.K_DOWN)                     # reference_book
     press(g, key)
-    assert g.upgrades[BOOK] == 1 and g.money == 880
+    assert g.upgrades[BOOK] == 1 and g.money == 640   # 참고서 360
     g.money = 10
     press(g, key)                               # 모자라면 그대로
     assert g.upgrades[BOOK] == 1 and g.money == 10
@@ -911,10 +915,12 @@ def test_click_row_when_closed_does_nothing(g):
 
 
 def test_buy_on_ending_screen(g):
-    graduate_with(g, 700)                       # 보너스 200
+    g.money = 100
+    graduate_with(g, 1000)                      # 보너스 200 -> 300
+    assert g.money == 300
     press(g, pygame.K_u)
-    press(g, pygame.K_RETURN)                   # menu 80
-    assert g.upgrades[MENU] == 1 and g.money == 120
+    press(g, pygame.K_RETURN)                   # menu 240
+    assert g.upgrades[MENU] == 1 and g.money == 60
 
 
 def test_r_restarts_with_panel_open_on_ending(g):
@@ -1033,8 +1039,8 @@ def test_panel_row_texts_show_level_cost_and_max(g, monkeypatch):
     g.upgrades[LIB] = 1
     g.upgrade_panel_open = True
     texts = [t for t, _ in draw_and_collect(g, "draw_upgrade_panel", monkeypatch)]
-    # (J단위 재배치) 좁은 왼쪽 패널이라 가격은 숫자만("204") 쓴다. 단위는 머리 줄 "연구비 N"
-    assert "Lv 2/5" in texts and "204" in texts
+    # (J단위 재배치) 좁은 왼쪽 패널이라 가격은 숫자만("777") 쓴다. 단위는 머리 줄 "연구비 N"
+    assert "Lv 2/5" in texts and "777" in texts   # 240 x 1.8^2 = 777.6 -> 777
     assert "Lv 1/1" in texts and "MAX" in texts
     assert config.MONEY_TEXT.format("연구비", 0) in texts
 

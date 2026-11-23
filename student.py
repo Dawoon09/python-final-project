@@ -14,7 +14,7 @@ def clamp(value, low, high):
 def judge_ending(knowledge):
     """240초를 버틴 제자의 누적 지식으로 졸업 엔딩 이름을 돌려준다.
 
-    지식 700 이상 "수석 졸업", 450~699 "무사 졸업", 450 미만 "아슬아슬 졸업".
+    지식 1000 이상 "수석 졸업", 750~999 "무사 졸업", 750 미만 "아슬아슬 졸업".
     (휴학은 체력·멘탈로 정하므로 여기서 다루지 않는다.)
     """
     if knowledge >= config.TOP_GRADUATE_KNOWLEDGE:
@@ -113,7 +113,7 @@ class Student:
         return self.get_grade()
 
     def get_grad_decay_ratio(self):
-        """대학원 n년차의 자연 감소 배수 = 1 + 0.25 x n 을 돌려준다(학부는 1)."""
+        """대학원 n년차의 자연 감소 배수 = 1 + 0.5 x n 을 돌려준다(학부는 1)."""
         return config.NO_RATIO + config.GRAD_DECAY_BONUS * self.grad_year
 
     # ------------------------------------------------------------
@@ -187,7 +187,7 @@ class Student:
 
     def apply_decay_ratio(self, amount):
         """자연 감소량 amount에 건강 관리 배수 (1 - 0.1 x 레벨)와
-        대학원 배수 (1 + 0.25 x 년차)를 곱해 돌려준다.
+        대학원 배수 (1 + 0.5 x 년차)를 곱해 돌려준다.
 
         건강 관리를 안 샀고(0레벨) 학부이면 amount를 그대로(정수로) 돌려준다.
         """

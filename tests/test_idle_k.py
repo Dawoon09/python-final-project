@@ -399,7 +399,9 @@ def test_panel_gauge_constants():
     assert config.UPGRADE_ROW_TOP == 166
     assert config.UPGRADE_ROW_HEIGHT == 27
     assert config.UPGRADE_ROW_STEP == 28
-    assert config.UPGRADE_FOOTER_Y == 455
+    assert config.UPGRADE_FOOTER_Y == 454   # K단위 2차: 455 -> 454 (글자 꼬리까지 외곽선 안)
+    last_row_bottom = config.UPGRADE_ROW_TOP + 9 * config.UPGRADE_ROW_STEP + config.UPGRADE_ROW_HEIGHT
+    assert last_row_bottom == 445
     assert [n for n, _, _ in config.UPGRADE_GAUGES] == [config.GAUGE_HEALTH, config.GAUGE_MENTAL]
 
 

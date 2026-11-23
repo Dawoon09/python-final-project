@@ -135,8 +135,8 @@ def test_game_constants_same_as_main(tmp_path):
     main_cfg = load_main_config(tmp_path)
     diff = [(n, getattr(main_cfg, n), getattr(config, n)) for n in GAME_CONSTANTS + UI_TEXTS
             if getattr(main_cfg, n) != getattr(config, n)]
-    # (E단위) 사용자 승인으로 엔딩 기준만 500/300 -> 700/450 으로 바뀌었다. 그 밖에는 main 과 같아야 한다.
-    approved = [("NORMAL_GRADUATE_KNOWLEDGE", 300, 450), ("TOP_GRADUATE_KNOWLEDGE", 500, 700)]
+    # 사용자 승인으로 엔딩 기준만 500/300 -> 700/450(E단위) -> 1000/750(K단위)으로 바뀌었다. 그 밖에는 main 과 같아야 한다.
+    approved = [("NORMAL_GRADUATE_KNOWLEDGE", 300, 750), ("TOP_GRADUATE_KNOWLEDGE", 500, 1000)]
     assert sorted(diff) == approved
     # get_base_dir (record.json 위치) 도 그대로 (docstring 제외 코드 비교)
     old = _functions(git_show("config.py"))["get_base_dir"]

@@ -441,7 +441,7 @@ class Game:
         return earned
 
     def get_upgrade_cost(self, upgrade_id):
-        """업그레이드 upgrade_id의 다음 레벨 가격 = 내림(기본 가격 x 1.6 ^ 지금 레벨)을 돌려준다.
+        """업그레이드 upgrade_id의 다음 레벨 가격 = 내림(기본 가격 x 1.8 ^ 지금 레벨)을 돌려준다.
 
         최고 레벨이어도 같은 식으로 계산한 값을 돌려준다(살 수 있는지는 can_buy_upgrade가 본다).
         """

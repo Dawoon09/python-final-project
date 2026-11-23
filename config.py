@@ -118,8 +118,8 @@ MOUTH_CRY = "cry"           # 우는 입 (입꼬리가 내려간 ∩자)
 # ---------------------------------------------------------------
 # 8. 엔딩 기준
 # ---------------------------------------------------------------
-TOP_GRADUATE_KNOWLEDGE = 700    # 지식 700 이상: 수석 졸업 (랜덤 이벤트 반영, 기획서 2절)
-NORMAL_GRADUATE_KNOWLEDGE = 450  # 지식 450 이상 699 이하: 무사 졸업, 미만: 아슬아슬 졸업
+TOP_GRADUATE_KNOWLEDGE = 1000   # 지식 1000 이상: 수석 졸업 (방치형 전환 후 기준, 기획서 10절)
+NORMAL_GRADUATE_KNOWLEDGE = 750  # 지식 750 이상 999 이하: 무사 졸업, 미만: 아슬아슬 졸업
 
 ENDING_LEAVE = "휴학"
 ENDING_TOP = "수석 졸업"
@@ -1069,14 +1069,14 @@ FAME_START = 0              # 명성 기본값 (record.json 에 없으면 0)
 LEVEL_START = 0             # 업그레이드 레벨 기본값 (사지 않았으면 0)
 LEVEL_STEP = 1              # 업그레이드를 한 번 사면 오르는 레벨
 FAME_MONEY_BONUS = 0.1      # 명성 1당 연구비 획득 배수 +0.1: 배수 = 1 + 0.1 x 명성
-MONEY_EPSILON = 1e-9        # 내림(int) 전에 더하는 아주 작은 값 (1.6 x 80 = 127.999… 같은 소수 오차 방지)
+MONEY_EPSILON = 1e-9        # 내림(int) 전에 더하는 아주 작은 값 (1.6 x 80 = 127.999… 처럼 곱셈 결과가 정수 바로 아래로 나오는 소수 오차 방지)
 GAUGE_DECIMALS = 6          # 체력·멘탈을 이 자리에서 반올림해 소수 오차가 쌓이지 않게 한다
 
 # 졸업 보너스 (x 명성 배수, 내림). 휴학이면 없음
 GRADUATION_BONUS = {ENDING_TOP: 200, ENDING_NORMAL: 100, ENDING_BARELY: 50}
 
-# 업그레이드 가격 = 내림(기본 가격 x 1.6 ^ 현재 레벨)
-UPGRADE_COST_GROWTH = 1.6
+# 업그레이드 가격 = 내림(기본 가격 x 1.8 ^ 현재 레벨)
+UPGRADE_COST_GROWTH = 1.8
 
 # 업그레이드 id
 UPGRADE_MENU = "menu"                   # 학식 메뉴 개선
@@ -1102,34 +1102,34 @@ UPGRADE_EFFECT_TEXT = "effect"      # 패널에 보일 효과 설명
 # 업그레이드 10종 (기획서 10절 표 순서). 시설·장학금은 최대 레벨 1이라 "레벨 x 효과"로 똑같이 계산한다
 UPGRADES = [
     {UPGRADE_ID: UPGRADE_MENU, UPGRADE_NAME: "학식 메뉴 개선", UPGRADE_CATEGORY: "행동 효율",
-     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 80, UPGRADE_PER_LEVEL: 4,
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 240, UPGRADE_PER_LEVEL: 4,
      UPGRADE_EFFECT_TEXT: "학식 체력 +4"},
     {UPGRADE_ID: UPGRADE_BED, UPGRADE_NAME: "푹신한 침대", UPGRADE_CATEGORY: "행동 효율",
-     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 80, UPGRADE_PER_LEVEL: 4,
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 240, UPGRADE_PER_LEVEL: 4,
      UPGRADE_EFFECT_TEXT: "휴식 멘탈 +4"},
     {UPGRADE_ID: UPGRADE_BOOK, UPGRADE_NAME: "참고서", UPGRADE_CATEGORY: "행동 효율",
-     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 120, UPGRADE_PER_LEVEL: 2,
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 360, UPGRADE_PER_LEVEL: 2,
      UPGRADE_EFFECT_TEXT: "공부 지식 +2"},
     {UPGRADE_ID: UPGRADE_TIME, UPGRADE_NAME: "시간 관리", UPGRADE_CATEGORY: "자동화 속도",
-     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 150, UPGRADE_PER_LEVEL: 0.2,
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 450, UPGRADE_PER_LEVEL: 0.2,
      UPGRADE_EFFECT_TEXT: "행동 간격 -0.2초"},
     {UPGRADE_ID: UPGRADE_HEALTH_CARE, UPGRADE_NAME: "건강 관리", UPGRADE_CATEGORY: "자동화 속도",
-     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 150, UPGRADE_PER_LEVEL: 0.1,
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 450, UPGRADE_PER_LEVEL: 0.1,
      UPGRADE_EFFECT_TEXT: "자연 감소 -10%"},
     {UPGRADE_ID: UPGRADE_LIBRARY, UPGRADE_NAME: "도서관", UPGRADE_CATEGORY: "시설",
-     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 300, UPGRADE_PER_LEVEL: 3,
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 900, UPGRADE_PER_LEVEL: 3,
      UPGRADE_EFFECT_TEXT: "공부 지식 +3"},
     {UPGRADE_ID: UPGRADE_CAFE, UPGRADE_NAME: "카페", UPGRADE_CATEGORY: "시설",
-     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 300, UPGRADE_PER_LEVEL: 5,
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 900, UPGRADE_PER_LEVEL: 5,
      UPGRADE_EFFECT_TEXT: "휴식 때 체력 +5"},
     {UPGRADE_ID: UPGRADE_GYM, UPGRADE_NAME: "헬스장", UPGRADE_CATEGORY: "시설",
-     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 300, UPGRADE_PER_LEVEL: 2,
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 900, UPGRADE_PER_LEVEL: 2,
      UPGRADE_EFFECT_TEXT: "공부 체력 소모 -2"},
     {UPGRADE_ID: UPGRADE_CHARM, UPGRADE_NAME: "행운 부적", UPGRADE_CATEGORY: "이벤트",
-     UPGRADE_MAX_LEVEL: 3, UPGRADE_BASE_COST: 200, UPGRADE_PER_LEVEL: 0.05,
+     UPGRADE_MAX_LEVEL: 3, UPGRADE_BASE_COST: 600, UPGRADE_PER_LEVEL: 0.05,
      UPGRADE_EFFECT_TEXT: "이벤트 확률 +5%p"},
     {UPGRADE_ID: UPGRADE_SCHOLARSHIP, UPGRADE_NAME: "장학금 제도", UPGRADE_CATEGORY: "이벤트",
-     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 250, UPGRADE_PER_LEVEL: 30,
+     UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 750, UPGRADE_PER_LEVEL: 30,
      UPGRADE_EFFECT_TEXT: "장학금 이벤트 추가"},
 ]
 UPGRADE_IDS = [upgrade[UPGRADE_ID] for upgrade in UPGRADES]          # 패널 순서
@@ -1186,7 +1186,7 @@ UPGRADE_NAME_X = 48                 # 이름 글자 왼쪽 x
 UPGRADE_LEVEL_X = 148               # "Lv 0/5" 글자 왼쪽 x
 UPGRADE_COST_RIGHT = 248            # 가격 글자 오른쪽 끝 x
 UPGRADE_FOOTER_X = 28               # 바닥 줄(고른 항목 효과) 글자 왼쪽 x
-UPGRADE_FOOTER_Y = 455              # 바닥 줄 가운데 y (글자 446~465: 마지막 줄 아래, 패널 아래 끝 468 안)
+UPGRADE_FOOTER_Y = 454              # 바닥 줄 가운데 y (글자 445~464: 마지막 줄 아래 끝 445부터, 꼬리까지 외곽선 안)
 UPGRADE_FOOTER_TEXT = "효과: {}"     # 바닥 줄 글자 틀: 고른 줄(↑↓)의 레벨당 효과
 UPGRADE_LEVEL_TEXT = "Lv {}/{}"
 UPGRADE_COST_TEXT = "{}"                # 가격 글자(숫자만, 단위 연구비는 머리 줄에 보인다)
@@ -1208,7 +1208,7 @@ COLOR_UPGRADE_CURSOR = COLOR_PINK_DARK  # 고른 줄 화살표 색
 GRAD_YEAR_UNDERGRAD = 0     # 대학원 년차 값: 0이면 학부(1~4학년)
 GRAD_FIRST_YEAR = 1         # 대학원에 들어가면 1년차부터
 GRAD_YEAR_STEP = 1          # 60초마다 대학원 년차가 오르는 양 (끝없이)
-GRAD_DECAY_BONUS = 0.25     # n년차 체력·멘탈 자연 감소 배수 = 1 + 0.25 x n
+GRAD_DECAY_BONUS = 0.5      # n년차 체력·멘탈 자연 감소 배수 = 1 + 0.5 x n
 GRAD_MONEY_BONUS = 0.25     # n년차 연구비 획득 배수 = 1 + 0.25 x n
 FAME_STEP = 1               # 졸업한 판에서 환생하면 오르는 명성
 

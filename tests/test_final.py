@@ -115,7 +115,7 @@ def set_health(value):
 # ======================= 완료 기준: 실제 루프 한 바퀴 =======================
 
 @pytest.mark.parametrize("knowledge, ending", [
-    # E단위: 엔딩 기준 700/450
+    # E단위 700/450, K단위: 엔딩 기준 1000/750
     (config.TOP_GRADUATE_KNOWLEDGE + 20, config.ENDING_TOP),
     (config.NORMAL_GRADUATE_KNOWLEDGE, config.ENDING_NORMAL),
     (120, config.ENDING_BARELY),
@@ -282,7 +282,7 @@ def test_no_numeric_literals_other_than_0_1(name):
     ("STUDY_KNOWLEDGE", 10), ("STUDY_KNOWLEDGE_EXAM", 20),  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
     ("MENTAL_SMILE_MIN", 60), ("MENTAL_FLAT_MIN", 30),
     ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
-    ("TOP_GRADUATE_KNOWLEDGE", 700), ("NORMAL_GRADUATE_KNOWLEDGE", 450),
+    ("TOP_GRADUATE_KNOWLEDGE", 1000), ("NORMAL_GRADUATE_KNOWLEDGE", 750),  # K단위 승인 값
     ("ENDING_LEAVE", "휴학"), ("ENDING_TOP", "수석 졸업"),
     ("ENDING_NORMAL", "무사 졸업"), ("ENDING_BARELY", "아슬아슬 졸업"),
     ("RECORD_FILENAME", "record.json"),
@@ -339,14 +339,15 @@ def _readme():
     "py -3.12 -m pytest",
     "py -3.12 -m PyInstaller --onefile --noconsole main.py",
     "dist/main.exe",
-    "Enter (타이틀 화면)",
-    "R (엔딩 화면)",
+    # 방치형 README 3절 조작표(화면 열 추가)
+    "| 게임 시작 | - | Enter | 타이틀 |",
+    "| 환생 (졸업·대학원 수료) / 다시 하기 (휴학) | - | R | 엔딩 |",
     "| 학식 먹이기 | +20 | - | - |",
     "| 쉬게 하기 | - | +20 | -2 |",
     "| 공부시키기 | -5 | -8 | +10 (시험 기간 +20) |",
-    "수석 졸업(700 이상) / 무사 졸업(450~699) / 아슬아슬 졸업(450 미만)",
-    "엔딩 경계값(449/450/699/700)",
-    "쿨타임 1초",
+    "수석 졸업(1000 이상) / 무사 졸업(750~999) / 아슬아슬 졸업(750 미만)",
+    "엔딩 경계값(749/750/999/1000)",
+    "제자는 2초마다(첫 행동은 시작 2초 뒤)",   # G단위: 쿨타임 1초 대신 자동 행동 간격 2초
     "마지막 15초",
 ])
 def test_readme_mentions(text):

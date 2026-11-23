@@ -143,10 +143,10 @@ def test_leave_by_study_action_saves(rec):
 def test_save_format_exact(rec):
     g = Game()
     g.start_new_game()
-    graduate_with(g, 520)
+    graduate_with(g, 820)   # K단위: 무사 졸업 750~999 안의 값(예전 520)
     data = read_record(rec)
     # (H단위) 4개 키 형식. 무사 졸업 보너스 100(명성 0), 업그레이드는 모두 0레벨
-    assert data == {"best_knowledge": 520, "money": 100, "fame": 0,
+    assert data == {"best_knowledge": 820, "money": 100, "fame": 0,
                     "upgrades": {uid: 0 for uid in config.UPGRADE_IDS}}
     assert type(data["best_knowledge"]) is int
 
@@ -444,8 +444,8 @@ def test_reach_top_graduate_greedy(rec):
 def test_reach_normal_graduate(rec):
     g = Game()
     t = time.perf_counter()
-    # E단위: 무사 졸업 기준 450~699 -> 공부 중단 지식을 그 사이(550)로
-    frames = play(g, make_steady(550))
+    # E단위 450~699 -> 550, K단위: 무사 졸업 기준 750~999 -> 공부 중단 지식을 그 사이(850)로
+    frames = play(g, make_steady(850))
     assert_graduation(g, frames, config.ENDING_NORMAL)
     assert config.NORMAL_GRADUATE_KNOWLEDGE <= g.student.knowledge < config.TOP_GRADUATE_KNOWLEDGE
     assert time.perf_counter() - t < 3
@@ -489,7 +489,7 @@ def test_all_endings_in_one_session_with_restart(rec):
     g = Game()
     seen = []
     best = 0
-    for policy in (lambda s: config.ACTION_STUDY, care_only, make_steady(550), greedy):
+    for policy in (lambda s: config.ACTION_STUDY, care_only, make_steady(850), greedy):
         if g.state == config.STATE_ENDING:
             press(g, pygame.K_r)
             g.state = config.STATE_TITLE  # play()가 Enter부터 시작하므로 타이틀로 맞춘다
@@ -503,12 +503,13 @@ def test_all_endings_in_one_session_with_restart(rec):
 
 
 @pytest.mark.parametrize("interval, allowed", [
-    # E단위(700/450, 이벤트 끈 상태 실측): 1.5초 938 수석, 2.0초 638 무사, 2.5초 480 무사,
-    # 3.0초 378 아슬아슬, 4.0초 228 아슬아슬. 이벤트 켠 상태는 test_balance_events.py에서 본다.
-    (1.5, {config.ENDING_TOP}),
-    (2.0, {config.ENDING_NORMAL, config.ENDING_TOP}),
-    (2.5, {config.ENDING_NORMAL}),
-    (3.0, {config.ENDING_NORMAL, config.ENDING_BARELY}),
+    # 이벤트·자동 행동 끈 수동 행동 실측(지식은 E단위와 같음): 1.5초 938, 2.0초 638, 2.5초 480,
+    # 3.0초 378, 4.0초 228. K단위 기준 1000/750 으로 1.5초는 무사, 2.0초 이하 간격 수동만으로는 아슬아슬.
+    # (방치형은 자동 행동 + 업그레이드를 전제로 기준을 올렸다. 방치형 분포는 test_idle_final.py)
+    (1.5, {config.ENDING_NORMAL}),
+    (2.0, {config.ENDING_BARELY}),
+    (2.5, {config.ENDING_BARELY}),
+    (3.0, {config.ENDING_BARELY}),
     (4.0, {config.ENDING_BARELY}),
 ])
 def test_balance_human_like_interval(rec, interval, allowed):

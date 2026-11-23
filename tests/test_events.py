@@ -214,7 +214,7 @@ def test_trait_bonus_table():
     assert (config.FEED_HEALTH, config.REST_MENTAL, config.REST_KNOWLEDGE) == (20, 20, -2)
     assert (config.STUDY_HEALTH, config.STUDY_MENTAL) == (-5, -8)
     assert (config.STUDY_KNOWLEDGE, config.STUDY_KNOWLEDGE_EXAM) == (10, 20)
-    assert (config.TOP_GRADUATE_KNOWLEDGE, config.NORMAL_GRADUATE_KNOWLEDGE) == (700, 450)  # E단위 변경
+    assert (config.TOP_GRADUATE_KNOWLEDGE, config.NORMAL_GRADUATE_KNOWLEDGE) == (1000, 750)  # E단위 700/450, K단위 1000/750
 
 
 # ======================= 2. 발생 규칙 =======================
@@ -1066,7 +1066,7 @@ def test_all_three_graduation_endings_and_leave_reachable():
     endings = {}
     scenarios = [
         ("top", greedy, choose_knowledge, 1.0),
-        ("normal", make_steady(550), choose_safe, 1.0),   # E단위: 무사 450~699 사이에서 공부 중단
+        ("normal", make_steady(850), choose_safe, 1.0),   # K단위: 무사 750~999 사이에서 공부 중단
         ("barely", care_only, choose_safe, 1.0),
         ("leave", study_only, choose_first, 1.0),
     ]

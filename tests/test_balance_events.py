@@ -5,11 +5,11 @@
 - (a) 확률 이벤트 최소 간격 EVENT_MIN_GAP(8초): 경계 7.99/8.0, 보장 예외, 학년 넘어 이어 셈,
       대화 정지 시간 미포함, 새 판 초기화, 간격 미충족 시 rng 를 뽑지 않음(결정성)
 - 최소 4·최대 5 보장 유지(시드 여러 개 x 간격 1~3초 완주) + 완주 중 간격 규칙 위반 0
-- (b) 엔딩 기준 700/450: judge_ending 경계 449/450/699/700, 실제 게임 흐름(이벤트로 경계를 넘는 경우 포함)
-- 이벤트 켠 밸런스(시드 20개): 1.5~2.0초 수석, 2.5~3.0초 무사, 4.0초 아슬아슬(+휴학)이 과반
+- (b) 엔딩 기준 1000/750(K단위 승인, 처음 E단위는 700/450): judge_ending 경계 749/750/999/1000, 실제 게임 흐름(이벤트로 경계를 넘는 경우 포함)
+- 이벤트 켠 밸런스(시드 20개, 자동 행동 끈 수동 행동): 1.5초 수석, 2.0초 무사, 2.5~4.0초 아슬아슬(+휴학)이 과반
 - (c) 가독성: 알림 2줄 나눔·상자 안, 알림·이벤트 팝업·행동 팝업·파티클 비겹침(4학년 포함),
       점무늬(대화 상태에서만, 대화창 안 미덮음, 밀도 무관), 하트 핀 위치, 미리보기 글자 대비
-- 문서 일치: 기획서 2절 표·jeja-spec 5절·README·config 가 700/450
+- 문서 일치: 기획서 2절 표·jeja-spec 5절·README·config 가 1000/750
 """
 
 import os
@@ -102,7 +102,7 @@ def rng_draws(monkeypatch, g, value=0.0):
 
 def test_e_constants():
     assert config.EVENT_MIN_GAP == 8.0
-    assert (config.TOP_GRADUATE_KNOWLEDGE, config.NORMAL_GRADUATE_KNOWLEDGE) == (700, 450)
+    assert (config.TOP_GRADUATE_KNOWLEDGE, config.NORMAL_GRADUATE_KNOWLEDGE) == (1000, 750)
     assert config.PAUSE_DOT_STEP == 12 == P * 3
     assert config.EVENT_NOTICE_FONT_SIZE == 16
     assert config.EVENT_NOTICE_TEXT_MAX_WIDTH == 160
@@ -410,13 +410,13 @@ def test_gap_reduces_chance_events():
     pygame.quit()
 
 
-# ======================= 3. 엔딩 기준 700/450 =======================
+# ======================= 3. 엔딩 기준 1000/750 =======================
 
 @pytest.mark.parametrize("knowledge, ending", [
-    (0, config.ENDING_BARELY), (449, config.ENDING_BARELY), (450, config.ENDING_NORMAL),
-    (699, config.ENDING_NORMAL), (700, config.ENDING_TOP), (5000, config.ENDING_TOP),
+    (0, config.ENDING_BARELY), (749, config.ENDING_BARELY), (750, config.ENDING_NORMAL),
+    (999, config.ENDING_NORMAL), (1000, config.ENDING_TOP), (5000, config.ENDING_TOP),
 ])
-def test_judge_ending_700_450(knowledge, ending):
+def test_judge_ending_1000_750(knowledge, ending):
     assert judge_ending(knowledge) == ending
     s = Student()
     s.knowledge = knowledge
@@ -424,8 +424,8 @@ def test_judge_ending_700_450(knowledge, ending):
 
 
 @pytest.mark.parametrize("knowledge, ending", [
-    (449, config.ENDING_BARELY), (450, config.ENDING_NORMAL),
-    (699, config.ENDING_NORMAL), (700, config.ENDING_TOP),
+    (749, config.ENDING_BARELY), (750, config.ENDING_NORMAL),
+    (999, config.ENDING_NORMAL), (1000, config.ENDING_TOP),
 ])
 def test_graduation_flow_boundaries_events_on(make_game, knowledge, ending):
     """이벤트 켠 실제 흐름: 행동 없이 240초까지 update -> 경계값대로 엔딩, 기록 저장."""
@@ -439,8 +439,8 @@ def test_graduation_flow_boundaries_events_on(make_game, knowledge, ending):
     assert g.best_record == knowledge
 
 
-@pytest.mark.parametrize("start, ending", [(434, config.ENDING_BARELY), (435, config.ENDING_NORMAL),
-                                           (684, config.ENDING_NORMAL), (685, config.ENDING_TOP)])
+@pytest.mark.parametrize("start, ending", [(734, config.ENDING_BARELY), (735, config.ENDING_NORMAL),
+                                           (984, config.ENDING_NORMAL), (985, config.ENDING_TOP)])
 def test_event_knowledge_crosses_boundary_before_graduation(make_game, monkeypatch, start, ending):
     """마지막 몇 초에 학식 + 자동형 '교수님께 칭찬'(지식 +15)으로 경계를 넘거나 못 넘는다."""
     monkeypatch.setattr(config, "EVENT_CHANCE", 1.0)
@@ -462,15 +462,18 @@ BALANCE_SEEDS = range(20)
 
 @pytest.mark.parametrize("interval, expected", [
     (1.5, config.ENDING_TOP),
-    (2.0, config.ENDING_TOP),
-    (2.5, config.ENDING_NORMAL),
-    (3.0, config.ENDING_NORMAL),
+    (2.0, config.ENDING_NORMAL),
+    (2.5, config.ENDING_BARELY),
+    (3.0, config.ENDING_BARELY),
     (4.0, config.ENDING_BARELY),
 ])
 def test_balance_with_events(interval, expected):
     """사람처럼 interval 초마다 탐욕 행동(선택은 시드별 3전략 순환): 기대 엔딩이 과반.
 
-    개발팀 표(2.0초 99% 수석, 2.5초 90% 무사, 3.0초 94% 무사, 4.0초 88% 아슬아슬)와 대략 일치하는지 본다.
+    이 파일은 자동 행동을 끈(no_auto) 방치형 이전 수동 플레이 모형이다. K단위에서 기준이 1000/750으로
+    오르며(방치형은 자동 행동 + 업그레이드로 지식을 더 버는 것을 전제) 같은 수동 모형의 기대 엔딩도 한 칸씩
+    내려갔다(검수팀 실측 시드 20개: 1.5초 20 수석, 2.0초 17 무사, 2.5·3.0초 20 아슬아슬, 4.0초 17 아슬아슬 + 3 휴학).
+    방치형 분포(기획서 2절 변경 메모)는 test_idle_final.py 에서 본다.
     """
     counts = {}
     for seed in BALANCE_SEEDS:
@@ -483,6 +486,9 @@ def test_balance_with_events(interval, expected):
         assert slow >= len(BALANCE_SEEDS) - 2, counts
     if interval <= 2.0:
         assert counts.get(config.ENDING_LEAVE, 0) == 0, counts
+    if interval >= 2.5:
+        # 수동 2.5초 이상은 수석에 못 미친다(기준이 오른 효과)
+        assert counts.get(config.ENDING_TOP, 0) == 0, counts
     pygame.quit()
 
 
@@ -779,47 +785,51 @@ def test_preview_other_color_darker_than_soft_text():
 
 # ======================= 9. 문서 일치 =======================
 
-def test_spec_section2_table_700_450():
+def test_spec_section2_table_1000_750():
     text = (ROOT / "docs" / "기획서.md").read_text(encoding="utf-8")
     sec2 = text.split("## 2.")[1].split("## 3.")[0]
-    assert "| 수석 졸업 | 700 이상 |" in sec2
-    assert "| 무사 졸업 | 450~699 |" in sec2
-    assert "| 아슬아슬 졸업 | 450 미만 |" in sec2
-    assert not re.search(r"\|\s*(500 이상|300~499|300 미만)\s*\|", sec2)
+    assert "| 수석 졸업 | 1000 이상 |" in sec2
+    assert "| 무사 졸업 | 750~999 |" in sec2
+    assert "| 아슬아슬 졸업 | 750 미만 |" in sec2
+    assert not re.search(r"\|\s*(500 이상|300~499|300 미만|700 이상|450~699|450 미만)\s*\|", sec2)
     sec9 = text.split("## 9.")[1]
-    assert "700/450" in sec9
+    assert "700/450" in sec9   # 9절(이벤트 도입 때) 기록은 그대로 두고, 10절이 1000/750 으로 덮는다
+    assert "1000 이상" in text.split("## 10.")[1]
     assert "8초" in sec9 and "최소 간격" in sec9
 
 
-def test_jeja_spec_section5_700_450():
+def test_jeja_spec_section5_1000_750():
     text = (ROOT / ".claude" / "skills" / "jeja-spec" / "SKILL.md").read_text(encoding="utf-8")
     sec5 = text.split("## 5.")[1].split("## 6.")[0]
-    assert "누적 지식 ≥ 700" in sec5
-    assert "450 ≤ 지식 ≤ 699" in sec5
-    assert "지식 < 450" in sec5
-    assert "449 → 아슬아슬, 450 → 무사, 699 → 무사, 700 → 수석" in sec5
-    assert "500" not in sec5.split("(2026")[0].replace("≥ 700", "")
+    assert "누적 지식 ≥ 1000" in sec5
+    assert "750 ≤ 지식 ≤ 999" in sec5
+    assert "지식 < 750" in sec5
+    assert "749 → 아슬아슬, 750 → 무사, 999 → 무사, 1000 → 수석" in sec5
+    before_note = sec5.split("(2026")[0]
+    assert "500" not in before_note and "700" not in before_note and "450" not in before_note
     sec14 = text.split("## 14.")[1]
     assert "EVENT_MIN_GAP" in sec14 and "8.0초" in sec14
 
 
-def test_readme_700_450():
+def test_readme_1000_750():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "수석 졸업(700 이상) / 무사 졸업(450~699) / 아슬아슬 졸업(450 미만)" in text
-    assert "449/450/699/700" in text
+    assert "수석 졸업(1000 이상) / 무사 졸업(750~999) / 아슬아슬 졸업(750 미만)" in text
+    assert "749/750/999/1000" in text
     assert "500 이상" not in text and "300~499" not in text
+    assert "700 이상" not in text and "450~699" not in text and "449/450/699/700" not in text
 
 
 def test_config_and_game_code_use_constants():
-    """엔딩 판정 코드(docstring 제외)에 500/300/700/450 숫자를 직접 쓰지 않는다(config 상수만)."""
+    """엔딩 판정 코드(docstring 제외)에 500/300/700/450/1000/750 숫자를 직접 쓰지 않는다(config 상수만)."""
     import ast
     for name in ("student.py", "game.py"):
         tree = ast.parse((ROOT / name).read_text(encoding="utf-8"))
         nums = {n.value for n in ast.walk(tree)
                 if isinstance(n, ast.Constant) and isinstance(n.value, (int, float))
                 and not isinstance(n.value, bool)}
-        assert not nums & {500, 300, 700, 450}, (name, nums & {500, 300, 700, 450})
-    assert game_module.config.TOP_GRADUATE_KNOWLEDGE == 700
+        old_and_new = {500, 300, 700, 450, 1000, 750}
+        assert not nums & old_and_new, (name, nums & old_and_new)
+    assert game_module.config.TOP_GRADUATE_KNOWLEDGE == 1000
 
 
 def test_code_docstrings_mention_new_ending_criteria():
