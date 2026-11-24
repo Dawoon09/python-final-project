@@ -739,21 +739,41 @@ class Student:
         self.draw_badges(screen, font, self.traits, config.TRAIT_BADGE_Y, config.TRAIT_COLORS)
 
     def draw_status_badges(self, screen, font, statuses):
-        """상태 패널 위쪽(체력 라벨 위)에 지금 붙은 디버프·버프 이름을 글자 배지로 그린다.
+        """상태 패널 위쪽(체력 라벨 위)에 지금 붙은 디버프·버프를 아이콘 + 이름 배지로 그린다.
 
         statuses는 이름 목록이다(Game.get_status_names: get_statuses + "컨디션 좋음").
-        특성 배지와 같은 모양으로 2열이다.
+        특성 배지와 같은 자리·크기로 2열이다(N단위): 배지 안 왼쪽에 작은 도트 아이콘
+        (피곤 Zz·감은 눈, 우울 비구름, 든든함 밥그릇, 컨디션 좋음 반짝 별), 그 오른쪽에 이름.
         """
-        self.draw_badges(screen, font, statuses, config.STATUS_BADGE_Y, config.STATUS_COLORS)
+        for index, name in enumerate(statuses):
+            box = self.get_badge_rect(index, config.STATUS_BADGE_Y)
+            fill, light = config.STATUS_COLORS[name]
+            inner = draw_pixel_box(screen, box, fill, light, drop=config.COLOR_DROP)
+            icon = config.STATUS_ICONS[name]
+            icon_width, icon_height = sprite_size(icon, config.STATUS_ICON_CELL)
+            icon_left = inner.left + config.STATUS_ICON_PAD
+            draw_sprite(screen, icon, icon_left, inner.centery - icon_height // config.HALF,
+                        config.STATUS_ICON_CELL, config.STATUS_ICON_COLORS)
+            text = render_text(font, name)
+            text_rect = text.get_rect()
+            text_rect.midleft = (icon_left + icon_width + config.STATUS_ICON_GAP, inner.centery)
+            screen.blit(text, text_rect)
+
+    def get_badge_rect(self, index, top):
+        """top부터 2열로 놓는 배지 중 index번째 배지의 사각형을 돌려준다(특성·상태 배지 공통).
+
+        Game이 상태 배지에 마우스가 올라갔는지(툴팁) 볼 때도 쓴다.
+        """
+        row, col = divmod(index, config.TRAIT_BADGE_COLUMNS)
+        return pygame.Rect(
+            config.TRAIT_BADGE_X + col * (config.TRAIT_BADGE_WIDTH + config.TRAIT_BADGE_GAP),
+            top + row * (config.TRAIT_BADGE_HEIGHT + config.TRAIT_BADGE_GAP),
+            config.TRAIT_BADGE_WIDTH, config.TRAIT_BADGE_HEIGHT)
 
     def draw_badges(self, screen, font, names, top, colors):
         """이름 목록 names를 top부터 2열 도트 배지로 그린다. 색은 colors[이름] = (몸통, 위 줄)."""
         for index, name in enumerate(names):
-            row, col = divmod(index, config.TRAIT_BADGE_COLUMNS)
-            box = pygame.Rect(
-                config.TRAIT_BADGE_X + col * (config.TRAIT_BADGE_WIDTH + config.TRAIT_BADGE_GAP),
-                top + row * (config.TRAIT_BADGE_HEIGHT + config.TRAIT_BADGE_GAP),
-                config.TRAIT_BADGE_WIDTH, config.TRAIT_BADGE_HEIGHT)
+            box = self.get_badge_rect(index, top)
             fill, light = colors[name]
             inner = draw_pixel_box(screen, box, fill, light, drop=config.COLOR_DROP)
             text = render_text(font, name)

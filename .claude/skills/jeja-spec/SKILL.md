@@ -74,7 +74,8 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 | 컨디션 좋음 (`CONDITION_GOOD`) | 방침 rest_focus, 체력·멘탈 ≥ 70 (`CONDITION_GOOD_MIN`) | 지식으로 버는 연구비 ×1.2 | `Game.is_good_condition()` |
 
 - 연구비 배수 `Game.get_money_multiplier()` = 명성 배수 × 대학원 배수 × `get_condition_money_ratio()`(우울 0.7 / 컨디션 좋음 1.2 / 그 밖 1.0). 졸업 보너스는 `get_fame_multiplier()`만 곱한다. 장학금은 배수 없음.
-- 상태 배지: `Student.get_statuses()`(피곤·우울·든든함 순) + 컨디션 좋음 = `Game.get_status_names()`, 상태 패널 위쪽(`STATUS_BADGE_Y` 128)에 글자 배지 2열.
+- 상태 배지: `Student.get_statuses()`(피곤·우울·든든함 순) + 컨디션 좋음 = `Game.get_status_names()`, 상태 패널 위쪽(`STATUS_BADGE_Y` 128)에 2열. 배지 = 도트 아이콘(`STATUS_ICONS`, 8×6칸·칸 2픽셀: 피곤 Zz, 우울 비구름, 든든함 밥그릇, 컨디션 좋음 반짝 별) + 이름. 배지 자리 `Student.get_badge_rect(index, top)`.
+- 상태 배지 툴팁(N단위): 게임 화면·패널 닫힘·배지에 마우스 → `Game.get_status_tip_text(name)` 한 줄(`STATUS_TIP_TEXTS`, config 값으로 채움). 예 "피곤: 체력 30 미만 — 공부 지식 ×0.7", "든든함: 남은 시간 12초 — 체력 감소 ×0.5"(남은 시간 올림), "컨디션 좋음: 휴식 위주, 체력·멘탈 70 이상 — 버는 연구비 ×1.2".
 - **확정 해석 (시험 기간):** 멘탈 **자연 감소만** 2배, 공부 기본 지식 20. 공부의 체력 -5·멘탈 -8은 그대로. 보너스는 2배 아님.
 
 ### 진급과 졸업 (누적 지식 이상)
@@ -144,6 +145,8 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 - 시간 관리 구매 시 auto_timer = min(auto_timer, 새 간격).
 - 장학금 이벤트: 연구비 +30 × 학년(대학원 4). 명성·대학원 배수 없음.
 - 업그레이드 패널: U 또는 [업그레이드 U], 게임·엔딩 화면에서만. ↑↓(순환)·Enter, 항목 클릭 = 고르고 바로 사기. 게임 화면에서 패널이 열려도 시간은 흐른다. 13줄: `UPGRADE_ROW_TOP` 166, `UPGRADE_ROW_HEIGHT` 20, `UPGRADE_ROW_STEP` 21 (마지막 줄 아래 끝 438), 줄은 외곽선 없는 띠.
+- 바닥 줄 "효과: …"(레벨당 효과)는 N단위에서도 그대로 둔다.
+- **업그레이드 툴팁(N단위):** 패널이 열려 있고 마우스가 항목 줄 위에 있을 때만(게임·엔딩 모두, `get_hovered_upgrade_index`; 키보드로 고른 줄은 바닥 줄 "효과: …"로 본다) 그 줄의 툴팁을 x `TOOLTIP_X` 276부터, 그 줄 위쪽 y에 맞춰 그린다(y 116 ~ 460 안으로 밀어 넣음, 오른쪽 끝 ≤ 792). 패널·정보바·목표 막대·방침 버튼과 겹치지 않는다. 줄: "이름  Lv l/max" / "지금: 효과"(0레벨 "지금: 아직 없음") / "다음: 효과" 또는 "다음: 최고 레벨" / "무대: …"(`UPGRADE_DECOR_TEXTS`) / "가격: 연구비 n" 또는 "가격: MAX" / (연구비 < 가격) 빨간 "연구비가 모자라요". 효과 = `UPGRADE_LEVEL_EFFECTS[id].format(round(레벨 × per_level, 6))`, 방침 배수 없음. 예: 참고서 Lv2 "지금: 공부 지식 +4", "다음: 공부 지식 +6"; 건강 관리 Lv3 "자연 감소 -30%"; 행운 부적 Lv1 "이벤트 확률 +5%p".
 - record.json: 모르는 id는 무시, 없는 id(예전 10종 파일의 새 3종)는 0.
 
 ### 환생과 대학원
@@ -217,9 +220,11 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 | 엔딩 | 엔딩 이름, 학사모(졸업·수료)/비구름(휴학), "졸업까지 m분 s초"(졸업), "누적 지식 n", "졸업 보너스: 연구비 +n"(졸업), 안내("R을 눌러 다시 하기" / "R: 환생 (명성 +1)" + "C: 대학원 진학"), [업그레이드 U]. 패널을 열면 가운데 패널을 오른쪽(284~788)으로 옮김 |
 
 - 게이지 막대 30 미만 빨강(실제 값 기준), 막대 전체 = 지금 최댓값, 라벨 줄 오른쪽 "지금/최대"(`GAUGE_VALUE_TEXT`, 반올림). 표정: 멘탈 ≥ 60 웃음, 30~59 일자, < 30 울음. 다크서클 체력 < 30.
-- 상태 패널 위쪽 상태 배지(피곤·우울·든든함·컨디션 좋음, 글자 배지 2열, y 128~). 아이콘은 다음 단위.
+- 상태 패널 위쪽 상태 배지(피곤·우울·든든함·컨디션 좋음, 아이콘 + 이름 배지 2열, y 128~, 마우스 올리면 효과 툴팁).
 - 목표 글자: 1~3학년 "다음 학년까지 지식 n", 4학년 "졸업까지 지식 n", 대학원 "다음 년차까지 지식 n".
-- 배경 4겹: 장소(학년: lawn/lecture/library/ceremony, 대학원 lab) → 하늘(계절·시간대: `get_season()`, `get_time_of_day()`, `get_sky_color()`) → 행동 소품(`last_action`) → 시설(산 시설). 바깥 장소는 저녁·밤 그늘 단계, 연구실 제외.
+- 배경 4겹: 장소(학년: lawn/lecture/library/ceremony, 대학원 lab) → 하늘(계절·시간대: `get_season()`, `get_time_of_day()`, `get_sky_color()`) → 행동 소품(`last_action`) → 시설(산 시설) + 업그레이드 장식(N단위). 바깥 장소는 저녁·밤 그늘 단계, 연구실 제외.
+- **업그레이드 장식(N단위):** 시설 3종은 건물, 나머지 10종(`DECOR_IDS`)은 Lv1부터 장식: 학식 메뉴 도시락(Lv3 2단, Lv5 주먹밥), 침대 쿠션(Lv3 2개, Lv5 3개), 참고서 책장(책 수 = Lv), 시간 관리 벽시계(Lv3 추, Lv5 종), 건강 관리 비타민 병(Lv3 2병, Lv5 3병), 행운 부적 부적 걸이(부적 수 = Lv), 장학금 트로피, 체력 증진 덤벨(Lv3 2개, Lv5 케틀벨), 멘탈 관리 화분(Lv3 잎, Lv5 꽃), 자기 관리 요가 매트(Lv3 말아 둔 매트, Lv5 물병). 조각 표 `DECOR_PIECES`(min_level, 스프라이트, 열·행 차이), 자리 `DECOR_SLOTS[장소]`(칸 좌표; 바깥 4곳 공통, 연구실 따로). 제자(4학년+외형 5종+점프)·행동 소품·벤치·졸업식 의자·시설 건물·서로와 겹치지 않고, 땅 시작 행(45) 위 팝업·알림 자리에도 없다(연구실 벽시계·트로피는 창 아래 벽).
+- 장식은 배경 그림에 함께 그려 캐시: `scenery_key` = (장소, 계절, 시설 튜플, 그늘 단계, `get_decor_levels()`). `make_scenery(place, season, facilities, shade=0, decor_levels=None)` — 앞 4개 인자 위치는 그대로. 장식도 그늘을 받는다(시설과 같은 규칙). Game 도우미: `get_decor_levels`, `get_decor_pieces(id, level)`, `get_decor_rects(place, levels)`(무대 안쪽 픽셀 Rect), `draw_decorations`.
 
 ### 도트 스타일과 효과 (보기만 바꾼다)
 
@@ -249,7 +254,8 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 ## 8. 개발 과정 (루프 단위)
 
 - 지난 단위: 원래 1~7일차, 연출 A·B, 이벤트 C~E, 방치형 G~K, 시간 제한 제거 L, 밸런스 확정 A안. 모두 main에 합쳐졌다(기획서 8절 표).
-- M단위(`feat/idle-depth`): 회복은 휴식에서만·든든함·새 자동 행동 규칙·최댓값·디버프·방침 수치·업그레이드 13종·진급 기준 2배. 화면 다듬기(툴팁·아이콘)는 다음 단위 N.
+- M단위(`feat/idle-depth`): 회복은 휴식에서만·든든함·새 자동 행동 규칙·최댓값·디버프·방침 수치·업그레이드 13종·진급 기준 2배.
+- N단위(`feat/idle-depth`): 업그레이드 툴팁, 업그레이드 장식(13종 모두 무대에 보임), 상태 배지 아이콘·툴팁. 규칙·수치 변화 없음.
 - 새 작업도 같은 방식: 단위 하나 → 개발 → 검수 → (불통과면 수정 → 재검수), 같은 단위 3회 불통과면 멈춘다.
 
 ## 9. 구조와 기록
@@ -273,6 +279,7 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 - 모듈 함수: `student.judge_ending`, `game.format_time`, `button.sprite_size`·`draw_pixel_box`·`draw_cut_rect`·`render_text`
 - Game 상태: `state`, `running`, `student`, `policy`, `auto_timer`, `last_action`, `ending`, `current_event`, `dialog_time`, `money`, `fame`, `upgrades`, `best_record`, `record_path`, `rng`, `graduation_bonus`, `grad_year`(property), `upgrade_panel_open`, `upgrade_cursor`, `notice`, `promotion_notice`, `particles`, `popups`, `press_timers`, `jump_timer`, `gauge_lag`, `buttons`, `choice_buttons`, `upgrade_button`, `ending_upgrade_button`, `mouse_pos`, `blink_time`, `screen`, `scenery_key`
 - Game 메서드: `handle_event`, `update`, `draw`, `start_new_game`, `reset_round`, `set_policy`, `choose_auto_action`, `do_action`, `get_auto_interval`, `get_auto_progress`, `get_event_chance`, `check_promotion`, `check_ending`, `end_game`, `roll_event`, `pick_event`, `start_event`, `get_event_candidates`, `choose_option`, `is_dialog_ready`, `earn_knowledge_money`, `get_money_multiplier`, `get_fame_multiplier`, `get_condition_money_ratio`, `is_good_condition`, `get_status_names`, `get_grad_money_multiplier`, `get_upgrade_cost`, `can_buy_upgrade`, `buy_upgrade`, `is_upgrade_maxed`, `get_upgrade_row_rect`, `reincarnate`, `enter_grad_school`, `can_reincarnate`, `is_graduation_ending`, `is_grad_school_ending`, `load_record`, `save_record`, `load_best_record`, `save_best_record`, `update_best_record`, `get_season`, `get_time_of_day`, `get_sky_color`, `get_place`, `get_owned_facilities`, `get_scene_shade`, `get_goal_text`, `get_ending_layout`, `get_shown_gauge`, `get_gauge_values`, `get_student_lift`, `is_blink_on`, `clear_effects`
+- Game 메서드(N단위): `get_upgrade_effect_text(id, level)`, `get_upgrade_tooltip_rows(id)`(→ [(글자, 색)]), `get_hovered_upgrade_index`(마우스가 올라간 줄, 없으면 None), `get_tooltip_rect(rows, anchor_top)`, `draw_tooltip`, `draw_upgrade_tooltip`(→ 상자 Rect 또는 None), `get_status_tip_text(name)`, `get_hovered_status`, `draw_status_tooltip`, `get_decor_levels`, `get_decor_pieces`, `get_decor_rects`, `draw_decorations`. Student: `get_badge_rect(index, top)`
 - Student 상태: `health`, `mental`, `knowledge`, `elapsed`, `decay_timer`, `grade`, `grad_year`, `graduation_time`(졸업 순간 elapsed, 없으면 None), `grad_entry_time`(대학원 진입 elapsed, 학부면 None), `traits`, `looks`, `flags`, `seen_events`, `event_counts`, `last_event_time`, `upgrades`, `full_until`(든든함 끝 elapsed, 없으면 None), `max_health`·`max_mental`(property)
 - Student 메서드: `update(dt)`, `feed`, `rest(recovery_ratio)`, `study(knowledge_ratio, cost_ratio)`, `is_tired`, `is_depressed`, `has_debuff(name)`, `is_full_buff_active`, `get_full_time_left`, `get_full_duration`, `get_statuses`, `get_self_care_regen`, `decay_once`, `promote`, `get_grade`, `get_next_goal`, `get_goal_start`, `get_goal_progress`, `get_knowledge_to_goal`, `has_graduated`, `get_cycle_index`, `get_cycle_time`, `is_exam_period`, `is_in_grad_school`, `enter_grad_school`, `get_grad_goal(year)`, `get_grad_cycles`, `get_grad_decay_ratio`, `get_health_decay`, `get_mental_decay`, `get_study_knowledge`, `get_upgrade_bonus`, `get_trait_bonus`, `is_dropped_out`, `get_ending`, `get_graduation_ending`, `get_radius`, `get_mouth`, `has_dark_circles`, `has_glasses`, `get_cycle_event_count`, `count_event`, `is_event_gap_passed`, `can_have_event`, `needs_guaranteed_event`, `can_see_event`, `apply_effects`, `add_trait`, `add_look`, `add_flag`, `change_health`, `change_mental`, `change_knowledge`
 - Button: `rect`, `text`, `is_clicked(pos)`, `draw(...)`

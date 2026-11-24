@@ -1031,6 +1031,9 @@ class Game:
             self.draw_playing()
             if self.upgrade_panel_open:
                 self.draw_upgrade_panel()
+                self.draw_upgrade_tooltip()
+            else:
+                self.draw_status_tooltip()
         elif self.state == config.STATE_EVENT:
             # 대화창이 떠 있는 동안에는 업그레이드 패널을 숨긴다(닫힌 것은 아니다)
             self.draw_playing()
@@ -1041,6 +1044,7 @@ class Game:
             self.draw_upgrade_button(self.ending_upgrade_button)
             if self.upgrade_panel_open:
                 self.draw_upgrade_panel()
+                self.draw_upgrade_tooltip()
         pygame.display.flip()
 
     # ------------------------------------------------------------
@@ -1192,10 +1196,65 @@ class Game:
                                                   (row + j * step_y) * cell,
                                                   width * cell, height * cell))
 
-    def make_scenery(self, place, season, facilities, shade=config.SCENE_SHADE_NONE):
-        """장소·계절·시설·그늘 단계로 배경 그림(무대 안쪽 크기 Surface)을 새로 그려 돌려준다.
+    def get_decor_levels(self):
+        """무대 장식이 있는 업그레이드 10종(config.DECOR_IDS 순서)의 지금 레벨을 튜플로 돌려준다.
 
-        순서: 장소 뒤쪽(땅·건물·나무) -> 산 시설 건물 -> 장소 앞쪽(벤치·꽃·의자 등).
+        배경 그림 캐시 열쇠에 들어간다. 업그레이드를 사서 레벨이 바뀔 때만 배경을 다시 그린다.
+        """
+        return tuple(self.upgrades[upgrade_id] for upgrade_id in config.DECOR_IDS)
+
+    def get_decor_pieces(self, upgrade_id, level):
+        """업그레이드 upgrade_id가 level일 때 보이는 장식 조각 [(스프라이트 이름, 열 차이, 행 차이)].
+
+        config.DECOR_PIECES에서 "이 레벨 이상이면 보임" 값이 level 이하인 조각만 고른다.
+        0레벨이면 빈 목록이다(장식 없음).
+        """
+        return [(sprite_name, col, row)
+                for min_level, sprite_name, col, row in config.DECOR_PIECES[upgrade_id]
+                if level >= min_level]
+
+    def get_decor_rects(self, place, decor_levels):
+        """장소 place에서 장식 레벨 decor_levels(get_decor_levels 모양)일 때 장식마다 차지하는
+        사각형을 {업그레이드 id: pygame.Rect(무대 안쪽 픽셀 좌표)}로 돌려준다(조각들을 모두 감싼 상자).
+
+        장식이 없는(0레벨) 업그레이드는 빠진다. 장식끼리·제자·소품과 겹치는지 확인할 때 쓴다.
+        """
+        cell = config.SCENE_CELL
+        rects = {}
+        for upgrade_id, level in zip(config.DECOR_IDS, decor_levels):
+            slot_col, slot_row = config.DECOR_SLOTS[place][upgrade_id]
+            box = None
+            for sprite_name, col, row in self.get_decor_pieces(upgrade_id, level):
+                width, height = sprite_size(config.SCENE_SPRITES[sprite_name][config.FIRST_ROW],
+                                            cell)
+                piece = pygame.Rect((slot_col + col) * cell, (slot_row + row) * cell,
+                                    width, height)
+                box = piece if box is None else box.union(piece)
+            if box is not None:
+                rects[upgrade_id] = box
+        return rects
+
+    def draw_decorations(self, surface, place, decor_levels, season,
+                         shade=config.SCENE_SHADE_NONE):
+        """배경 그림 surface 위에 업그레이드 장식(도시락·쿠션·책장 …)을 레벨만큼 그린다.
+
+        장식마다 장소별 자리(DECOR_SLOTS)에서 조각(DECOR_PIECES)을 차례로 찍는다.
+        배경과 같은 색 규칙(get_scene_color)을 쓰므로 바깥 장소의 저녁·밤 그늘도 똑같이 받는다.
+        """
+        cell = config.SCENE_CELL
+        for upgrade_id, level in zip(config.DECOR_IDS, decor_levels):
+            slot_col, slot_row = config.DECOR_SLOTS[place][upgrade_id]
+            for sprite_name, col, row in self.get_decor_pieces(upgrade_id, level):
+                self.draw_scene_sprite(surface, sprite_name, (slot_col + col) * cell,
+                                       (slot_row + row) * cell, cell, season, shade)
+
+    def make_scenery(self, place, season, facilities, shade=config.SCENE_SHADE_NONE,
+                     decor_levels=None):
+        """장소·계절·시설·그늘 단계·장식 레벨로 배경 그림(무대 안쪽 크기 Surface)을 새로 그려 돌려준다.
+
+        순서: 장소 뒤쪽(땅·건물·나무) -> 산 시설 건물 -> 장소 앞쪽(벤치·꽃·의자 등)
+        -> 업그레이드 장식(N단위, draw_decorations).
+        decor_levels를 주지 않으면 장식 없이 그린다(모든 레벨 0과 같다).
         하늘 자리는 COLOR_KEY로 비워 두어(set_colorkey) 매 프레임 그린 하늘이 비쳐 보인다.
         연구실은 창유리만 비어 있어서 창밖으로 하늘(계절·시간대)이 보인다.
         shade가 0보다 크면(저녁·밤) 모든 색을 밤 남색 쪽으로 조금 섞어 어둡게 그린다.
@@ -1213,17 +1272,20 @@ class Game:
             self.draw_scene_sprite(surface, sprite_name, x, bottom - height, cell, season, shade)
         for part in config.PLACE_FRONT[place]:
             self.draw_scene_part(surface, part, season, shade)
+        if decor_levels is not None:
+            self.draw_decorations(surface, place, decor_levels, season, shade)
         return surface
 
     def get_scenery(self):
-        """지금 장소·계절·시설·그늘 단계에 맞는 배경 그림을 돌려준다.
+        """지금 장소·계절·시설·그늘 단계·장식 레벨에 맞는 배경 그림을 돌려준다.
 
-        넷 중 하나라도 바뀌었을 때만 새로 그리고(make_scenery), 아니면 그려 둔 것을 다시 쓴다.
-        그늘 단계는 계절마다 몇 번만 바뀌므로(낮 -> 저녁 -> 밤 -> 새벽) 다시 그리는 일이 적다.
+        다섯 중 하나라도 바뀌었을 때만 새로 그리고(make_scenery), 아니면 그려 둔 것을 다시 쓴다.
+        그늘 단계는 계절마다 몇 번만 바뀌므로(낮 -> 저녁 -> 밤 -> 새벽) 다시 그리는 일이 적고,
+        장식 레벨은 업그레이드를 살 때만 바뀐다.
         그래서 매 프레임에는 하늘색 채우기와 그림 붙이기만 한다(60 FPS 유지).
         """
         key = (self.get_place(), self.get_season(), self.get_owned_facilities(),
-               self.get_scene_shade())
+               self.get_scene_shade(), self.get_decor_levels())
         if key != self.scenery_key:
             self.scenery = self.make_scenery(*key)
             self.scenery_key = key
@@ -1279,6 +1341,7 @@ class Game:
         살 수 있는 항목은 민트, 연구비가 모자라거나 최고 레벨이면 회색이다.
         고른 줄(↑↓)에는 왼쪽에 화살표를 붙이고, 마우스를 올린 줄(살 수 있을 때)은 밝게 칠한다.
         바닥 줄에는 고른 줄 항목의 효과 설명("효과: 든든함 +6초")을 쓴다.
+        자세한 설명(지금·다음 효과, 무대 장식, 가격)은 패널 밖 툴팁(draw_upgrade_tooltip)이 맡는다.
         """
         panel = pygame.Rect(config.UPGRADE_PANEL_RECT)
         draw_pixel_box(self.screen, panel, config.COLOR_BG, config.COLOR_PANEL_LIGHT,
@@ -1381,6 +1444,157 @@ class Game:
         cost_rect = cost.get_rect()
         cost_rect.midright = (config.UPGRADE_COST_RIGHT, inner.centery)
         self.screen.blit(cost, cost_rect)
+
+    # ------------------------------------------------------------
+    # 툴팁 (N단위): 업그레이드 항목·상태 배지 설명 상자
+    # ------------------------------------------------------------
+    def get_upgrade_effect_text(self, upgrade_id, level):
+        """업그레이드 upgrade_id가 level일 때의 효과 글자를 config 값으로 계산해 돌려준다.
+
+        효과 크기 = 레벨 x 레벨당 효과(UPGRADE_PER_LEVEL)를 UPGRADE_LEVEL_EFFECTS 틀에 넣는다.
+        예: 참고서 2레벨 -> "공부 지식 +4", 건강 관리 3레벨 -> "자연 감소 -30%".
+        방침 배수는 곱하지 않은 기본 효과다.
+        """
+        per_level = config.UPGRADES_BY_ID[upgrade_id][config.UPGRADE_PER_LEVEL]
+        amount = round(level * per_level, config.GAUGE_DECIMALS)
+        return config.UPGRADE_LEVEL_EFFECTS[upgrade_id].format(amount)
+
+    def get_upgrade_tooltip_rows(self, upgrade_id):
+        """업그레이드 툴팁에 쓸 줄 목록 [(글자, 색)]을 돌려준다.
+
+        1) "이름  Lv 지금/최대" 2) "지금: 효과"(0레벨이면 "지금: 아직 없음")
+        3) "다음: 효과" 또는 "다음: 최고 레벨" 4) "무대: …" 장식 설명
+        5) "가격: 연구비 N" 또는 "가격: MAX" 6) 살 수 없을 만큼 연구비가 적으면 "연구비가 모자라요"(빨강)
+        """
+        upgrade = config.UPGRADES_BY_ID[upgrade_id]
+        level = self.upgrades[upgrade_id]
+        max_level = upgrade[config.UPGRADE_MAX_LEVEL]
+        text_color = config.COLOR_TOOLTIP_TEXT
+        lines = [(config.UPGRADE_TIP_TITLE.format(upgrade[config.UPGRADE_NAME], level, max_level),
+                  config.COLOR_TOOLTIP_TITLE)]
+        if level > config.LEVEL_START:
+            now = config.UPGRADE_TIP_NOW.format(self.get_upgrade_effect_text(upgrade_id, level))
+        else:
+            now = config.UPGRADE_TIP_NOW_NONE
+        lines.append((now, text_color))
+        maxed = self.is_upgrade_maxed(upgrade_id)
+        if maxed:
+            lines.append((config.UPGRADE_TIP_MAXED, text_color))
+        else:
+            next_effect = self.get_upgrade_effect_text(upgrade_id, level + config.LEVEL_STEP)
+            lines.append((config.UPGRADE_TIP_NEXT.format(next_effect), text_color))
+        lines.append((config.UPGRADE_DECOR_TEXTS[upgrade_id], text_color))
+        if maxed:
+            lines.append((config.UPGRADE_TIP_COST_MAX, text_color))
+        else:
+            cost = self.get_upgrade_cost(upgrade_id)
+            lines.append((config.UPGRADE_TIP_COST.format(cost), text_color))
+            if self.money < cost:
+                lines.append((config.UPGRADE_TIP_POOR, config.COLOR_TOOLTIP_WARN))
+        return lines
+
+    def get_hovered_upgrade_index(self):
+        """마우스가 올라간 업그레이드 항목 줄 번호를 돌려준다. 줄 위에 없으면 None."""
+        if self.mouse_pos is not None:
+            for index in range(len(config.UPGRADE_IDS)):
+                if self.get_upgrade_row_rect(index).collidepoint(self.mouse_pos):
+                    return index
+        return None
+
+    def get_tooltip_rect(self, lines, anchor_top):
+        """줄 목록 lines를 담을 툴팁 상자 사각형을 돌려준다(그리지는 않는다).
+
+        왼쪽 x는 TOOLTIP_X(패널 오른쪽 끝 + 간격, 276)라서 왼쪽 패널과 겹치지 않는다.
+        위쪽 y는 anchor_top(항목 줄·배지 위쪽)에 맞추되, 무대 위 끝(116)보다 위로,
+        무대 아래 끝(460, 그림자 포함)보다 아래로 나가지 않게 옮긴다(정보바·버튼을 가리지 않음).
+        가로는 가장 긴 줄 + 양옆 여백(최소 TOOLTIP_MIN_WIDTH), 오른쪽은 화면 안에 들어오게 한다.
+        """
+        width = max(self.small_font.size(text)[config.FIRST_ROW] for text, _ in lines)
+        width = max(config.TOOLTIP_MIN_WIDTH, width + config.TOOLTIP_PAD_X * config.HALF)
+        height = len(lines) * config.TOOLTIP_LINE_HEIGHT + config.TOOLTIP_PAD_Y * config.HALF
+        rect = pygame.Rect(config.TOOLTIP_X, anchor_top, width, height)
+        bottom_max = config.TOOLTIP_BOTTOM_MAX - config.PIXEL_SIZE   # 아래 그림자 1칸 자리
+        if rect.bottom > bottom_max:
+            rect.bottom = bottom_max
+        rect.top = max(rect.top, config.TOOLTIP_TOP_MIN)
+        if rect.right > config.TOOLTIP_RIGHT_MAX:
+            rect.right = config.TOOLTIP_RIGHT_MAX
+        return rect
+
+    def draw_tooltip(self, lines, anchor_top):
+        """툴팁 상자(크림색 도트 상자, 반투명 없음)와 줄 글자들을 그리고 상자 사각형을 돌려준다."""
+        rect = self.get_tooltip_rect(lines, anchor_top)
+        draw_pixel_box(self.screen, rect, config.COLOR_TOOLTIP, config.COLOR_TOOLTIP_LIGHT,
+                       drop=config.COLOR_DROP)
+        y = rect.top + config.TOOLTIP_PAD_Y
+        for text, color in lines:
+            surface = render_text(self.small_font, text, color)
+            text_rect = surface.get_rect()
+            text_rect.midleft = (rect.left + config.TOOLTIP_PAD_X,
+                                 y + config.TOOLTIP_LINE_HEIGHT // config.HALF)
+            self.screen.blit(surface, text_rect)
+            y += config.TOOLTIP_LINE_HEIGHT
+        return rect
+
+    def draw_upgrade_tooltip(self):
+        """업그레이드 패널이 열려 있고 마우스가 항목 줄 위에 있으면, 그 줄의 툴팁을
+        패널 오른쪽(무대 위)에 그 줄 높이에 맞춰 그린다. 그린 상자 사각형(없으면 None)을 돌려준다.
+
+        마우스를 올렸을 때만 보여 준다(게임·엔딩 화면 모두). 그래서 패널만 열어 두면
+        무대와 엔딩 글자를 가리지 않는다. 키보드(↑↓)로 고른 줄은 패널 바닥 줄 "효과: …"가 알려 준다.
+        """
+        if not self.upgrade_panel_open:
+            return None
+        index = self.get_hovered_upgrade_index()
+        if index is None:
+            return None
+        rows = self.get_upgrade_tooltip_rows(config.UPGRADE_IDS[index])
+        return self.draw_tooltip(rows, self.get_upgrade_row_rect(index).top)
+
+    def get_status_tip_text(self, name):
+        """상태 배지 name의 툴팁 글자(조건 — 효과)를 config 값과 지금 상태로 채워 돌려준다.
+
+        예: "피곤: 체력 30 미만 — 공부 지식 ×0.7", "든든함: 남은 시간 12초 — 체력 감소 ×0.5".
+        든든함 남은 시간은 올림한 정수 초다.
+        """
+        template = config.STATUS_TIP_TEXTS[name]
+        if name == config.DEBUFF_TIRED:
+            return template.format(name=name, limit=config.LOW_GAUGE_LIMIT,
+                                   ratio=config.TIRED_KNOWLEDGE_RATIO)
+        if name == config.DEBUFF_DEPRESSED:
+            return template.format(name=name, limit=config.LOW_GAUGE_LIMIT,
+                                   ratio=config.DEPRESSED_MONEY_RATIO)
+        if name == config.BUFF_FULL:
+            left = -int(-self.student.get_full_time_left() // config.LEVEL_STEP)
+            return template.format(name=name, left=left, ratio=config.FULL_HEALTH_DECAY_RATIO)
+        bonus = config.POLICIES[config.POLICY_REST_FOCUS][config.POLICY_CONDITION_BONUS]
+        return template.format(name=name, limit=config.CONDITION_GOOD_MIN,
+                               ratio=round(config.NO_RATIO + bonus, config.GAUGE_DECIMALS))
+
+    def get_hovered_status(self):
+        """마우스가 올라간 상태 배지의 (번호, 이름)을 돌려준다. 없으면 None.
+
+        게임 화면이고 업그레이드 패널이 닫혀 있을 때만 배지가 보이므로 그때만 찾는다.
+        """
+        if (self.mouse_pos is None or self.state != config.STATE_PLAYING
+                or self.upgrade_panel_open):
+            return None
+        for index, name in enumerate(self.get_status_names()):
+            if self.student.get_badge_rect(index, config.STATUS_BADGE_Y).collidepoint(
+                    self.mouse_pos):
+                return index, name
+        return None
+
+    def draw_status_tooltip(self):
+        """마우스를 올린 상태 배지가 있으면 그 효과 툴팁을 상태 패널 오른쪽(무대 위)에 그린다.
+        그린 상자 사각형(없으면 None)을 돌려준다."""
+        hovered = self.get_hovered_status()
+        if hovered is None:
+            return None
+        index, name = hovered
+        lines = [(self.get_status_tip_text(name), config.COLOR_TOOLTIP_TITLE)]
+        return self.draw_tooltip(lines,
+                                 self.student.get_badge_rect(index, config.STATUS_BADGE_Y).top)
 
     # ------------------------------------------------------------
     # 랜덤 이벤트 화면 (D단위): 자동형 알림, 대화창, 멈춤 점무늬

@@ -1906,3 +1906,329 @@ PROP_COLORS = {
 }
 PROP_X = 344                        # 소품 왼쪽 x (무대 안쪽 기준, 제자 오른쪽)
 PROP_BOTTOM = 300                   # 소품 아래 끝 y (무대 안쪽 기준)
+
+# ---------------------------------------------------------------
+# 23. 화면 다듬기 (N단위): 업그레이드 툴팁, 무대 장식 13종, 상태 아이콘
+# ---------------------------------------------------------------
+# 툴팁 공통: 패널(업그레이드·상태) 오른쪽 무대 위에 뜨는 크림색 도트 상자(반투명 없음).
+# 패널 오른쪽 끝 268 + 그림자·간격 8 = 276부터 그려서 패널과 겹치지 않는다.
+# 위로는 무대 위 끝(116)보다 올라가지 않으므로 정보바·목표 막대·시험 배너를 가리지 않고,
+# 아래로는 무대 아래 끝(460)을 넘지 않는다(방침 버튼을 가리지 않음).
+TOOLTIP_X = STATUS_PANEL_X + STATUS_PANEL_WIDTH + PIXEL_SIZE * 2   # 276
+TOOLTIP_TOP_MIN = PANEL_Y                    # 툴팁 상자 위쪽 y의 최솟값 (116)
+TOOLTIP_BOTTOM_MAX = PANEL_Y + PANEL_HEIGHT  # 툴팁 상자 아래 끝(그림자 포함)의 최댓값 (460)
+TOOLTIP_RIGHT_MAX = SCREEN_WIDTH - PIXEL_SIZE * 2   # 툴팁 상자 오른쪽 끝의 최댓값 (792)
+TOOLTIP_PAD_X = PIXEL_SIZE * 3               # 상자 바깥 끝에서 글자까지 왼쪽·오른쪽 여백 (외곽선 포함 12)
+TOOLTIP_PAD_Y = PIXEL_SIZE * 2               # 상자 바깥 끝에서 글자까지 위·아래 여백 (외곽선 포함 8)
+TOOLTIP_LINE_HEIGHT = 19                     # 툴팁 글자 한 줄 높이 (작은 글자 14)
+TOOLTIP_MIN_WIDTH = 168                      # 툴팁 상자 최소 가로 길이
+COLOR_TOOLTIP = COLOR_BG                     # 툴팁 몸통 (크림)
+COLOR_TOOLTIP_LIGHT = COLOR_PANEL_LIGHT      # 툴팁 위 하이라이트 줄
+COLOR_TOOLTIP_TITLE = COLOR_TEXT             # 첫 줄(이름·레벨) 글자 색
+COLOR_TOOLTIP_TEXT = COLOR_TEXT_SOFT         # 보통 줄 글자 색
+COLOR_TOOLTIP_WARN = COLOR_RED_DARK          # "연구비가 모자라요" 글자 색
+
+# 업그레이드 툴팁 글자 (모두 config 값으로 계산해 채운다)
+UPGRADE_TIP_TITLE = "{}  Lv {}/{}"           # 이름, 지금 레벨, 최대 레벨
+UPGRADE_TIP_NOW = "지금: {}"                 # 지금 레벨의 효과
+UPGRADE_TIP_NOW_NONE = "지금: 아직 없음"      # 0레벨
+UPGRADE_TIP_NEXT = "다음: {}"                # 다음 레벨의 효과
+UPGRADE_TIP_MAXED = "다음: 최고 레벨"          # 최고 레벨이면
+UPGRADE_TIP_COST = "가격: 연구비 {}"
+UPGRADE_TIP_COST_MAX = "가격: MAX"
+UPGRADE_TIP_POOR = "연구비가 모자라요"
+# 업그레이드 id -> 레벨 효과 글자 틀. 채우는 값 = 레벨 x 레벨당 효과(UPGRADE_PER_LEVEL).
+# 방침 배수는 곱하지 않은 기본 효과다. "{:.0%}"는 0.15 -> "15%" 처럼 쓴다
+UPGRADE_LEVEL_EFFECTS = {
+    UPGRADE_MENU: "든든함 지속 +{:g}초",
+    UPGRADE_BED: "휴식 체력·멘탈 +{:g}",
+    UPGRADE_BOOK: "공부 지식 +{:g}",
+    UPGRADE_TIME: "자동 행동 간격 -{:g}초",
+    UPGRADE_HEALTH_CARE: "자연 감소 -{:.0%}",
+    UPGRADE_LIBRARY: "공부 지식 +{:g}",
+    UPGRADE_CAFE: "휴식 체력 +{:g}",
+    UPGRADE_GYM: "공부 체력 소모 -{:g}",
+    UPGRADE_CHARM: "이벤트 확률 +{:.0%}p",
+    UPGRADE_SCHOLARSHIP: "장학금 이벤트 (연구비 {:g} x 학년)",
+    UPGRADE_HEALTH_MAX: "체력 최대 +{:g}",
+    UPGRADE_MENTAL_MAX: "멘탈 최대 +{:g}",
+    UPGRADE_SELF_CARE: "1초마다 체력·멘탈 +{:g}",
+}
+# 업그레이드 id -> 무대 장식 한 줄 설명 (툴팁 4번째 줄)
+UPGRADE_DECOR_TEXTS = {
+    UPGRADE_MENU: "무대: 도시락이 생겨요",
+    UPGRADE_BED: "무대: 쿠션이 생겨요",
+    UPGRADE_BOOK: "무대: 책장이 생겨요 (책 = Lv)",
+    UPGRADE_TIME: "무대: 벽시계가 생겨요",
+    UPGRADE_HEALTH_CARE: "무대: 비타민 병이 생겨요",
+    UPGRADE_LIBRARY: "무대: 도서관 건물이 생겨요",
+    UPGRADE_CAFE: "무대: 카페 건물이 생겨요",
+    UPGRADE_GYM: "무대: 헬스장 건물이 생겨요",
+    UPGRADE_CHARM: "무대: 부적 걸이 (부적 = Lv)",
+    UPGRADE_SCHOLARSHIP: "무대: 트로피가 생겨요",
+    UPGRADE_HEALTH_MAX: "무대: 덤벨이 생겨요",
+    UPGRADE_MENTAL_MAX: "무대: 화분이 생겨요",
+    UPGRADE_SELF_CARE: "무대: 요가 매트가 생겨요",
+}
+
+# 상태 배지 아이콘(N단위): 배지 안 왼쪽에 작은 도트 아이콘(8 x 6칸, 칸 2픽셀 = 16 x 12픽셀) + 이름.
+# 배지 안쪽 높이가 16픽셀이라 아이콘은 12픽셀로 세로 가운데에 둔다
+STATUS_ICON_CELL = PIXEL_SIZE // 2           # 아이콘 도트 1칸 크기(2픽셀)
+STATUS_ICON_GAP = PIXEL_SIZE                 # 아이콘과 이름 글자 사이 간격
+STATUS_ICON_PAD = PIXEL_SIZE                 # 배지 안쪽 왼쪽 끝과 아이콘 사이 여백
+STATUS_ICONS = {
+    DEBUFF_TIRED: [                          # 피곤: 졸음 표시 Zz
+        "zzzz....",
+        "...z....",
+        "..z.zzz.",
+        ".z....z.",
+        "zzzz.z..",
+        "....zzz.",
+    ],
+    DEBUFF_DEPRESSED: [                      # 우울: 비구름
+        "..ooo...",
+        ".occcoo.",
+        "occcccco",
+        ".oooooo.",
+        "..r..r..",
+        ".r..r...",
+    ],
+    BUFF_FULL: [                             # 든든함: 김 나는 밥그릇
+        ".s..s...",
+        ".wwwwww.",
+        "oooooooo",
+        "obbbbbbo",
+        ".obbbbo.",
+        "..oooo..",
+    ],
+    CONDITION_GOOD: [                        # 컨디션 좋음: 반짝 별
+        "...o....",
+        "..oWo...",
+        "ooWWWoo.",
+        ".oWWWo..",
+        ".oWoWo..",
+        ".o...o..",
+    ],
+}
+STATUS_ICON_COLORS = {
+    "o": COLOR_OUTLINE, "z": COLOR_OUTLINE, "c": COLOR_CLOUD, "r": COLOR_SKY_DARK,
+    "s": COLOR_CLOUD_SHADE, "w": COLOR_WHITE, "b": COLOR_PINK_DARK, "W": COLOR_WHITE,
+}
+# 상태 배지 툴팁 글자 틀 (값은 config 상수와 지금 상태로 채운다)
+STATUS_TIP_TEXTS = {
+    DEBUFF_TIRED: "{name}: 체력 {limit} 미만 — 공부 지식 ×{ratio:g}",
+    DEBUFF_DEPRESSED: "{name}: 멘탈 {limit} 미만 — 버는 연구비 ×{ratio:g}",
+    BUFF_FULL: "{name}: 남은 시간 {left}초 — 체력 감소 ×{ratio:g}",
+    CONDITION_GOOD: "{name}: 휴식 위주, 체력·멘탈 {limit} 이상 — 버는 연구비 ×{ratio:g}",
+}
+
+# 무대 장식(N단위): 시설이 아닌 업그레이드 10종은 레벨 1부터 무대에 작은 도트 소품이 생긴다.
+# 시설 3종(도서관·카페·헬스장)은 예전처럼 건물(FACILITY_SPRITES)이다.
+# 장식은 배경 그림(make_scenery)에 함께 그려 캐시한다(열쇠에 장식 레벨이 들어간다).
+# 그래서 바깥 장소에서는 저녁·밤 그늘도 배경과 똑같이 받는다(시설과 같은 규칙).
+SCENE_COLORS.update({
+    "lunch_lid": COLOR_PINK, "lunch_lid2": COLOR_MINT_DARK, "lunch_box": COLOR_APRICOT,
+    "rice": COLOR_WHITE, "nori": (64, 84, 72),
+    "cushion_sky": COLOR_SKY, "cushion_sky_light": COLOR_SKY_LIGHT,
+    "cushion_pink": COLOR_PINK, "cushion_pink_light": COLOR_PINK_LIGHT,
+    "cushion_yellow": COLOR_YELLOW, "cushion_yellow_light": COLOR_YELLOW_LIGHT,
+    "shelf_back": (150, 104, 78), "book_apricot": COLOR_APRICOT,
+    "clock_face": COLOR_WHITE, "clock_window": (110, 76, 64),
+    "vitamin_orange": (246, 156, 72), "vitamin_green": (120, 196, 120),
+    "vitamin_pink": COLOR_PINK_DARK,
+    "charm_red": (226, 88, 84), "charm_sky": COLOR_SKY_DARK,
+    "trophy_light": (255, 244, 196),
+    "dumbbell": (92, 96, 130), "kettle": (232, 82, 90),
+    "bloom": COLOR_PINK_DARK, "mat": COLOR_MINT_DARK, "mat_light": COLOR_MINT,
+    "mat_roll": COLOR_PINK, "water": COLOR_SKY,
+})
+DECOR_BOOK = ["PP", "PP", "ww", "PP", "PP"]        # 책장에 꽂힌 책 한 권 (2 x 5)
+DECOR_CUSHION = [".ooooo.", "oClCCCo", "oCCClCo", ".ooooo."]   # 쿠션 (7 x 4)
+DECOR_LUNCHBOX = ["oooooooo", "oPPPPPPo", "oooooooo", "oBBBBBBo", "oooooooo"]  # 도시락 (8 x 5)
+DECOR_VITAMIN = ["oooo", "oCCo", "oooo", "oVVo", "oLVo", "oooo"]   # 비타민 병 (4 x 6)
+DECOR_CHARM = [".o.", "ooo", "oRo", "oYo", "oRo", "ooo"]           # 부적 (3 x 6)
+SCENE_SPRITES.update({
+    "decor_lunchbox": (DECOR_LUNCHBOX, {"o": "outline", "P": "lunch_lid", "B": "lunch_box"}),
+    "decor_lunchbox2": (DECOR_LUNCHBOX, {"o": "outline", "P": "lunch_lid2", "B": "lunch_box"}),
+    "decor_riceball": ([                         # 주먹밥 (5 x 5)
+        "..o..",
+        ".oWo.",
+        "oWWWo",
+        "oNNNo",
+        "ooooo",
+    ], {"o": "outline", "W": "rice", "N": "nori"}),
+    "decor_cushion_sky": (DECOR_CUSHION,
+                          {"o": "outline", "C": "cushion_sky", "l": "cushion_sky_light"}),
+    "decor_cushion_pink": (DECOR_CUSHION,
+                           {"o": "outline", "C": "cushion_pink", "l": "cushion_pink_light"}),
+    "decor_cushion_yellow": (DECOR_CUSHION, {"o": "outline", "C": "cushion_yellow",
+                                             "l": "cushion_yellow_light"}),
+    "decor_shelf": ([                            # 낮은 책장 (14 x 9), 안쪽 10칸에 책이 꽂힌다
+        "oooooooooooooo",
+        "oWWWWWWWWWWWWo",
+        "oWKKKKKKKKKKWo",
+        "oWKKKKKKKKKKWo",
+        "oWKKKKKKKKKKWo",
+        "oWKKKKKKKKKKWo",
+        "oWKKKKKKKKKKWo",
+        "oWWWWWWWWWWWWo",
+        "oooooooooooooo",
+    ], {"o": "outline", "W": "wood", "K": "shelf_back"}),
+    "decor_book_pink": (DECOR_BOOK, {"P": "book_pink", "w": "white"}),
+    "decor_book_mint": (DECOR_BOOK, {"P": "book_mint", "w": "white"}),
+    "decor_book_sky": (DECOR_BOOK, {"P": "book_sky", "w": "white"}),
+    "decor_book_yellow": (DECOR_BOOK, {"P": "book_yellow", "w": "white"}),
+    "decor_book_apricot": (DECOR_BOOK, {"P": "book_apricot", "w": "white"}),
+    "decor_clock": ([                            # 벽시계(괘종시계) (7 x 13): 시계판 + 추 상자
+        "..ooo..",
+        ".oWWWo.",
+        "oWWoWWo",
+        "oWWooWo",
+        "oWWWWWo",
+        ".oWWWo.",
+        "..ooo..",
+        ".ooooo.",
+        ".oTTTo.",
+        ".oKKKo.",
+        ".oKKKo.",
+        ".oTTTo.",
+        ".ooooo.",
+    ], {"o": "outline", "W": "clock_face", "T": "wood", "K": "clock_window"}),
+    "decor_pendulum": ([".o.", "oYo"], {"o": "outline", "Y": "gold"}),   # 추 (Lv3)
+    "decor_clock_bells": ([                      # 시계 위 종 두 개 (Lv5)
+        "YY...YY",
+        ".o...o.",
+    ], {"o": "outline", "Y": "gold"}),
+    "decor_vitamin_orange": (DECOR_VITAMIN, {"o": "outline", "C": "white",
+                                             "V": "vitamin_orange", "L": "white"}),
+    "decor_vitamin_green": (DECOR_VITAMIN, {"o": "outline", "C": "white",
+                                            "V": "vitamin_green", "L": "white"}),
+    "decor_vitamin_pink": (DECOR_VITAMIN, {"o": "outline", "C": "white",
+                                           "V": "vitamin_pink", "L": "white"}),
+    "decor_charm_rack": ([                       # 부적 걸이 (11 x 10): 나무 막대 + 기둥 2개
+        "ooooooooooo",
+        "oTTTTTTTTTo",
+        "ooooooooooo",
+        "o.........o",
+        "o.........o",
+        "o.........o",
+        "o.........o",
+        "o.........o",
+        "o.........o",
+        "o.........o",
+    ], {"o": "outline", "T": "wood"}),
+    "decor_charm_red": (DECOR_CHARM, {"o": "outline", "R": "charm_red", "Y": "gold"}),
+    "decor_charm_sky": (DECOR_CHARM, {"o": "outline", "R": "charm_sky", "Y": "gold"}),
+    "decor_trophy": ([                           # 트로피 (6 x 7)
+        "oooooo",
+        "oYyYYo",
+        ".oYYo.",
+        "..oo..",
+        ".oooo.",
+        ".oWWo.",
+        ".oooo.",
+    ], {"o": "outline", "Y": "gold", "y": "trophy_light", "W": "wood"}),
+    "decor_dumbbell": ([                         # 덤벨 (9 x 4)
+        ".oo...oo.",
+        "oGGoooGGo",
+        "oGGoooGGo",
+        ".oo...oo.",
+    ], {"o": "outline", "G": "dumbbell"}),
+    "decor_kettlebell": ([                       # 케틀벨 (5 x 5, Lv5)
+        ".ooo.",
+        "o...o",
+        "ooooo",
+        "oKKKo",
+        ".ooo.",
+    ], {"o": "outline", "K": "kettle"}),
+    "decor_pot": ([                              # 화분 (6 x 4)
+        "oooooo",
+        "oRRRRo",
+        ".oRRo.",
+        ".oooo.",
+    ], {"o": "outline", "R": "pot"}),
+    "decor_sprout": ([                           # 새싹 (Lv1)
+        ".o..o.",
+        "oPooPo",
+        "..oo..",
+    ], {"o": "outline", "P": "plant"}),
+    "decor_leaves": ([                           # 큰 잎 (Lv3)
+        "oo..oo",
+        "oPooPo",
+        "oPPPPo",
+        ".oPPo.",
+    ], {"o": "outline", "P": "plant"}),
+    "decor_bloom": ([".oo.", "oAAo", ".oo."], {"o": "outline", "A": "bloom"}),  # 꽃 (Lv5)
+    "decor_mat": ([                              # 요가 매트 (14 x 3, 바닥에 깔림)
+        "oooooooooooooo",
+        "oMmMmMmMmMmMmo",
+        "oooooooooooooo",
+    ], {"o": "outline", "M": "mat", "m": "mat_light"}),
+    "decor_mat_roll": ([".oo.", "oNNo", "oNNo", ".oo."],   # 말아 둔 매트 (Lv3)
+                       {"o": "outline", "N": "mat_roll"}),
+    "decor_water": ([".o.", "oBo", "oBo", "ooo"],          # 물병 (Lv5)
+                    {"o": "outline", "B": "water"}),
+})
+# 장식이 있는 업그레이드 id (시설 3종 제외, 패널 순서)
+DECOR_IDS = [UPGRADE_MENU, UPGRADE_BED, UPGRADE_BOOK, UPGRADE_TIME, UPGRADE_HEALTH_CARE,
+             UPGRADE_CHARM, UPGRADE_SCHOLARSHIP, UPGRADE_HEALTH_MAX, UPGRADE_MENTAL_MAX,
+             UPGRADE_SELF_CARE]
+# 업그레이드 id -> 장식 조각 목록 [(이 레벨 이상이면 보임, 스프라이트 이름, 열 차이, 행 차이)].
+# 열·행 차이는 장식 자리(DECOR_SLOTS)의 왼쪽 위 칸에서 잰다. 목록 순서대로 그린다.
+# 레벨이 오를수록 조각이 늘어난다: 대개 Lv1 기본, Lv3·Lv5에 하나씩 더(책장 책·부적은 레벨마다 하나)
+DECOR_PIECES = {
+    UPGRADE_MENU: [(1, "decor_lunchbox", 0, 4), (3, "decor_lunchbox2", 0, 0),
+                   (5, "decor_riceball", 9, 4)],                         # 14 x 9칸
+    UPGRADE_BED: [(1, "decor_cushion_sky", 0, 6), (3, "decor_cushion_pink", 0, 3),
+                  (5, "decor_cushion_yellow", 0, 0)],                    # 7 x 10칸
+    UPGRADE_BOOK: [(1, "decor_shelf", 0, 0), (1, "decor_book_pink", 2, 2),
+                   (2, "decor_book_mint", 4, 2), (3, "decor_book_sky", 6, 2),
+                   (4, "decor_book_yellow", 8, 2), (5, "decor_book_apricot", 10, 2)],  # 14 x 9칸
+    UPGRADE_TIME: [(1, "decor_clock", 0, 2), (3, "decor_pendulum", 2, 11),
+                   (5, "decor_clock_bells", 0, 0)],                      # 7 x 15칸
+    UPGRADE_HEALTH_CARE: [(1, "decor_vitamin_orange", 0, 0), (3, "decor_vitamin_green", 3, 0),
+                          (5, "decor_vitamin_pink", 6, 0)],              # 10 x 6칸
+    UPGRADE_CHARM: [(1, "decor_charm_rack", 0, 0), (1, "decor_charm_red", 1, 3),
+                    (2, "decor_charm_sky", 4, 3), (3, "decor_charm_red", 7, 3)],  # 11 x 10칸
+    UPGRADE_SCHOLARSHIP: [(1, "decor_trophy", 0, 0)],                    # 6 x 7칸
+    UPGRADE_HEALTH_MAX: [(1, "decor_dumbbell", 0, 4), (3, "decor_dumbbell", 0, 0),
+                         (5, "decor_kettlebell", 10, 3)],                # 15 x 8칸
+    UPGRADE_MENTAL_MAX: [(1, "decor_pot", 0, 9), (1, "decor_sprout", 0, 6),
+                         (3, "decor_leaves", 0, 3), (5, "decor_bloom", 1, 0)],  # 6 x 13칸
+    UPGRADE_SELF_CARE: [(1, "decor_mat", 0, 4), (3, "decor_mat_roll", 1, 0),
+                        (5, "decor_water", 10, 0)],                      # 14 x 7칸
+}
+# 장식 자리: 장소 -> {업그레이드 id: (왼쪽 열, 위 행)} (무대 안쪽 칸 좌표, 가로 124 x 세로 84칸).
+# 제자(4학년 반지름 70 + 외형 5종 + 점프까지 열 34~94, 행 12~72), 행동 소품(열 86~109, 행 62~74),
+# 잔디 벤치(열 4~17·106~119, 행 49~57), 졸업식 의자(열 4~33 행 64~82, 열 90~119 행 75~82),
+# 알림·이벤트 팝업 자리(무대 위쪽 구석, 땅 시작 행 45 위)와 겹치지 않는 땅 띠에 둔다.
+OUTDOOR_DECOR_SLOTS = {
+    UPGRADE_CHARM: (18, 45),          # 왼쪽 벤치 옆 (열 18~28, 행 45~54)
+    UPGRADE_BOOK: (19, 55),           # 그 아래 (열 19~32, 행 55~63)
+    UPGRADE_SELF_CARE: (34, 76),      # 아래 띠 (열 34~47, 행 76~82)
+    UPGRADE_HEALTH_MAX: (49, 75),     # (열 49~63, 행 75~82)
+    UPGRADE_MENU: (65, 74),           # (열 65~78, 행 74~82)
+    UPGRADE_HEALTH_CARE: (80, 77),    # (열 80~89, 행 77~82)
+    UPGRADE_TIME: (97, 46),           # 제자 오른쪽, 소품 위 (열 97~103, 행 46~60)
+    UPGRADE_SCHOLARSHIP: (110, 57),   # 오른쪽 벤치 아래, 쿠션 위 (열 110~115, 행 57~63)
+    UPGRADE_BED: (110, 65),           # 소품 오른쪽 (열 110~116, 행 65~74)
+    UPGRADE_MENTAL_MAX: (118, 62),    # (열 118~123, 행 62~74)
+}
+DECOR_SLOTS = {
+    PLACE_LAWN: OUTDOOR_DECOR_SLOTS,
+    PLACE_LECTURE: OUTDOOR_DECOR_SLOTS,
+    PLACE_LIBRARY: OUTDOOR_DECOR_SLOTS,
+    PLACE_CEREMONY: OUTDOOR_DECOR_SLOTS,
+    PLACE_LAB: {                      # 연구실: 벽시계·트로피는 창 아래 벽, 나머지는 바닥(행 62~)
+        UPGRADE_TIME: (97, 42),       # 벽에 걸린 시계 (열 97~103, 행 42~56)
+        UPGRADE_SCHOLARSHIP: (105, 55),   # 벽 앞 바닥선에 선 트로피 (열 105~110, 행 55~61)
+        UPGRADE_BOOK: (6, 70),        # 큰 책장 앞 바닥 (열 6~19, 행 70~78)
+        UPGRADE_CHARM: (21, 68),      # (열 21~31, 행 68~77)
+        UPGRADE_SELF_CARE: (34, 76),
+        UPGRADE_HEALTH_MAX: (49, 75),
+        UPGRADE_MENU: (65, 74),
+        UPGRADE_HEALTH_CARE: (80, 77),
+        UPGRADE_BED: (110, 70),       # (열 110~116, 행 70~79)
+        UPGRADE_MENTAL_MAX: (118, 66),    # (열 118~123, 행 66~78)
+    },
+}
