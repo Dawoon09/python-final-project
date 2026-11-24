@@ -23,7 +23,7 @@ import pytest  # noqa: E402
 
 import config  # noqa: E402
 from button import Button, draw_cut_rect, draw_pixel_box, render_text, sprite_size  # noqa: E402
-from conftest import press  # noqa: E402
+from conftest import press, spec_appendix, spec_rule_text  # noqa: E402
 from game import Game  # noqa: E402
 from student import Student  # noqa: E402
 
@@ -112,7 +112,8 @@ GAME_CONSTANTS = [
     "GAUGE_MIN", "GAUGE_MAX", "HEALTH_START", "MENTAL_START", "KNOWLEDGE_START",
     "HEALTH_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC", "MENTAL_DECAY_PER_SEC_EXAM",
     "DECAY_INTERVAL", "TIME_EPSILON", "LOW_GAUGE_LIMIT",
-    "FEED_HEALTH", "REST_MENTAL", "REST_KNOWLEDGE", "STUDY_HEALTH", "STUDY_MENTAL",
+    # M단위: FEED_HEALTH 삭제(학식 = 버프 든든함). M_REMOVED_CONSTANTS 에서 확인
+    "REST_MENTAL", "REST_KNOWLEDGE", "STUDY_HEALTH", "STUDY_MENTAL",
     "STUDY_KNOWLEDGE", "STUDY_KNOWLEDGE_EXAM",  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
     "MENTAL_SMILE_MIN", "MENTAL_FLAT_MIN", "BASE_RADIUS", "RADIUS_PER_GRADE", "GLASSES_GRADE",
     "MOUTH_SMILE", "MOUTH_FLAT", "MOUTH_CRY",
@@ -132,7 +133,9 @@ UI_TEXTS = [
 
 # (L단위) 기획서 11절(시간 제한 없애기)로 없어진 상수와 화면 글자
 L_REMOVED_CONSTANTS = ["SECONDS_PER_GRADE", "TOTAL_SECONDS", "TOP_GRADUATE_KNOWLEDGE",
-                       "NORMAL_GRADUATE_KNOWLEDGE", "TIME_LEFT_TEXT"]
+                       "NORMAL_GRADUATE_KNOWLEDGE", "TIME_LEFT_TEXT",
+                       # (M단위) 회복은 휴식에서만: 학식 체력 +20 상수가 없어졌다
+                       "FEED_HEALTH"]
 
 
 def test_game_constants_same_as_main(tmp_path):
@@ -330,6 +333,12 @@ I_CHANGED = {"Student.update", "Student.is_time_over", "Student.is_exam_period",
 # - Student.get_graduation_ending: 지식 -> graduation_time, 졸업 전이면 None
 L_CHANGED = {"judge_ending", "Student.get_grade", "Student.get_graduation_ending"}
 
+# (M단위) 기획서 2절(회복은 휴식에서만·든든함·최댓값·디버프)이 규칙 자체를 바꾼 함수.
+# 새 규칙은 test_idle_m.py 에서 확인한다.
+# - Student.feed: 체력 +20 -> 버프 든든함(full_until)
+# - Student.rest: 체력 +15(기본) + 방침 휴식 회복 배수(recovery_ratio)
+M_CHANGED = {"Student.feed", "Student.rest"}
+
 
 @pytest.mark.parametrize("name", ["student.py", "game.py", "button.py"])
 def test_logic_functions_unchanged_from_main(name):
@@ -345,7 +354,8 @@ def test_logic_functions_unchanged_from_main(name):
     changed = []
     for fname, node in old.items():
         if (_is_drawing(fname) or fname == "Game.__init__" or fname in G_CHANGED
-                or fname in H_CHANGED or fname in I_CHANGED or fname in L_CHANGED):
+                or fname in H_CHANGED or fname in I_CHANGED or fname in L_CHANGED
+                or fname in M_CHANGED):
             continue
         assert fname in new, f"{name}: {fname} 이 사라짐"
         new_node = _remove_event_hooks(fname, new[fname])
@@ -483,14 +493,43 @@ def test_policy_button_texts_match_spec(policy, expected):
     assert config.POLICIES[policy][config.POLICY_TEXT] == expected
 
 
+# 화면 문구 틀의 "{}" 자리를 기획서가 쓰는 자리 글자로 채운 것 (기획서 6절 표기: n, m분 s초, …)
+SPEC_UI_STRINGS = [
+    config.TITLE_TEXT, config.ENDING_LEAVE, config.ENDING_TOP, config.ENDING_NORMAL,
+    config.ENDING_BARELY, config.EXAM_BANNER_TEXT, config.START_HINT_TEXT,
+    config.RESTART_HINT_TEXT, config.REINCARNATE_HINT_TEXT, config.GRAD_SCHOOL_HINT_TEXT,
+    config.UPGRADE_BUTTON_TEXT, config.UPGRADE_PANEL_TITLE, config.AUTO_HINT_TEXT,
+    config.GOAL_LABEL_TEXT, config.HEALTH_LABEL, config.MENTAL_LABEL, config.KNOWLEDGE_LABEL,
+    config.MONEY_LABEL,
+    *(config.POLICIES[p][config.POLICY_TEXT] for p in config.POLICY_ORDER),
+    config.BEST_RECORD_TEXT.format("n"),
+    config.TITLE_WALLET_TEXT.format("n", "n"),
+    config.ENDING_KNOWLEDGE_TEXT.format("n"),
+    config.GRADUATION_BONUS_TEXT.format("n"),
+    config.ENDING_TIME_TEXT.format(config.TIME_TEXT.format("m", "s")),
+    config.ELAPSED_TEXT.format(config.TIME_TEXT.format("m", "s")),
+    config.GRADE_TEXT.format("n"), config.GRAD_YEAR_TEXT.format("n"),
+    config.NEXT_GRADE_TEXT.format("n"), config.GRADUATION_GOAL_TEXT.format("n"),
+    config.NEXT_GRAD_YEAR_TEXT.format("n"),
+    config.PROMOTION_TEXT.format("n"), config.GRAD_PROMOTION_TEXT.format("n"),
+    config.ENDING_GRAD_TEXT.format("n"),
+    config.CHOICE_BUTTON_TEXT.format(1, "…"), config.CHOICE_BUTTON_TEXT.format(2, "…"),
+]
+
+
 def test_korean_strings_appear_in_spec_document():
-    """엔딩 이름·배너·안내 문구가 기획서 본문에 그대로 있다(글자 하나 다르지 않음)."""
-    spec = (ROOT / "docs" / "기획서.md").read_text(encoding="utf-8")
-    for text in ("제자 키우기", "휴학", "수석 졸업", "무사 졸업", "아슬아슬 졸업",
-                 "학식 먹이기 [1]", "쉬게 하기 [2]", "공부시키기 [3]",
-                 "시험 기간! 공부 효과 2배, 멘탈 감소 2배", "누른 뒤 1초 동안 회색 (쿨타임)",
-                 "Enter를 눌러 시작", "R을 눌러 다시 하기", "체력", "멘탈", "지식"):
-        assert text in spec, text
+    """(문서 정리) 지금 화면에 쓰는 한글 문구(config)가 기획서 규칙 본문에 글자 그대로 있다.
+
+    예전에는 행동 버튼 글자·쿨타임 문구를 보았지만, 방치형 전환으로 그 문구는 화면에서
+    사라졌다. 그 옛 문구는 규칙 본문에 없고 부록 변경 이력에만 남아 있어야 한다.
+    """
+    rules = spec_rule_text()
+    for text in SPEC_UI_STRINGS:
+        assert text in rules, text
+    history = spec_appendix()
+    for old in ("학식 먹이기 [1]", "쉬게 하기 [2]", "공부시키기 [3]"):
+        assert old not in rules and old in history, old
+    assert "쿨타임" not in rules and "쿨타임" in history
 
 
 @pytest.mark.parametrize("name", GAME_FILES)
@@ -650,8 +689,8 @@ def _face_bbox(surf):
     return min(xs), min(ys), max(xs) + 1, max(ys) + 1
 
 
-@pytest.mark.parametrize("knowledge, radius", [(0, 40), (200, 50), (450, 60), (750, 70),
-                                              (1100, 70)])
+@pytest.mark.parametrize("knowledge, radius", [(0, 40), (400, 50), (900, 60), (1500, 70),
+                                              (2200, 70)])   # M단위 진급 기준 2배
 def test_face_diameter_is_twice_radius(surface, knowledge, radius):
     """실제로 그려진 얼굴(머리카락 포함)의 가로·세로 = 2 x 반지름, 중심 = 제자 무대 가운데."""
     s = _student(knowledge)
@@ -664,7 +703,7 @@ def test_face_diameter_is_twice_radius(surface, knowledge, radius):
     assert (left + right) // 2 == CX and (top + bottom) // 2 == CY
 
 
-@pytest.mark.parametrize("knowledge", [0, 200, 450, 750])
+@pytest.mark.parametrize("knowledge", [0, 400, 900, 1500])
 def test_dark_circles_fully_visible_under_glasses(surface, knowledge):
     """체력 30 미만 다크서클이 안경에 가리지 않고 양쪽 모두 온전히 보인다(2칸 x 2개)."""
     s = _student(knowledge, health=29)
@@ -682,15 +721,15 @@ def test_dark_circles_fully_visible_under_glasses(surface, knowledge):
 
 @pytest.mark.parametrize("health", [30, 100])
 def test_no_dark_circle_color_when_healthy(surface, health):
-    for knowledge in (0, 450):
+    for knowledge in (0, 900):
         surface.fill(config.COLOR_BG)
         _student(knowledge, health=health).draw(surface)
         assert not any(color(surface, x, y) == config.COLOR_DARK_CIRCLE
                        for x in range(CX - 70, CX + 70) for y in range(CY - 70, CY + 70))
 
 
-@pytest.mark.parametrize("knowledge, glasses", [(0, False), (199, False), (200, False),
-                                                (449, False), (450, True), (750, True)])
+@pytest.mark.parametrize("knowledge, glasses", [(0, False), (399, False), (400, False),
+                                                (899, False), (900, True), (1500, True)])
 def test_glasses_lens_glass_color_only_with_glasses(surface, knowledge, glasses):
     surface.fill(config.COLOR_BG)
     _student(knowledge).draw(surface)
@@ -700,7 +739,7 @@ def test_glasses_lens_glass_color_only_with_glasses(surface, knowledge, glasses)
 
 
 def test_three_mouths_produce_three_different_images(surface):
-    for knowledge in (0, 450, 750):
+    for knowledge in (0, 900, 1500):   # M단위 진급 기준 2배 (1·3·4학년)
         images = set()
         for mental in (60, 59, 29):
             surface.fill(config.COLOR_BG)
@@ -748,16 +787,35 @@ def test_draw_pixel_box_layers(surface):
 
 # ======================= 5. 도형 제한·리소스·클래스 =======================
 
+# README 실행 화면 스크린샷 폴더: 게임이 읽지 않는 문서 자료라 이미지가 허용된다(리드 승인, CLAUDE.md)
+README_IMAGE_DIR = ("docs", "images")
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
+SOUND_FONT_EXT = {".wav", ".ogg", ".mp3", ".ttf", ".otf"}
+
+
 def test_no_image_or_sound_files_in_project():
-    bad_ext = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".ogg", ".mp3", ".ttf", ".otf"}
+    """이미지·사운드·폰트 파일이 없다. 예외는 docs/images/ 안의 이미지(README 스크린샷)뿐이다."""
+    bad_ext = IMAGE_EXT | SOUND_FONT_EXT
     skip = {"build", "dist", ".git", ".pytest_cache", "__pycache__", ".claude", ".venv"}
     found = []
     for path in ROOT.rglob("*"):
-        if any(part in skip for part in path.relative_to(ROOT).parts):
+        parts = path.relative_to(ROOT).parts
+        if any(part in skip for part in parts):
+            continue
+        if parts[:len(README_IMAGE_DIR)] == README_IMAGE_DIR and path.suffix.lower() in IMAGE_EXT:
             continue
         if path.suffix.lower() in bad_ext:
             found.append(str(path))
     assert found == []
+
+
+@pytest.mark.parametrize("name", GAME_FILES)
+def test_game_code_does_not_reference_readme_images(name):
+    """게임 코드는 docs/images/ 스크린샷이나 어떤 이미지 파일 이름도 쓰지 않는다."""
+    src = (ROOT / name).read_text(encoding="utf-8")
+    assert "images" not in src
+    for ext in IMAGE_EXT:
+        assert ext not in src.lower(), ext
 
 
 def test_exactly_three_classes():
@@ -854,7 +912,7 @@ def test_gauges_inside_status_panel():
     assert config.HEALTH_BAR_Y + config.BAR_HEIGHT + P < config.MENTAL_LABEL_Y
 
 
-@pytest.mark.parametrize("knowledge", [0, 200, 450, 750])
+@pytest.mark.parametrize("knowledge", [0, 400, 900, 1500])
 def test_student_and_shadow_inside_stage(knowledge):
     r = _student(knowledge).get_radius()
     inner = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH,

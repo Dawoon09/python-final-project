@@ -1,9 +1,4 @@
-"""제자 키우기의 모든 수치 상수를 모아 둔 파일.
-
-다른 파일에서는 숫자를 직접 쓰지 않고 여기 있는 상수를 가져다 쓴다.
-값은 docs/기획서.md 와 jeja-spec 기준표를 따른다.
-도트 스프라이트(문자열 격자)와 색 팔레트 같은 그림 데이터도 여기에 둔다.
-"""
+"""제자 키우기의 모든 수치 상수를 모아 둔 파일."""
 
 import os
 import sys
@@ -32,7 +27,7 @@ START_STATE = STATE_TITLE
 # ---------------------------------------------------------------
 # 3. 시간
 # ---------------------------------------------------------------
-# 기획서 11절: 판에 시간 제한이 없다. 학년은 누적 지식으로 오르고,
+# 기획서 2절: 판에 시간 제한이 없다. 학년은 누적 지식으로 오르고,
 # 60초 "주기"는 계절·낮밤·시험 기간·이벤트 횟수를 세는 보기용 시계로만 쓴다.
 CYCLE_SECONDS = 60                          # 주기 하나의 길이(초): 봄·여름·가을·겨울 한 바퀴
 CYCLE_INDEX_START = 1                       # 첫 주기 번호 (0~60초 = 1번 주기)
@@ -48,7 +43,9 @@ ZERO_TIME = 0.0                             # 시간 값의 시작값·하한(�
 # 4. 게이지
 # ---------------------------------------------------------------
 GAUGE_MIN = 0               # 체력·멘탈·지식의 최솟값
-GAUGE_MAX = 100             # 체력·멘탈의 최댓값 (지식은 상한 없음)
+GAUGE_MAX = 100             # 체력·멘탈의 기본 최댓값 (지식은 상한 없음)
+# 체력 증진·멘탈 관리 업그레이드로 최댓값이 레벨마다 +10 오른다(기획서 3절):
+# 체력 최대 = GAUGE_MAX + 10 x 체력 증진 Lv, 멘탈 최대 = GAUGE_MAX + 10 x 멘탈 관리 Lv
 
 HEALTH_START = 80           # 체력 시작값
 MENTAL_START = 80           # 멘탈 시작값
@@ -60,13 +57,29 @@ MENTAL_DECAY_PER_SEC_EXAM = 2   # 시험 기간 멘탈 자연 감소(1초마다)
 DECAY_INTERVAL = 1.0            # 자연 감소가 일어나는 간격(초)
 TIME_EPSILON = 1e-9             # 소수 덧셈 오차 허용치 (0.1을 10번 더하면 0.9999999…가 되는 문제 방지)
 
-LOW_GAUGE_LIMIT = 30        # 이 값 미만이면 막대가 빨간색, 체력은 다크서클
+LOW_GAUGE_LIMIT = 30        # 이 값 미만이면 막대가 빨간색, 체력은 다크서클 (최댓값과 상관없이 30)
+
+# 디버프 (기획서 2절 "디버프와 버프"): 게이지가 LOW_GAUGE_LIMIT(30) 미만인 동안 붙는다
+DEBUFF_TIRED = "피곤"           # 체력 30 미만: 공부 지식 x0.7
+DEBUFF_DEPRESSED = "우울"       # 멘탈 30 미만: 버는 연구비 x0.7
+TIRED_KNOWLEDGE_RATIO = 0.7     # 피곤일 때 공부 지식 배수 (보너스·방침 배수 다음에 곱한다)
+DEPRESSED_MONEY_RATIO = 0.7     # 우울일 때 지식으로 버는 연구비 배수
+
+# 버프 '든든함' (기획서 2절): 학식을 먹으면 붙는다
+BUFF_FULL = "든든함"
+FULL_DURATION = 30.0            # 든든함 기본 지속 시간(초, 게임 시간). 다시 먹으면 처음부터 다시 잰다
+FULL_HEALTH_DECAY_RATIO = 0.5   # 든든함인 동안 체력 자연 감소 배수
+
+# 휴식 위주 방침의 "컨디션 좋음" (기획서 2절): 체력·멘탈이 모두 70 이상이면 연구비 +50%
+CONDITION_GOOD = "컨디션 좋음"
+CONDITION_GOOD_MIN = 70         # 체력·멘탈이 둘 다 이 값 이상이어야 한다
 
 # ---------------------------------------------------------------
 # 5. 행동 증감량과 자동 행동 (방치형: 쿨타임 대신 자동 행동 간격)
 # ---------------------------------------------------------------
-FEED_HEALTH = 20            # 학식 먹이기: 체력 +20
+# 학식 먹이기는 게이지를 바로 채우지 않고 버프 '든든함'만 준다(FULL_DURATION)
 
+REST_HEALTH = 15            # 쉬게 하기: 체력 +15
 REST_MENTAL = 20            # 쉬게 하기: 멘탈 +20
 REST_KNOWLEDGE = -2         # 쉬게 하기: 지식 -2
 
@@ -75,7 +88,7 @@ STUDY_MENTAL = -8           # 공부시키기: 멘탈 -8
 STUDY_KNOWLEDGE = 10        # 공부시키기: 지식 +10
 STUDY_KNOWLEDGE_EXAM = 20   # 시험 기간 공부시키기: 지식 +20
 
-# 방치형 전환(기획서 10절): 행동 쿨타임은 없앴다. 대신 제자가 이 간격마다 스스로 행동한다.
+# 방치형(기획서 2절 "자동 행동과 일과표 방침"): 쿨타임 없이 제자가 이 간격마다 스스로 행동한다.
 AUTO_ACTION_INTERVAL = 2.0  # 자동 행동 간격(초, 게임 시간). 게임 시작 후 첫 행동도 2초 뒤
 
 # 일과표 방침 이름 (Game.set_policy 에 넘기는 값)
@@ -86,19 +99,24 @@ POLICY_START = POLICY_BALANCED      # 새 게임의 시작 방침
 POLICY_ORDER = [POLICY_STUDY_FOCUS, POLICY_BALANCED, POLICY_REST_FOCUS]  # 버튼·키 1/2/3 순서
 
 # 방침 사전의 키
-POLICY_THRESHOLD = "threshold"            # 회복 기준: 체력이나 멘탈이 이 값 미만이면 회복한다
+POLICY_THRESHOLD = "threshold"            # 회복 기준: 체력이나 멘탈이 이 값 미만이면 휴식한다
 POLICY_KNOWLEDGE_RATIO = "knowledge_ratio"  # 공부 지식 배수
 POLICY_COST_RATIO = "cost_ratio"          # 공부 체력·멘탈 소모 배수
+POLICY_REST_RATIO = "rest_ratio"          # 휴식 체력·멘탈 회복 배수 (보너스 포함 회복량에 곱한다)
+POLICY_CONDITION_BONUS = "condition_bonus"  # 컨디션 좋음(체력·멘탈 70 이상)일 때 연구비에 더하는 비율
 POLICY_TEXT = "text"                      # 방침 버튼 글자
 
-# 방침 3가지 (기획서 10절 표)
+# 방침 3가지 (기획서 2절 방침 표)
 POLICIES = {
-    POLICY_STUDY_FOCUS: {POLICY_THRESHOLD: 30, POLICY_KNOWLEDGE_RATIO: 1.4,
-                         POLICY_COST_RATIO: 1.6, POLICY_TEXT: "공부 위주 [1]"},
+    POLICY_STUDY_FOCUS: {POLICY_THRESHOLD: 25, POLICY_KNOWLEDGE_RATIO: 1.8,
+                         POLICY_COST_RATIO: 1.8, POLICY_REST_RATIO: 1.0,
+                         POLICY_CONDITION_BONUS: 0.0, POLICY_TEXT: "공부 위주 [1]"},
     POLICY_BALANCED: {POLICY_THRESHOLD: 50, POLICY_KNOWLEDGE_RATIO: 1.0,
-                      POLICY_COST_RATIO: 1.0, POLICY_TEXT: "균형 [2]"},
-    POLICY_REST_FOCUS: {POLICY_THRESHOLD: 70, POLICY_KNOWLEDGE_RATIO: 0.8,
-                        POLICY_COST_RATIO: 0.7, POLICY_TEXT: "휴식 위주 [3]"},
+                      POLICY_COST_RATIO: 1.0, POLICY_REST_RATIO: 1.0,
+                      POLICY_CONDITION_BONUS: 0.0, POLICY_TEXT: "균형 [2]"},
+    POLICY_REST_FOCUS: {POLICY_THRESHOLD: 70, POLICY_KNOWLEDGE_RATIO: 0.7,
+                        POLICY_COST_RATIO: 0.7, POLICY_REST_RATIO: 1.5,
+                        POLICY_CONDITION_BONUS: 0.5, POLICY_TEXT: "휴식 위주 [3]"},
 }
 NO_RATIO = 1.0              # 배수를 곱하지 않을 때의 값(×1.0). Student.study 의 기본값
 
@@ -123,12 +141,13 @@ MOUTH_CRY = "cry"           # 우는 입 (입꼬리가 내려간 ∩자)
 # ---------------------------------------------------------------
 # 8. 엔딩 기준
 # ---------------------------------------------------------------
-# 진급과 졸업 (기획서 11절): 누적 지식이 목표 "이상"이 되면 진급한다. 학년은 내려가지 않는다.
-GRADE_GOALS = [200, 450, 750]   # 2학년·3학년·4학년 진급 목표(누적 지식)
-GRADUATION_KNOWLEDGE = 1100     # 4학년에서 누적 지식 1100 이상이면 졸업
-# 졸업 등급은 졸업까지 걸린 게임 시간(대화창 정지 시간은 빼고 센다)으로 정한다
-TOP_GRADUATE_SECONDS = 200      # 200초 이하: 수석 졸업
-NORMAL_GRADUATE_SECONDS = 360   # 200초 초과 360초 이하: 무사 졸업, 초과: 아슬아슬 졸업
+# 진급과 졸업 (기획서 2절): 누적 지식이 목표 "이상"이 되면 진급한다. 학년은 내려가지 않는다.
+GRADE_GOALS = [400, 900, 1500]  # 2학년·3학년·4학년 진급 목표(누적 지식)
+GRADUATION_KNOWLEDGE = 2200     # 4학년에서 누적 지식 2200 이상이면 졸업
+# 졸업 등급은 졸업까지 걸린 게임 시간(대화창 정지 시간은 빼고 센다)으로 정한다.
+# (밸런스 B안, 2026-11-24: 업그레이드를 모아 4번째 판쯤 첫 수석, 업그레이드 없는 첫 판은 무사)
+TOP_GRADUATE_SECONDS = 330      # 330초 이하: 수석 졸업
+NORMAL_GRADUATE_SECONDS = 720   # 330초 초과 720초 이하: 무사 졸업, 초과: 아슬아슬 졸업
 
 ENDING_LEAVE = "휴학"
 ENDING_TOP = "수석 졸업"
@@ -141,7 +160,7 @@ ENDING_BARELY = "아슬아슬 졸업"
 RECORD_FILENAME = "record.json"  # 최고 기록을 저장할 파일 이름
 RECORD_KEY = "best_knowledge"    # record.json 안에서 최고 지식을 담는 키: {"best_knowledge": 520}
 RECORD_ENCODING = "utf-8"        # record.json 을 읽고 쓸 때 쓰는 글자 인코딩
-# 방치형(기획서 10절): 최고 기록과 함께 연구비·명성·업그레이드 레벨도 저장한다
+# 방치형(기획서 3절·9절): 최고 기록과 함께 연구비·명성·업그레이드 레벨도 저장한다
 # {"best_knowledge": 520, "money": 340, "fame": 0, "upgrades": {"menu": 1, ...}}
 # 예전 형식({"best_knowledge": n})이나 깨진 파일도 읽을 수 있고, 없는 값은 0으로 본다.
 RECORD_MONEY_KEY = "money"       # 연구비
@@ -150,12 +169,7 @@ RECORD_UPGRADES_KEY = "upgrades"  # 업그레이드 레벨 {업그레이드 id: 
 
 
 def get_base_dir():
-    """record.json을 저장할 폴더를 돌려준다.
-
-    PyInstaller로 만든 exe로 실행 중이면(sys.frozen) exe 파일이 있는 폴더,
-    파이썬으로 실행 중이면 이 파일(config.py, main.py와 같은 폴더)이 있는 폴더다.
-    --onefile exe는 임시 폴더에 풀려서 돌아가므로 __file__ 기준으로 저장하면 기록이 사라진다.
-    """
+    """record.json을 저장할 폴더를 돌려준다."""
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
@@ -497,7 +511,7 @@ BUTTON_GAP = 16             # 버튼 사이 간격
 BUTTON_Y = 476              # 버튼 위쪽 y
 BUTTON_START_X = 24         # 첫 버튼의 왼쪽 x
 # 방침 버튼 3개가 차지하는 가로 길이: 176*3 + 16*2 = 560 (x 24 ~ 584).
-# 오른쪽 x 600 ~ 776 은 나중에 [업그레이드 U] 버튼(H단위)이 들어갈 자리다.
+# 오른쪽 x 600 ~ 776 은 [업그레이드 U] 버튼 자리다.
 POLICY_AREA_WIDTH = BUTTON_WIDTH * BUTTON_COUNT + BUTTON_GAP * (BUTTON_COUNT - 1)
 
 # 고른 방침 버튼 색: 노랑 계열로 밝게 강조 (평소 하늘색과 한눈에 구분, 반투명 없이)
@@ -571,7 +585,7 @@ CAP_PIXEL = PIXEL_SIZE      # 학사모 도트 1칸 크기(4)
 CAP_TOP_Y = 196             # 학사모 위쪽 y -> 아래 끝 296 (누적 지식 배지 위)
 
 # ---------------------------------------------------------------
-# 16. 상호작용 효과 E1~E6 (jeja-spec 13절). 보기만 바꾸고 게임 결과에는 영향이 없다
+# 16. 상호작용 효과 E1~E6 (기획서·jeja-spec 6절 "화면 연출"). 보기만 바꾸고 게임 결과에는 영향이 없다
 # ---------------------------------------------------------------
 FULL_RATIO = 1.0            # 진행률·비율의 끝값(100%). 진행률 p 의 나머지 = FULL_RATIO - p
 NO_CHANGE = 0               # 게이지 변화량이 0 (늘지도 줄지도 않음)
@@ -680,6 +694,8 @@ GAUGE_HEALTH = "health"     # Student 의 체력 속성 이름 (표시값 사전
 GAUGE_MENTAL = "mental"     # Student 의 멘탈 속성 이름
 GAUGE_KNOWLEDGE = "knowledge"  # Student 의 지식 속성 이름
 GAUGE_NAMES = [GAUGE_HEALTH, GAUGE_MENTAL]   # 막대가 있어서 부드럽게 움직이는 게이지
+# 게이지 속성 이름 -> 그 최댓값 속성 이름 (Student.max_health / max_mental)
+GAUGE_MAX_NAMES = {GAUGE_HEALTH: "max_health", GAUGE_MENTAL: "max_mental"}
 # 수치 팝업을 띄울 게이지와 라벨 (위에서부터 이 순서로 쌓인다)
 POPUP_GAUGES = [(GAUGE_HEALTH, HEALTH_LABEL), (GAUGE_MENTAL, MENTAL_LABEL),
                 (GAUGE_KNOWLEDGE, KNOWLEDGE_LABEL)]
@@ -697,12 +713,12 @@ BLINK_INTERVAL = 0.5        # 깜빡임 간격(초)
 COLOR_HINT_DIM = COLOR_TEXT_SOFT   # 화살표가 숨었을 때의 안내 글자 색
 
 # ---------------------------------------------------------------
-# 17. 랜덤 이벤트와 성장 (기획서 9절, jeja-spec 14절)
+# 17. 랜덤 이벤트와 성장 (기획서·jeja-spec 4절)
 # ---------------------------------------------------------------
 # 발생 규칙 수치
 EVENT_CHANCE = 0.25                 # 행동이 실제로 실행된 직후 이벤트가 뜰 확률
 EVENT_GUARANTEE_INTERVAL = 11.25    # 최소 보장 구간 길이(초): 60초 주기 안 0~45초를 4구간으로 나눈다
-# (이름은 예전 그대로 _PER_GRADE지만 기획서 11절부터는 "60초 주기당" 횟수다)
+# (이름은 _PER_GRADE지만 값은 60초 주기당 횟수다)
 EVENT_MIN_PER_GRADE = 4             # 주기당 최소 보장 이벤트 수 (보장 구간 개수)
 EVENT_MAX_PER_GRADE = 5             # 주기당 최대 이벤트 수
 EVENT_CHOICE_RATIO = 0.5            # 선택지형 후보가 있을 때 선택지형을 고를 확률
@@ -726,28 +742,27 @@ EVENT_COUNT_STEP = 1                # 이벤트가 한 번 나올 때 그 주기
 EVENT_COUNT_START = 0               # 주기별 이벤트 수의 시작값 (아직 안 나온 주기는 0번)
 
 # 특성 (얻으면 그 판 끝까지 유지). 값은 화면 배지에 쓸 이름이다
-TRAIT_FITNESS = "체력 단련"          # 학식 먹이기 체력 +20 -> +25
+TRAIT_FITNESS = "체력 단련"          # 든든함 지속 시간 +10초
 TRAIT_MUSIC = "음악 힐링"            # 쉬게 하기 멘탈 +20 -> +25
 TRAIT_CAFFEINE = "카페인"            # 공부시키기 체력 -5 -> -3
-TRAIT_LOVE = "연애 중"               # 쉬게 하기에 체력 +5가 함께 붙음
+TRAIT_LOVE = "연애 중"               # 쉬게 하기 체력 +15 -> +20
 
 # 특성 보정을 받는 행동 효과 이름
-BONUS_FEED_HEALTH = "feed_health"   # 학식 먹이기 체력
+BONUS_FULL_TIME = "full_time"       # 학식 먹이기로 붙는 든든함 지속 시간(초)
 BONUS_REST_MENTAL = "rest_mental"   # 쉬게 하기 멘탈
-BONUS_REST_HEALTH = "rest_health"   # 쉬게 하기 체력 (기본 0)
+BONUS_REST_HEALTH = "rest_health"   # 쉬게 하기 체력
 BONUS_STUDY_HEALTH = "study_health"  # 공부시키기 체력
-REST_HEALTH = 0                     # 쉬게 하기의 기본 체력 변화 (특성 없으면 0)
 TRAIT_BONUS_START = 0               # 특성 보정 합계의 시작값 (특성이 없으면 0)
 
 # 특성 -> {보정 받는 효과: 기본 수치에 더하는 양}. 여러 특성이 있으면 각각 더한다
 TRAIT_BONUSES = {
-    TRAIT_FITNESS: {BONUS_FEED_HEALTH: 5},     # +20 -> +25
+    TRAIT_FITNESS: {BONUS_FULL_TIME: 10},      # 든든함 30초 -> 40초
     TRAIT_MUSIC: {BONUS_REST_MENTAL: 5},       # +20 -> +25
     TRAIT_CAFFEINE: {BONUS_STUDY_HEALTH: 2},   # -5 -> -3
-    TRAIT_LOVE: {BONUS_REST_HEALTH: 5},        # 0 -> +5
+    TRAIT_LOVE: {BONUS_REST_HEALTH: 5},        # +15 -> +20
 }
 
-# 외형 5종 (얻으면 그 판 끝까지 제자에게 붙어 있다. 그리기는 D단위)
+# 외형 5종 (얻으면 그 판 끝까지 제자에게 붙어 있다)
 LOOK_GUITAR = "guitar"              # 기타(등 뒤)
 LOOK_HEADBAND = "headband"          # 헬스 머리띠
 LOOK_COFFEE = "coffee"              # 커피잔(손)
@@ -881,7 +896,7 @@ CHOICE_EVENTS = [
 ALL_EVENTS = AUTO_EVENTS + CHOICE_EVENTS   # 이벤트 표 전체 (자동형 5 + 선택지형 10)
 
 # ---------------------------------------------------------------
-# 18. 랜덤 이벤트 화면 (D단위, jeja-spec 14절 "화면"). 보기만 바꾸며 게임 결과에는 영향이 없다
+# 18. 랜덤 이벤트 화면 (기획서·jeja-spec 4절). 보기만 바꾸며 게임 결과에는 영향이 없다
 # ---------------------------------------------------------------
 EVENT_FONT_SIZE = 18                # 대화창 상황 글자·선택 버튼 글자 크기
 SMALL_FONT_SIZE = 14                # 작은 글자 크기: 효과 미리보기, 특성 배지 (자동형 알림은 EVENT_NOTICE_FONT_SIZE)
@@ -991,6 +1006,19 @@ TRAIT_COLORS = {
     TRAIT_LOVE: (COLOR_PINK, COLOR_PINK_LIGHT),
 }
 
+# 상태 배지: 상태 패널 위쪽(체력 라벨 줄 200 위)에
+# 지금 붙어 있는 디버프·버프를 특성 배지와 같은 모양으로 2열로 보인다
+STATUS_BADGE_Y = 128                # 첫 줄 위쪽 y (두 줄이면 아래 끝 128 + 24 + 8 + 24 = 184, 그림자 188)
+# 상태 이름 -> (몸통, 위 하이라이트 줄). 디버프는 분홍·회색, 버프는 민트·노랑
+STATUS_COLORS = {
+    DEBUFF_TIRED: (COLOR_PINK, COLOR_PINK_LIGHT),
+    DEBUFF_DEPRESSED: (COLOR_GRAY, COLOR_GRAY_LIGHT),
+    BUFF_FULL: (COLOR_MINT, COLOR_MINT_LIGHT),
+    CONDITION_GOOD: (COLOR_YELLOW, COLOR_YELLOW_LIGHT),
+}
+# 게이지 라벨 줄 오른쪽 끝(막대 오른쪽 끝과 같은 x)에 "지금/최대" 글자를 쓴다: "80/100"
+GAUGE_VALUE_TEXT = "{}/{}"
+
 # 외형 5종 도트 스프라이트. 위치는 얼굴 격자(20 x 20칸) 기준 (열, 행)이고 칸 크기는 얼굴과 같다
 # (반지름 // 10) -> 학년마다 얼굴과 함께 커지고, 점프·숨쉬기 때 얼굴과 함께 움직인다.
 # 자리 나눔: 선글라스 = 머리 꼭대기(열 4~15, 행 -1~2), 하트 머리핀 = 머리 왼쪽 옆(열 -3~1, 행 2~6),
@@ -1094,10 +1122,9 @@ LOOKS_BEHIND = [LOOK_GUITAR]
 LOOKS_FRONT = [LOOK_HEADBAND, LOOK_HEART_PIN, LOOK_SUNGLASSES, LOOK_COFFEE]
 
 # ---------------------------------------------------------------
-# 19. 재화(연구비·명성)와 업그레이드 (기획서 10절, H단위)
+# 19. 재화(연구비·명성)와 업그레이드 (기획서 3절)
 # ---------------------------------------------------------------
 MONEY_START = 0             # 연구비 기본값 (record.json 에 없으면 0)
-FAME_START = 0              # 명성 기본값 (record.json 에 없으면 0)
 LEVEL_START = 0             # 업그레이드 레벨 기본값 (사지 않았으면 0)
 LEVEL_STEP = 1              # 업그레이드를 한 번 사면 오르는 레벨
 FAME_MONEY_BONUS = 0.1      # 명성 1당 연구비 획득 배수 +0.1: 배수 = 1 + 0.1 x 명성
@@ -1121,24 +1148,27 @@ UPGRADE_CAFE = "cafe"                   # 카페
 UPGRADE_GYM = "gym"                     # 헬스장
 UPGRADE_CHARM = "lucky_charm"           # 행운 부적
 UPGRADE_SCHOLARSHIP = "scholarship"     # 장학금 제도
+UPGRADE_HEALTH_MAX = "health_max"       # 체력 증진
+UPGRADE_MENTAL_MAX = "mental_max"       # 멘탈 관리
+UPGRADE_SELF_CARE = "self_care"         # 자기 관리
 
 # 업그레이드 dict 키
 UPGRADE_ID = "id"
 UPGRADE_NAME = "name"               # 패널에 보일 이름
-UPGRADE_CATEGORY = "category"       # 분류 (행동 효율 / 자동화 속도 / 시설 / 이벤트)
+UPGRADE_CATEGORY = "category"       # 분류 (행동 효율 / 자동화 속도 / 시설 / 이벤트 / 컨디션)
 UPGRADE_MAX_LEVEL = "max_level"     # 최대 레벨
 UPGRADE_BASE_COST = "base_cost"     # 기본 가격
 UPGRADE_PER_LEVEL = "per_level"     # 레벨 1당 효과 크기 (효과 = 레벨 x 이 값)
 UPGRADE_EFFECT_TEXT = "effect"      # 패널에 보일 효과 설명
 
-# 업그레이드 10종 (기획서 10절 표 순서). 시설·장학금은 최대 레벨 1이라 "레벨 x 효과"로 똑같이 계산한다
+# 업그레이드 13종 (기획서 3절 표 순서). 시설·장학금은 최대 레벨 1이라 "레벨 x 효과"로 똑같이 계산한다
 UPGRADES = [
     {UPGRADE_ID: UPGRADE_MENU, UPGRADE_NAME: "학식 메뉴 개선", UPGRADE_CATEGORY: "행동 효율",
-     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 240, UPGRADE_PER_LEVEL: 4,
-     UPGRADE_EFFECT_TEXT: "학식 체력 +4"},
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 240, UPGRADE_PER_LEVEL: 6,
+     UPGRADE_EFFECT_TEXT: "든든함 +6초"},
     {UPGRADE_ID: UPGRADE_BED, UPGRADE_NAME: "푹신한 침대", UPGRADE_CATEGORY: "행동 효율",
      UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 240, UPGRADE_PER_LEVEL: 4,
-     UPGRADE_EFFECT_TEXT: "휴식 멘탈 +4"},
+     UPGRADE_EFFECT_TEXT: "휴식 체력·멘탈 +4"},
     {UPGRADE_ID: UPGRADE_BOOK, UPGRADE_NAME: "참고서", UPGRADE_CATEGORY: "행동 효율",
      UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 360, UPGRADE_PER_LEVEL: 2,
      UPGRADE_EFFECT_TEXT: "공부 지식 +2"},
@@ -1163,6 +1193,15 @@ UPGRADES = [
     {UPGRADE_ID: UPGRADE_SCHOLARSHIP, UPGRADE_NAME: "장학금 제도", UPGRADE_CATEGORY: "이벤트",
      UPGRADE_MAX_LEVEL: 1, UPGRADE_BASE_COST: 750, UPGRADE_PER_LEVEL: 30,
      UPGRADE_EFFECT_TEXT: "장학금 이벤트 추가"},
+    {UPGRADE_ID: UPGRADE_HEALTH_MAX, UPGRADE_NAME: "체력 증진", UPGRADE_CATEGORY: "컨디션",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 300, UPGRADE_PER_LEVEL: 10,
+     UPGRADE_EFFECT_TEXT: "체력 최대 +10"},
+    {UPGRADE_ID: UPGRADE_MENTAL_MAX, UPGRADE_NAME: "멘탈 관리", UPGRADE_CATEGORY: "컨디션",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 300, UPGRADE_PER_LEVEL: 10,
+     UPGRADE_EFFECT_TEXT: "멘탈 최대 +10"},
+    {UPGRADE_ID: UPGRADE_SELF_CARE, UPGRADE_NAME: "자기 관리", UPGRADE_CATEGORY: "컨디션",
+     UPGRADE_MAX_LEVEL: 5, UPGRADE_BASE_COST: 400, UPGRADE_PER_LEVEL: 0.2,
+     UPGRADE_EFFECT_TEXT: "체력·멘탈 +0.2/초"},
 ]
 UPGRADE_IDS = [upgrade[UPGRADE_ID] for upgrade in UPGRADES]          # 패널 순서
 UPGRADES_BY_ID = {upgrade[UPGRADE_ID]: upgrade for upgrade in UPGRADES}
@@ -1196,7 +1235,7 @@ UPGRADE_BUTTON_ENDING_Y = 516
 ELAPSED_CENTER_X = UPGRADE_BUTTON_X + BUTTON_WIDTH // 2   # 688
 ELAPSED_CENTER_Y = AUTO_BAR_Y + AUTO_BAR_HEIGHT // 2      # 548
 
-# 업그레이드 패널 (J단위에서 배치 변경): 왼쪽 상태 패널 자리(x 12~268, y 116~468)에 겹쳐 그린다.
+# 업그레이드 패널: 왼쪽 상태 패널 자리(x 12~268, y 116~468)에 겹쳐 그린다.
 # 그래서 패널이 열려 있어도 오른쪽 제자 무대(제자·배경)는 그대로 보인다. 반투명 없이 도트 상자
 UPGRADE_PANEL_RECT = (STATUS_PANEL_X, PANEL_Y, STATUS_PANEL_WIDTH, 352)  # 아래 끝 468 (방침 버튼 476 위)
 UPGRADE_PANEL_TITLE = "업그레이드"
@@ -1206,9 +1245,10 @@ UPGRADE_HEADER_RIGHT = 252          # 연구비 글자 오른쪽 끝 x
 UPGRADE_ROW_X = 24                  # 항목 줄 상자 왼쪽 x
 UPGRADE_ROW_WIDTH = 232             # 항목 줄 상자 가로 길이 -> 오른쪽 끝 256 (패널 안쪽 20~260)
 UPGRADE_ROW_TOP = 166               # 첫 항목 줄 위쪽 y (머리 줄과 미니 게이지 줄 아래)
-UPGRADE_ROW_HEIGHT = 27             # 항목 줄 상자 세로 길이 (안쪽 19: 작은 글자 한 줄 높이 19)
-UPGRADE_ROW_STEP = 28               # 항목 줄 사이 거리 (10줄 -> 마지막 아래 끝 445)
-# 패널 머리 줄 아래 미니 게이지 줄(K단위): 패널이 상태 패널의 체력·멘탈 막대를 가리므로
+# 항목이 13줄이라 줄을 얇게 만든다: 외곽선 없는 계단형 모서리 띠 한 줄 = 작은 글자 한 줄(19)
+UPGRADE_ROW_HEIGHT = 20             # 항목 줄 띠 세로 길이
+UPGRADE_ROW_STEP = 21               # 항목 줄 사이 거리 (13줄 -> 마지막 아래 끝 166 + 12 x 21 + 20 = 438)
+# 패널 머리 줄 아래 미니 게이지 줄: 패널이 상태 패널의 체력·멘탈 막대를 가리므로
 # 작은 막대 2개를 한 줄에 나란히 보여 준다. 길이는 표시값(E4), 색(30 미만 빨강)은 실제 값 기준
 UPGRADE_GAUGE_Y = 154               # 미니 게이지 줄 가운데 y (라벨 글자 145~164, 막대 테두리 146~162)
 # (Student 속성 이름, 라벨, 라벨 글자 왼쪽 x)
@@ -1221,7 +1261,7 @@ UPGRADE_NAME_X = 48                 # 이름 글자 왼쪽 x
 UPGRADE_LEVEL_X = 148               # "Lv 0/5" 글자 왼쪽 x
 UPGRADE_COST_RIGHT = 248            # 가격 글자 오른쪽 끝 x
 UPGRADE_FOOTER_X = 28               # 바닥 줄(고른 항목 효과) 글자 왼쪽 x
-UPGRADE_FOOTER_Y = 454              # 바닥 줄 가운데 y (글자 445~464: 마지막 줄 아래 끝 445부터, 꼬리까지 외곽선 안)
+UPGRADE_FOOTER_Y = 454              # 바닥 줄 가운데 y (글자 445~464: 마지막 줄 아래 끝 438 아래, 꼬리까지 외곽선 안)
 UPGRADE_FOOTER_TEXT = "효과: {}"     # 바닥 줄 글자 틀: 고른 줄(↑↓)의 레벨당 효과
 UPGRADE_LEVEL_TEXT = "Lv {}/{}"
 UPGRADE_COST_TEXT = "{}"                # 가격 글자(숫자만, 단위 연구비는 머리 줄에 보인다)
@@ -1238,19 +1278,19 @@ COLOR_UPGRADE_TEXT_OFF = COLOR_BUTTON_TEXT_COOL
 COLOR_UPGRADE_CURSOR = COLOR_PINK_DARK  # 고른 줄 화살표 색
 
 # ---------------------------------------------------------------
-# 21. 졸업 후: 환생과 대학원 (기획서 10절, I단위)
+# 21. 졸업 후: 환생과 대학원 (기획서 3절)
 # ---------------------------------------------------------------
 GRAD_YEAR_UNDERGRAD = 0     # 대학원 년차 값: 0이면 학부(1~4학년)
 GRAD_FIRST_YEAR = 1         # 대학원에 들어가면 1년차부터
 GRAD_YEAR_STEP = 1          # 년차 목표를 넘을 때마다 대학원 년차가 오르는 양 (끝없이)
-# 대학원 n년차 -> n+1년차 목표(누적 지식) = 졸업 지식 1100 + (400 + 100 x (k-1))를 k = 1..n까지 더한 값
-# -> 1년차 1500, 2년차 2000, 3년차 2600 … (기획서 11절)
-GRAD_GOAL_FIRST_STEP = 400  # 1년차에 더 모아야 하는 지식
-GRAD_GOAL_STEP_GROWTH = 100  # 해마다 더 모아야 하는 지식이 늘어나는 양
-# 대학원 자연 감소 배수 = 1 + 0.5 x n + 1.0 x c
+# 대학원 n년차 -> n+1년차 목표(누적 지식) = 졸업 지식 2200 + (800 + 200 x (k-1))를 k = 1..n까지 더한 값
+# -> 1년차 3000, 2년차 4000, 3년차 5200, 4년차 6600 … (기획서 3절)
+GRAD_GOAL_FIRST_STEP = 800  # 1년차에 더 모아야 하는 지식
+GRAD_GOAL_STEP_GROWTH = 200  # 해마다 더 모아야 하는 지식이 늘어나는 양
+# 대학원 자연 감소 배수 = 1 + 1.0 x n + 1.5 x c
 #   n = 대학원 년차, c = 대학원에 들어간 뒤 다 채운 60초 주기 수 (대학원에서만 시간 압박)
-GRAD_DECAY_BONUS = 0.5      # 년차 하나마다 더하는 자연 감소 배수
-GRAD_CYCLE_DECAY_BONUS = 1.0  # 대학원에서 60초 주기를 하나 다 채울 때마다 더하는 자연 감소 배수
+GRAD_DECAY_BONUS = 1.0      # 년차 하나마다 더하는 자연 감소 배수
+GRAD_CYCLE_DECAY_BONUS = 1.5  # 대학원에서 60초 주기를 하나 다 채울 때마다 더하는 자연 감소 배수
 GRAD_CYCLES_NONE = 0        # 학부이거나 대학원 진입 시각이 없을 때의 대학원 주기 수
 GRAD_MONEY_BONUS = 1.0      # n년차 연구비 획득 배수 = 1 + 1.0 x n
 FAME_STEP = 1               # 졸업한 판에서 환생하면 오르는 명성
@@ -1268,18 +1308,18 @@ GRAD_SCHOOL_HINT_Y = 460    # 둘째 줄 가운데 y (첫 줄 RESTART_HINT_Y 428
 ENDING_NAME_MAX_WIDTH = 520     # 큰 글씨 엔딩 이름이 넘으면 안 되는 가로 길이 (패널 608 안)
 ENDING_LONG_FONT_SIZE = 44      # 긴 엔딩 이름 글자 크기
 # 엔딩 화면에서 업그레이드 패널(왼쪽 x 12~268)을 열면 가운데 패널이 엔딩 이름을 가리지 않도록
-# 가운데 패널과 엔딩 글자·그림을 오른쪽 무대 자리(x 284~788, 가운데 536)로 옮겨 그린다(K단위)
+# 가운데 패널과 엔딩 글자·그림을 오른쪽 무대 자리(x 284~788, 가운데 536)로 옮겨 그린다
 ENDING_PANEL_OPEN_RECT = (STAGE_X, MENU_PANEL_RECT[1], STAGE_WIDTH, MENU_PANEL_RECT[3])
 ENDING_OPEN_CENTER_X = STAGE_X + STAGE_WIDTH // 2      # 536
 ENDING_NAME_MAX_WIDTH_OPEN = 456  # 옮겨 그릴 때 큰 글씨 엔딩 이름의 최대 가로 길이 (패널 504 안)
 
 # ---------------------------------------------------------------
-# 22. 무대 배경 4겹 (기획서 10절 "배경", J단위)
+# 22. 무대 배경 4겹 (기획서 6절 "무대 배경 4겹")
 #   1) 장소(학년) 2) 하늘(계절·시간대) 3) 행동 소품(마지막 자동 행동) 4) 시설(산 시설)
 #   배경은 제자 무대 안쪽(x 288~784, y 120~456)에 그리고, 제자·파티클·팝업·알림보다 먼저 그린다.
 #   좌표는 무대 안쪽 왼쪽 위를 (0, 0)으로 하는 도트 칸(4 x 4 픽셀) 단위다(가로 124칸, 세로 84칸).
 # ---------------------------------------------------------------
-# 계절: 60초 주기 안 0~15초 봄, 15~30초 여름, 30~45초 가을, 45~60초 겨울(시험 기간) (기획서 11절)
+# 계절: 60초 주기 안 0~15초 봄, 15~30초 여름, 30~45초 가을, 45~60초 겨울(시험 기간) (기획서 2절)
 SEASON_SPRING = "spring"
 SEASON_SUMMER = "summer"
 SEASON_AUTUMN = "autumn"
@@ -1354,7 +1394,7 @@ SEASON_COLORS = {
                     "accent": (255, 255, 255), "snow": (255, 255, 255)},
 }
 
-# 저녁·밤 그늘(K단위): 바깥 장소의 땅·나무·건물 색을 밤 남색 쪽으로 조금 섞어 어둡게 그린다.
+# 저녁·밤 그늘: 바깥 장소의 땅·나무·건물 색을 밤 남색 쪽으로 조금 섞어 어둡게 그린다.
 # 반투명 없이 색 값 자체를 바꿔 다시 그린다. 매 프레임 섞지 않고 몇 단계로만 바꾸며,
 # 단계가 바뀔 때만 배경 그림을 새로 그린다(장소·계절·시설·단계 열쇠로 캐시).
 # 단계가 바뀌는 시각은 하늘색이 바뀌는 구간(SKY_KEYFRAMES)의 가운데쯤에 맞춘다.
@@ -1855,3 +1895,329 @@ PROP_COLORS = {
 }
 PROP_X = 344                        # 소품 왼쪽 x (무대 안쪽 기준, 제자 오른쪽)
 PROP_BOTTOM = 300                   # 소품 아래 끝 y (무대 안쪽 기준)
+
+# ---------------------------------------------------------------
+# 23. 화면 다듬기: 업그레이드 툴팁, 무대 장식 13종, 상태 아이콘
+# ---------------------------------------------------------------
+# 툴팁 공통: 패널(업그레이드·상태) 오른쪽 무대 위에 뜨는 크림색 도트 상자(반투명 없음).
+# 패널 오른쪽 끝 268 + 그림자·간격 8 = 276부터 그려서 패널과 겹치지 않는다.
+# 위로는 무대 위 끝(116)보다 올라가지 않으므로 정보바·목표 막대·시험 배너를 가리지 않고,
+# 아래로는 무대 아래 끝(460)을 넘지 않는다(방침 버튼을 가리지 않음).
+TOOLTIP_X = STATUS_PANEL_X + STATUS_PANEL_WIDTH + PIXEL_SIZE * 2   # 276
+TOOLTIP_TOP_MIN = PANEL_Y                    # 툴팁 상자 위쪽 y의 최솟값 (116)
+TOOLTIP_BOTTOM_MAX = PANEL_Y + PANEL_HEIGHT  # 툴팁 상자 아래 끝(그림자 포함)의 최댓값 (460)
+TOOLTIP_RIGHT_MAX = SCREEN_WIDTH - PIXEL_SIZE * 2   # 툴팁 상자 오른쪽 끝의 최댓값 (792)
+TOOLTIP_PAD_X = PIXEL_SIZE * 3               # 상자 바깥 끝에서 글자까지 왼쪽·오른쪽 여백 (외곽선 포함 12)
+TOOLTIP_PAD_Y = PIXEL_SIZE * 2               # 상자 바깥 끝에서 글자까지 위·아래 여백 (외곽선 포함 8)
+TOOLTIP_LINE_HEIGHT = 19                     # 툴팁 글자 한 줄 높이 (작은 글자 14)
+TOOLTIP_MIN_WIDTH = 168                      # 툴팁 상자 최소 가로 길이
+COLOR_TOOLTIP = COLOR_BG                     # 툴팁 몸통 (크림)
+COLOR_TOOLTIP_LIGHT = COLOR_PANEL_LIGHT      # 툴팁 위 하이라이트 줄
+COLOR_TOOLTIP_TITLE = COLOR_TEXT             # 첫 줄(이름·레벨) 글자 색
+COLOR_TOOLTIP_TEXT = COLOR_TEXT_SOFT         # 보통 줄 글자 색
+COLOR_TOOLTIP_WARN = COLOR_RED_DARK          # "연구비가 모자라요" 글자 색
+
+# 업그레이드 툴팁 글자 (모두 config 값으로 계산해 채운다)
+UPGRADE_TIP_TITLE = "{}  Lv {}/{}"           # 이름, 지금 레벨, 최대 레벨
+UPGRADE_TIP_NOW = "지금: {}"                 # 지금 레벨의 효과
+UPGRADE_TIP_NOW_NONE = "지금: 아직 없음"      # 0레벨
+UPGRADE_TIP_NEXT = "다음: {}"                # 다음 레벨의 효과
+UPGRADE_TIP_MAXED = "다음: 최고 레벨"          # 최고 레벨이면
+UPGRADE_TIP_COST = "가격: 연구비 {}"
+UPGRADE_TIP_COST_MAX = "가격: MAX"
+UPGRADE_TIP_POOR = "연구비가 모자라요"
+# 업그레이드 id -> 레벨 효과 글자 틀. 채우는 값 = 레벨 x 레벨당 효과(UPGRADE_PER_LEVEL).
+# 방침 배수는 곱하지 않은 기본 효과다. "{:.0%}"는 0.15 -> "15%" 처럼 쓴다
+UPGRADE_LEVEL_EFFECTS = {
+    UPGRADE_MENU: "든든함 지속 +{:g}초",
+    UPGRADE_BED: "휴식 체력·멘탈 +{:g}",
+    UPGRADE_BOOK: "공부 지식 +{:g}",
+    UPGRADE_TIME: "자동 행동 간격 -{:g}초",
+    UPGRADE_HEALTH_CARE: "자연 감소 -{:.0%}",
+    UPGRADE_LIBRARY: "공부 지식 +{:g}",
+    UPGRADE_CAFE: "휴식 체력 +{:g}",
+    UPGRADE_GYM: "공부 체력 소모 -{:g}",
+    UPGRADE_CHARM: "이벤트 확률 +{:.0%}p",
+    UPGRADE_SCHOLARSHIP: "장학금 이벤트 (연구비 {:g} x 학년)",
+    UPGRADE_HEALTH_MAX: "체력 최대 +{:g}",
+    UPGRADE_MENTAL_MAX: "멘탈 최대 +{:g}",
+    UPGRADE_SELF_CARE: "1초마다 체력·멘탈 +{:g}",
+}
+# 업그레이드 id -> 무대 장식 한 줄 설명 (툴팁 4번째 줄)
+UPGRADE_DECOR_TEXTS = {
+    UPGRADE_MENU: "무대: 도시락이 생겨요",
+    UPGRADE_BED: "무대: 쿠션이 생겨요",
+    UPGRADE_BOOK: "무대: 책장이 생겨요 (책 = Lv)",
+    UPGRADE_TIME: "무대: 벽시계가 생겨요",
+    UPGRADE_HEALTH_CARE: "무대: 비타민 병이 생겨요",
+    UPGRADE_LIBRARY: "무대: 도서관 건물이 생겨요",
+    UPGRADE_CAFE: "무대: 카페 건물이 생겨요",
+    UPGRADE_GYM: "무대: 헬스장 건물이 생겨요",
+    UPGRADE_CHARM: "무대: 부적 걸이 (부적 = Lv)",
+    UPGRADE_SCHOLARSHIP: "무대: 트로피가 생겨요",
+    UPGRADE_HEALTH_MAX: "무대: 덤벨이 생겨요",
+    UPGRADE_MENTAL_MAX: "무대: 화분이 생겨요",
+    UPGRADE_SELF_CARE: "무대: 요가 매트가 생겨요",
+}
+
+# 상태 배지 아이콘: 배지 안 왼쪽에 작은 도트 아이콘(8 x 6칸, 칸 2픽셀 = 16 x 12픽셀) + 이름.
+# 배지 안쪽 높이가 16픽셀이라 아이콘은 12픽셀로 세로 가운데에 둔다
+STATUS_ICON_CELL = PIXEL_SIZE // 2           # 아이콘 도트 1칸 크기(2픽셀)
+STATUS_ICON_GAP = PIXEL_SIZE                 # 아이콘과 이름 글자 사이 간격
+STATUS_ICON_PAD = PIXEL_SIZE                 # 배지 안쪽 왼쪽 끝과 아이콘 사이 여백
+STATUS_ICONS = {
+    DEBUFF_TIRED: [                          # 피곤: 졸음 표시 Zz
+        "zzzz....",
+        "...z....",
+        "..z.zzz.",
+        ".z....z.",
+        "zzzz.z..",
+        "....zzz.",
+    ],
+    DEBUFF_DEPRESSED: [                      # 우울: 비구름
+        "..ooo...",
+        ".occcoo.",
+        "occcccco",
+        ".oooooo.",
+        "..r..r..",
+        ".r..r...",
+    ],
+    BUFF_FULL: [                             # 든든함: 김 나는 밥그릇
+        ".s..s...",
+        ".wwwwww.",
+        "oooooooo",
+        "obbbbbbo",
+        ".obbbbo.",
+        "..oooo..",
+    ],
+    CONDITION_GOOD: [                        # 컨디션 좋음: 반짝 별
+        "...o....",
+        "..oWo...",
+        "ooWWWoo.",
+        ".oWWWo..",
+        ".oWoWo..",
+        ".o...o..",
+    ],
+}
+STATUS_ICON_COLORS = {
+    "o": COLOR_OUTLINE, "z": COLOR_OUTLINE, "c": COLOR_CLOUD, "r": COLOR_SKY_DARK,
+    "s": COLOR_CLOUD_SHADE, "w": COLOR_WHITE, "b": COLOR_PINK_DARK, "W": COLOR_WHITE,
+}
+# 상태 배지 툴팁 글자 틀 (값은 config 상수와 지금 상태로 채운다)
+STATUS_TIP_TEXTS = {
+    DEBUFF_TIRED: "{name}: 체력 {limit} 미만 — 공부 지식 ×{ratio:g}",
+    DEBUFF_DEPRESSED: "{name}: 멘탈 {limit} 미만 — 버는 연구비 ×{ratio:g}",
+    BUFF_FULL: "{name}: 남은 시간 {left}초 — 체력 감소 ×{ratio:g}",
+    CONDITION_GOOD: "{name}: 휴식 위주, 체력·멘탈 {limit} 이상 — 버는 연구비 ×{ratio:g}",
+}
+
+# 무대 장식: 시설이 아닌 업그레이드 10종은 레벨 1부터 무대에 작은 도트 소품이 생긴다.
+# 시설 3종(도서관·카페·헬스장)은 예전처럼 건물(FACILITY_SPRITES)이다.
+# 장식은 배경 그림(make_scenery)에 함께 그려 캐시한다(열쇠에 장식 레벨이 들어간다).
+# 그래서 바깥 장소에서는 저녁·밤 그늘도 배경과 똑같이 받는다(시설과 같은 규칙).
+SCENE_COLORS.update({
+    "lunch_lid": COLOR_PINK, "lunch_lid2": COLOR_MINT_DARK, "lunch_box": COLOR_APRICOT,
+    "rice": COLOR_WHITE, "nori": (64, 84, 72),
+    "cushion_sky": COLOR_SKY, "cushion_sky_light": COLOR_SKY_LIGHT,
+    "cushion_pink": COLOR_PINK, "cushion_pink_light": COLOR_PINK_LIGHT,
+    "cushion_yellow": COLOR_YELLOW, "cushion_yellow_light": COLOR_YELLOW_LIGHT,
+    "shelf_back": (150, 104, 78), "book_apricot": COLOR_APRICOT,
+    "clock_face": COLOR_WHITE, "clock_window": (110, 76, 64),
+    "vitamin_orange": (246, 156, 72), "vitamin_green": (120, 196, 120),
+    "vitamin_pink": COLOR_PINK_DARK,
+    "charm_red": (226, 88, 84), "charm_sky": COLOR_SKY_DARK,
+    "trophy_light": (255, 244, 196),
+    "dumbbell": (92, 96, 130), "kettle": (232, 82, 90),
+    "bloom": COLOR_PINK_DARK, "mat": COLOR_MINT_DARK, "mat_light": COLOR_MINT,
+    "mat_roll": COLOR_PINK, "water": COLOR_SKY,
+})
+DECOR_BOOK = ["PP", "PP", "ww", "PP", "PP"]        # 책장에 꽂힌 책 한 권 (2 x 5)
+DECOR_CUSHION = [".ooooo.", "oClCCCo", "oCCClCo", ".ooooo."]   # 쿠션 (7 x 4)
+DECOR_LUNCHBOX = ["oooooooo", "oPPPPPPo", "oooooooo", "oBBBBBBo", "oooooooo"]  # 도시락 (8 x 5)
+DECOR_VITAMIN = ["oooo", "oCCo", "oooo", "oVVo", "oLVo", "oooo"]   # 비타민 병 (4 x 6)
+DECOR_CHARM = [".o.", "ooo", "oRo", "oYo", "oRo", "ooo"]           # 부적 (3 x 6)
+SCENE_SPRITES.update({
+    "decor_lunchbox": (DECOR_LUNCHBOX, {"o": "outline", "P": "lunch_lid", "B": "lunch_box"}),
+    "decor_lunchbox2": (DECOR_LUNCHBOX, {"o": "outline", "P": "lunch_lid2", "B": "lunch_box"}),
+    "decor_riceball": ([                         # 주먹밥 (5 x 5)
+        "..o..",
+        ".oWo.",
+        "oWWWo",
+        "oNNNo",
+        "ooooo",
+    ], {"o": "outline", "W": "rice", "N": "nori"}),
+    "decor_cushion_sky": (DECOR_CUSHION,
+                          {"o": "outline", "C": "cushion_sky", "l": "cushion_sky_light"}),
+    "decor_cushion_pink": (DECOR_CUSHION,
+                           {"o": "outline", "C": "cushion_pink", "l": "cushion_pink_light"}),
+    "decor_cushion_yellow": (DECOR_CUSHION, {"o": "outline", "C": "cushion_yellow",
+                                             "l": "cushion_yellow_light"}),
+    "decor_shelf": ([                            # 낮은 책장 (14 x 9), 안쪽 10칸에 책이 꽂힌다
+        "oooooooooooooo",
+        "oWWWWWWWWWWWWo",
+        "oWKKKKKKKKKKWo",
+        "oWKKKKKKKKKKWo",
+        "oWKKKKKKKKKKWo",
+        "oWKKKKKKKKKKWo",
+        "oWKKKKKKKKKKWo",
+        "oWWWWWWWWWWWWo",
+        "oooooooooooooo",
+    ], {"o": "outline", "W": "wood", "K": "shelf_back"}),
+    "decor_book_pink": (DECOR_BOOK, {"P": "book_pink", "w": "white"}),
+    "decor_book_mint": (DECOR_BOOK, {"P": "book_mint", "w": "white"}),
+    "decor_book_sky": (DECOR_BOOK, {"P": "book_sky", "w": "white"}),
+    "decor_book_yellow": (DECOR_BOOK, {"P": "book_yellow", "w": "white"}),
+    "decor_book_apricot": (DECOR_BOOK, {"P": "book_apricot", "w": "white"}),
+    "decor_clock": ([                            # 벽시계(괘종시계) (7 x 13): 시계판 + 추 상자
+        "..ooo..",
+        ".oWWWo.",
+        "oWWoWWo",
+        "oWWooWo",
+        "oWWWWWo",
+        ".oWWWo.",
+        "..ooo..",
+        ".ooooo.",
+        ".oTTTo.",
+        ".oKKKo.",
+        ".oKKKo.",
+        ".oTTTo.",
+        ".ooooo.",
+    ], {"o": "outline", "W": "clock_face", "T": "wood", "K": "clock_window"}),
+    "decor_pendulum": ([".o.", "oYo"], {"o": "outline", "Y": "gold"}),   # 추 (Lv3)
+    "decor_clock_bells": ([                      # 시계 위 종 두 개 (Lv5)
+        "YY...YY",
+        ".o...o.",
+    ], {"o": "outline", "Y": "gold"}),
+    "decor_vitamin_orange": (DECOR_VITAMIN, {"o": "outline", "C": "white",
+                                             "V": "vitamin_orange", "L": "white"}),
+    "decor_vitamin_green": (DECOR_VITAMIN, {"o": "outline", "C": "white",
+                                            "V": "vitamin_green", "L": "white"}),
+    "decor_vitamin_pink": (DECOR_VITAMIN, {"o": "outline", "C": "white",
+                                           "V": "vitamin_pink", "L": "white"}),
+    "decor_charm_rack": ([                       # 부적 걸이 (11 x 10): 나무 막대 + 기둥 2개
+        "ooooooooooo",
+        "oTTTTTTTTTo",
+        "ooooooooooo",
+        "o.........o",
+        "o.........o",
+        "o.........o",
+        "o.........o",
+        "o.........o",
+        "o.........o",
+        "o.........o",
+    ], {"o": "outline", "T": "wood"}),
+    "decor_charm_red": (DECOR_CHARM, {"o": "outline", "R": "charm_red", "Y": "gold"}),
+    "decor_charm_sky": (DECOR_CHARM, {"o": "outline", "R": "charm_sky", "Y": "gold"}),
+    "decor_trophy": ([                           # 트로피 (6 x 7)
+        "oooooo",
+        "oYyYYo",
+        ".oYYo.",
+        "..oo..",
+        ".oooo.",
+        ".oWWo.",
+        ".oooo.",
+    ], {"o": "outline", "Y": "gold", "y": "trophy_light", "W": "wood"}),
+    "decor_dumbbell": ([                         # 덤벨 (9 x 4)
+        ".oo...oo.",
+        "oGGoooGGo",
+        "oGGoooGGo",
+        ".oo...oo.",
+    ], {"o": "outline", "G": "dumbbell"}),
+    "decor_kettlebell": ([                       # 케틀벨 (5 x 5, Lv5)
+        ".ooo.",
+        "o...o",
+        "ooooo",
+        "oKKKo",
+        ".ooo.",
+    ], {"o": "outline", "K": "kettle"}),
+    "decor_pot": ([                              # 화분 (6 x 4)
+        "oooooo",
+        "oRRRRo",
+        ".oRRo.",
+        ".oooo.",
+    ], {"o": "outline", "R": "pot"}),
+    "decor_sprout": ([                           # 새싹 (Lv1)
+        ".o..o.",
+        "oPooPo",
+        "..oo..",
+    ], {"o": "outline", "P": "plant"}),
+    "decor_leaves": ([                           # 큰 잎 (Lv3)
+        "oo..oo",
+        "oPooPo",
+        "oPPPPo",
+        ".oPPo.",
+    ], {"o": "outline", "P": "plant"}),
+    "decor_bloom": ([".oo.", "oAAo", ".oo."], {"o": "outline", "A": "bloom"}),  # 꽃 (Lv5)
+    "decor_mat": ([                              # 요가 매트 (14 x 3, 바닥에 깔림)
+        "oooooooooooooo",
+        "oMmMmMmMmMmMmo",
+        "oooooooooooooo",
+    ], {"o": "outline", "M": "mat", "m": "mat_light"}),
+    "decor_mat_roll": ([".oo.", "oNNo", "oNNo", ".oo."],   # 말아 둔 매트 (Lv3)
+                       {"o": "outline", "N": "mat_roll"}),
+    "decor_water": ([".o.", "oBo", "oBo", "ooo"],          # 물병 (Lv5)
+                    {"o": "outline", "B": "water"}),
+})
+# 장식이 있는 업그레이드 id (시설 3종 제외, 패널 순서)
+DECOR_IDS = [UPGRADE_MENU, UPGRADE_BED, UPGRADE_BOOK, UPGRADE_TIME, UPGRADE_HEALTH_CARE,
+             UPGRADE_CHARM, UPGRADE_SCHOLARSHIP, UPGRADE_HEALTH_MAX, UPGRADE_MENTAL_MAX,
+             UPGRADE_SELF_CARE]
+# 업그레이드 id -> 장식 조각 목록 [(이 레벨 이상이면 보임, 스프라이트 이름, 열 차이, 행 차이)].
+# 열·행 차이는 장식 자리(DECOR_SLOTS)의 왼쪽 위 칸에서 잰다. 목록 순서대로 그린다.
+# 레벨이 오를수록 조각이 늘어난다: 대개 Lv1 기본, Lv3·Lv5에 하나씩 더(책장 책·부적은 레벨마다 하나)
+DECOR_PIECES = {
+    UPGRADE_MENU: [(1, "decor_lunchbox", 0, 4), (3, "decor_lunchbox2", 0, 0),
+                   (5, "decor_riceball", 9, 4)],                         # 14 x 9칸
+    UPGRADE_BED: [(1, "decor_cushion_sky", 0, 6), (3, "decor_cushion_pink", 0, 3),
+                  (5, "decor_cushion_yellow", 0, 0)],                    # 7 x 10칸
+    UPGRADE_BOOK: [(1, "decor_shelf", 0, 0), (1, "decor_book_pink", 2, 2),
+                   (2, "decor_book_mint", 4, 2), (3, "decor_book_sky", 6, 2),
+                   (4, "decor_book_yellow", 8, 2), (5, "decor_book_apricot", 10, 2)],  # 14 x 9칸
+    UPGRADE_TIME: [(1, "decor_clock", 0, 2), (3, "decor_pendulum", 2, 11),
+                   (5, "decor_clock_bells", 0, 0)],                      # 7 x 15칸
+    UPGRADE_HEALTH_CARE: [(1, "decor_vitamin_orange", 0, 0), (3, "decor_vitamin_green", 3, 0),
+                          (5, "decor_vitamin_pink", 6, 0)],              # 10 x 6칸
+    UPGRADE_CHARM: [(1, "decor_charm_rack", 0, 0), (1, "decor_charm_red", 1, 3),
+                    (2, "decor_charm_sky", 4, 3), (3, "decor_charm_red", 7, 3)],  # 11 x 10칸
+    UPGRADE_SCHOLARSHIP: [(1, "decor_trophy", 0, 0)],                    # 6 x 7칸
+    UPGRADE_HEALTH_MAX: [(1, "decor_dumbbell", 0, 4), (3, "decor_dumbbell", 0, 0),
+                         (5, "decor_kettlebell", 10, 3)],                # 15 x 8칸
+    UPGRADE_MENTAL_MAX: [(1, "decor_pot", 0, 9), (1, "decor_sprout", 0, 6),
+                         (3, "decor_leaves", 0, 3), (5, "decor_bloom", 1, 0)],  # 6 x 13칸
+    UPGRADE_SELF_CARE: [(1, "decor_mat", 0, 4), (3, "decor_mat_roll", 1, 0),
+                        (5, "decor_water", 10, 0)],                      # 14 x 7칸
+}
+# 장식 자리: 장소 -> {업그레이드 id: (왼쪽 열, 위 행)} (무대 안쪽 칸 좌표, 가로 124 x 세로 84칸).
+# 제자(4학년 반지름 70 + 외형 5종 + 점프까지 열 34~94, 행 12~72), 행동 소품(열 86~109, 행 62~74),
+# 잔디 벤치(열 4~17·106~119, 행 49~57), 졸업식 의자(열 4~33 행 64~82, 열 90~119 행 75~82),
+# 알림·이벤트 팝업 자리(무대 위쪽 구석, 땅 시작 행 45 위)와 겹치지 않는 땅 띠에 둔다.
+OUTDOOR_DECOR_SLOTS = {
+    UPGRADE_CHARM: (18, 45),          # 왼쪽 벤치 옆 (열 18~28, 행 45~54)
+    UPGRADE_BOOK: (19, 55),           # 그 아래 (열 19~32, 행 55~63)
+    UPGRADE_SELF_CARE: (34, 76),      # 아래 띠 (열 34~47, 행 76~82)
+    UPGRADE_HEALTH_MAX: (49, 75),     # (열 49~63, 행 75~82)
+    UPGRADE_MENU: (65, 74),           # (열 65~78, 행 74~82)
+    UPGRADE_HEALTH_CARE: (80, 77),    # (열 80~89, 행 77~82)
+    UPGRADE_TIME: (97, 46),           # 제자 오른쪽, 소품 위 (열 97~103, 행 46~60)
+    UPGRADE_SCHOLARSHIP: (110, 57),   # 오른쪽 벤치 아래, 쿠션 위 (열 110~115, 행 57~63)
+    UPGRADE_BED: (110, 65),           # 소품 오른쪽 (열 110~116, 행 65~74)
+    UPGRADE_MENTAL_MAX: (118, 62),    # (열 118~123, 행 62~74)
+}
+DECOR_SLOTS = {
+    PLACE_LAWN: OUTDOOR_DECOR_SLOTS,
+    PLACE_LECTURE: OUTDOOR_DECOR_SLOTS,
+    PLACE_LIBRARY: OUTDOOR_DECOR_SLOTS,
+    PLACE_CEREMONY: OUTDOOR_DECOR_SLOTS,
+    PLACE_LAB: {                      # 연구실: 벽시계·트로피는 창 아래 벽, 나머지는 바닥(행 62~)
+        UPGRADE_TIME: (97, 42),       # 벽에 걸린 시계 (열 97~103, 행 42~56)
+        UPGRADE_SCHOLARSHIP: (105, 55),   # 벽 앞 바닥선에 선 트로피 (열 105~110, 행 55~61)
+        UPGRADE_BOOK: (6, 70),        # 큰 책장 앞 바닥 (열 6~19, 행 70~78)
+        UPGRADE_CHARM: (21, 68),      # (열 21~31, 행 68~77)
+        UPGRADE_SELF_CARE: (34, 76),
+        UPGRADE_HEALTH_MAX: (49, 75),
+        UPGRADE_MENU: (65, 74),
+        UPGRADE_HEALTH_CARE: (80, 77),
+        UPGRADE_BED: (110, 70),       # (열 110~116, 행 70~79)
+        UPGRADE_MENTAL_MAX: (118, 66),    # (열 118~123, 행 66~78)
+    },
+}

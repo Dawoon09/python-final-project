@@ -28,7 +28,8 @@ import pytest  # noqa: E402
 
 import config  # noqa: E402
 import game as game_module  # noqa: E402
-from conftest import press, reach_grade  # noqa: E402
+from conftest import (JEJA_SPEC_PATH, doc_section, press, reach_grade, read_doc,  # noqa: E402
+                      spec_appendix, spec_rule_text)
 from game import Game, sprite_size  # noqa: E402
 from student import Student, judge_ending  # noqa: E402
 
@@ -114,7 +115,8 @@ def rng_draws(monkeypatch, g, value=0.0):
 def test_e_constants():
     assert config.EVENT_MIN_GAP == 8.0
     # (L단위) 지식 1000/750 -> 걸린 시간 200/360초 (11절 A안: 수석 240 -> 200)
-    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (200, 360)
+    # (M단위) 임시 값 400/720초 -> 값은 고정하지 않고 순서만 본다
+    assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
     assert config.PAUSE_DOT_STEP == 12 == P * 3
     assert config.EVENT_NOTICE_FONT_SIZE == 16
     assert config.EVENT_NOTICE_TEXT_MAX_WIDTH == 160
@@ -320,9 +322,8 @@ def test_gap_skip_keeps_rng_sequence_deterministic(make_game, monkeypatch):
 # ======================= 2. 완주 시뮬레이션: 4~5 보장 + 간격 규칙 =======================
 
 def greedy(s, low=30):
-    if s.health <= low:
-        return FEED
-    if s.mental <= low:
+    """(M단위) 회복은 휴식에서만: 체력·멘탈이 위험하면 휴식, 아니면 공부."""
+    if s.health <= low or s.mental <= low:
         return REST
     return STUDY
 
@@ -428,11 +429,16 @@ def test_gap_reduces_chance_events():
 
 
 # ======================= 3. 엔딩 기준 (L단위: 걸린 시간 200/360초) =======================
+# (M단위) 시간 기준은 임시 값(400/720)이라 경계는 config 상수로 잡는다(이름은 예전 그대로)
+TOP = config.TOP_GRADUATE_SECONDS
+NORMAL = config.NORMAL_GRADUATE_SECONDS
+
 
 @pytest.mark.parametrize("seconds, ending", [
-    (0, config.ENDING_TOP), (200, config.ENDING_TOP), (200.0001, config.ENDING_NORMAL),
-    (240, config.ENDING_NORMAL),
-    (360, config.ENDING_NORMAL), (360.0001, config.ENDING_BARELY), (5000, config.ENDING_BARELY),
+    (0, config.ENDING_TOP), (TOP, config.ENDING_TOP), (TOP + 0.0001, config.ENDING_NORMAL),
+    (TOP + 40, config.ENDING_NORMAL),
+    (NORMAL, config.ENDING_NORMAL), (NORMAL + 0.0001, config.ENDING_BARELY),
+    (NORMAL * 10, config.ENDING_BARELY),
 ])
 def test_judge_ending_200_360(seconds, ending):
     """(L단위, 예전 1000/750 지식 경계) 졸업 등급은 걸린 시간으로 정한다."""
@@ -445,8 +451,8 @@ def test_judge_ending_200_360(seconds, ending):
 
 
 @pytest.mark.parametrize("start, ending", [
-    (200.0 - DT, config.ENDING_TOP), (200.0, config.ENDING_NORMAL),
-    (360.0 - DT, config.ENDING_NORMAL), (360.0, config.ENDING_BARELY),
+    (TOP - DT, config.ENDING_TOP), (float(TOP), config.ENDING_NORMAL),
+    (NORMAL - DT, config.ENDING_NORMAL), (float(NORMAL), config.ENDING_BARELY),
 ])
 def test_graduation_flow_boundaries_events_on(make_game, start, ending):
     """이벤트 켠 실제 흐름: 4학년 지식 1100에서 update 한 번(DT) -> 그 시각으로 등급, 기록 저장."""
@@ -462,8 +468,11 @@ def test_graduation_flow_boundaries_events_on(make_game, start, ending):
 
 
 @pytest.mark.parametrize("start, elapsed, ending", [
-    (1084, 198.5, None), (1085, 198.5, config.ENDING_TOP),
-    (1085, 300.0, config.ENDING_NORMAL), (1085, 400.0, config.ENDING_BARELY),
+    # (M단위) 졸업 지식 2200: 2184 + 15 = 2199 는 못 넘고, 2185 + 15 = 2200 은 졸업
+    (config.GRADUATION_KNOWLEDGE - 16, TOP - 1.5, None),
+    (config.GRADUATION_KNOWLEDGE - 15, TOP - 1.5, config.ENDING_TOP),
+    (config.GRADUATION_KNOWLEDGE - 15, (TOP + NORMAL) / 2, config.ENDING_NORMAL),
+    (config.GRADUATION_KNOWLEDGE - 15, NORMAL + 40.0, config.ENDING_BARELY),
 ])
 def test_event_knowledge_crosses_graduation_goal(make_game, monkeypatch, start, elapsed, ending):
     """(L단위) 4학년에서 학식 + 자동형 '교수님께 칭찬'(지식 +15)으로 졸업 목표 1100을 넘으면 그 순간 졸업.
@@ -491,42 +500,43 @@ def test_event_knowledge_crosses_graduation_goal(make_game, monkeypatch, start, 
 BALANCE_SEEDS = range(20)
 
 
-@pytest.mark.parametrize("interval, expected", [
-    (1.0, config.ENDING_TOP),
-    (1.5, config.ENDING_NORMAL),
-    (2.0, config.ENDING_NORMAL),
-    (2.5, config.ENDING_BARELY),
-    (3.0, config.ENDING_BARELY),
-    (4.0, config.ENDING_BARELY),
-])
-def test_balance_with_events(interval, expected):
-    """사람처럼 interval 초마다 탐욕 행동(선택은 시드별 3전략 순환): 기대 엔딩이 과반.
+BALANCE_INTERVALS = (1.0, 1.5, 2.0, 2.5, 3.0, 4.0)
 
-    이 파일은 자동 행동을 끈(no_auto) 방치형 이전 수동 플레이 모형이다. K단위에서 기준이 1000/750으로
-    오르며(방치형은 자동 행동 + 업그레이드로 지식을 더 버는 것을 전제) 같은 수동 모형의 기대 엔딩도 한 칸씩
-    내려갔다(검수팀 실측 시드 20개: 1.5초 20 수석, 2.0초 17 무사, 2.5·3.0초 20 아슬아슬, 4.0초 17 아슬아슬 + 3 휴학).
-    방치형 분포(기획서 2절 변경 메모)는 test_idle_final.py 에서 본다.
-    (L단위) 등급이 졸업까지 걸린 시간으로 바뀐 뒤 검수팀 실측(시드 20개, 졸업 시각): 1.0초 20 수석(143~166초),
-    1.5초 19 수석 + 1 무사(218~245초), 2.0초 20 무사(292~354초), 2.5초 19 아슬아슬 + 1 휴학,
-    3.0초 17 아슬아슬 + 3 휴학, 4.0초 14 아슬아슬 + 6 휴학. 기대 엔딩은 K단위와 같다.
-    (11절 A안, 수석 240 -> 200초) 1.5초 간격 졸업 시각 218~245초는 이제 무사라서, 수석 사례는
-    1.0초 간격(143~166초)으로 옮기고 1.5초는 무사를 기대한다.
+
+@pytest.mark.parametrize("interval", BALANCE_INTERVALS)
+def test_balance_with_events(interval):
+    """사람처럼 interval 초마다 탐욕 행동(선택은 시드별 3전략 순환): 모든 판이 엔딩에 닿는다.
+
+    이 파일은 자동 행동을 끈(no_auto) 방치형 이전 수동 플레이 모형이다.
+    (K·L단위, 11절 A안) 예전에는 간격별 기대 엔딩(1.0초 수석, 1.5·2.0초 무사, 2.5초 이상 아슬아슬)이
+    과반인지 봤다. (M단위) 회복 규칙·진급 기준이 바뀌고 시간 기준이 임시 값이 되어, 분포는 밸런스 단위에서
+    다시 정한다. 그래서 여기서는 불변식만 본다: 상한(30분) 안에 모두 엔딩, 졸업 판의 등급은
+    judge_ending(걸린 시간)과 같다, 휴학이면 졸업 시각이 없다.
+    간격이 길수록 늦게 졸업하는지는 test_balance_slower_interval_graduates_later 에서 본다.
     """
-    counts = {}
     for seed in BALANCE_SEEDS:
         g, _ = run(seed, interval)
-        counts[g.ending] = counts.get(g.ending, 0) + 1
-    assert counts.get(expected, 0) > len(BALANCE_SEEDS) // 2, (interval, counts)
-    if interval == 4.0:
-        # 4초 간격은 수석·무사가 거의 없고 아슬아슬 또는 휴학
-        slow = counts.get(config.ENDING_BARELY, 0) + counts.get(config.ENDING_LEAVE, 0)
-        assert slow >= len(BALANCE_SEEDS) - 2, counts
-    assert None not in counts, counts   # (L단위) 상한(30분) 안에 모두 엔딩에 닿는다
-    if interval <= 2.0:
-        assert counts.get(config.ENDING_LEAVE, 0) == 0, counts
-    if interval >= 2.5:
-        # 수동 2.5초 이상은 수석에 못 미친다(기준이 오른 효과)
-        assert counts.get(config.ENDING_TOP, 0) == 0, counts
+        assert g.ending is not None, (interval, seed)   # (L단위) 상한(30분) 안에 엔딩에 닿는다
+        s = g.student
+        if s.has_graduated():
+            assert g.ending == judge_ending(s.graduation_time), (interval, seed)
+        else:
+            assert g.ending == config.ENDING_LEAVE, (interval, seed)
+    pygame.quit()
+
+
+def test_balance_slower_interval_graduates_later():
+    """(M단위) 행동 간격이 길수록(덜 자주 공부할수록) 졸업한 판의 평균 졸업 시각이 늦다."""
+    means = []
+    for interval in (1.0, 2.0, 3.0):
+        times = []
+        for seed in range(8):
+            g, _ = run(seed, interval)
+            if g.student.has_graduated():
+                times.append(g.student.graduation_time)
+        assert times, interval
+        means.append(sum(times) / len(times))
+    assert means == sorted(means), means
     pygame.quit()
 
 
@@ -827,29 +837,51 @@ def test_preview_other_color_darker_than_soft_text():
 # ======================= 9. 문서 일치 =======================
 
 def test_spec_section2_table_1000_750():
-    text = (ROOT / "docs" / "기획서.md").read_text(encoding="utf-8")
-    sec2 = text.split("## 2.")[1].split("## 3.")[0]
-    assert "| 수석 졸업 | 1000 이상 |" in sec2
-    assert "| 무사 졸업 | 750~999 |" in sec2
-    assert "| 아슬아슬 졸업 | 750 미만 |" in sec2
-    assert not re.search(r"\|\s*(500 이상|300~499|300 미만|700 이상|450~699|450 미만)\s*\|", sec2)
-    sec9 = text.split("## 9.")[1]
-    assert "700/450" in sec9   # 9절(이벤트 도입 때) 기록은 그대로 두고, 10절이 1000/750 으로 덮는다
-    assert "1000 이상" in text.split("## 10.")[1]
-    assert "8초" in sec9 and "최소 간격" in sec9
+    """(문서 정리) 기획서 2절 졸업 등급 표는 최종 규칙(걸린 시간 200/360초)만 적는다.
+
+    예전 기준(지식 500/300 -> 700/450 -> 1000/750)은 본문 규칙 절에 남지 않고
+    부록 변경 이력에만 기록으로 남는다. 이벤트 최소 간격 8초는 4절 발생 규칙에 있다.
+    (이름은 E단위·K단위 때 그대로 둔다)
+    """
+    text = read_doc()
+    grades = doc_section(doc_section(text, "게임 규칙"), "졸업 등급과 졸업 보너스")
+    # (M단위) 시간 기준은 임시 값이라 표 줄을 config 값으로 만든다
+    assert "| 수석 졸업 | {}초 이하 | +200 |".format(TOP) in grades
+    assert "| 무사 졸업 | {}초 초과 {}초 이하 | +100 |".format(TOP, NORMAL) in grades
+    assert "| 아슬아슬 졸업 | {}초 초과 | +50 |".format(NORMAL) in grades
+    rules = spec_rule_text(text)
+    assert not re.search(r"\|\s*(500 이상|300~499|300 미만|700 이상|450~699|450 미만|"
+                         r"1000 이상|750~999|750 미만)\s*\|", rules)
+    assert "1000/750" not in rules and "700/450" not in rules
+    history = spec_appendix(text)
+    assert "수석 500 / 무사 300" in history          # 원본 PDF
+    assert "졸업 기준 700 / 450" in history          # 이벤트 도입(E단위)
+    assert "졸업 기준 1000 / 750" in history         # 방치형 밸런스(K단위)
+    assert "최소 간격 8초" in history
+    occur = doc_section(text, "발생 규칙")
+    assert "**8초 이상**" in occur and "최소 간격" in occur
+    assert config.EVENT_MIN_GAP == 8.0
 
 
 def test_jeja_spec_section5_1000_750():
-    text = (ROOT / ".claude" / "skills" / "jeja-spec" / "SKILL.md").read_text(encoding="utf-8")
-    sec5 = text.split("## 5.")[1].split("## 6.")[0]
-    assert "누적 지식 ≥ 1000" in sec5
-    assert "750 ≤ 지식 ≤ 999" in sec5
-    assert "지식 < 750" in sec5
-    assert "749 → 아슬아슬, 750 → 무사, 999 → 무사, 1000 → 수석" in sec5
-    before_note = sec5.split("(2026")[0]
-    assert "500" not in before_note and "700" not in before_note and "450" not in before_note
-    sec14 = text.split("## 14.")[1]
-    assert "EVENT_MIN_GAP" in sec14 and "8.0초" in sec14
+    """(문서 정리) jeja-spec 졸업 등급은 걸린 시간 기준과 경계값만 적고, 예전 지식 기준은 없다.
+
+    (이름은 K단위 때 그대로 둔다) 이벤트 최소 간격 EVENT_MIN_GAP 8.0초는 4절 표에 있다.
+    """
+    text = read_doc(JEJA_SPEC_PATH)
+    grades = doc_section(doc_section(text, "게임 규칙"), "졸업 등급")
+    # (M단위) 시간 기준은 임시 값이라 config 값으로 글자를 만든다
+    assert "≤ {}초 (`TOP_GRADUATE_SECONDS`)".format(TOP) in grades
+    assert "{}초 초과 ≤ {}초 (`NORMAL_GRADUATE_SECONDS`)".format(TOP, NORMAL) in grades
+    assert "{}초 초과".format(NORMAL) in grades
+    for boundary in ("{} → 수석".format(TOP), "{}.0001 → 무사".format(TOP),
+                     "{} → 무사".format(NORMAL), "{}.0001 → 아슬아슬".format(NORMAL)):
+        assert boundary in grades, boundary
+    for old in ("누적 지식 ≥ 1000", "750 ≤ 지식 ≤ 999", "지식 < 750", "1000 → 수석",
+                "500 이상", "700 이상"):
+        assert old not in text, old
+    events = doc_section(text, "랜덤 이벤트와 성장 요소")
+    assert "`EVENT_MIN_GAP`" in events and "8.0초" in events
 
 
 def test_readme_has_no_older_ending_criteria():
@@ -872,9 +904,11 @@ def test_config_and_game_code_use_constants():
                 if isinstance(n, ast.Constant) and isinstance(n.value, (int, float))
                 and not isinstance(n.value, bool)}
         # (L단위) 진급 목표·졸업 지식·졸업 시간 숫자도 config 상수로만 쓴다
-        old_and_new = {500, 300, 700, 450, 1000, 750, 200, 1100, 240, 360, 400, 1500, 2000}
+        # (M단위) 새 진급 목표 400/900/1500/2200, 시간 720, 대학원 목표 3000/4000/5200·800도 상수로만
+        old_and_new = {500, 300, 700, 450, 1000, 750, 200, 1100, 240, 360, 400, 1500, 2000,
+                       900, 2200, 720, 800, 3000, 4000, 5200}
         assert not nums & old_and_new, (name, nums & old_and_new)
-    assert game_module.config.TOP_GRADUATE_SECONDS == 200
+    assert game_module.config.TOP_GRADUATE_SECONDS < game_module.config.NORMAL_GRADUATE_SECONDS
 
 
 

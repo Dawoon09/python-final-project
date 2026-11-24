@@ -1,12 +1,12 @@
 """11절 A안 밸런스 검수: 대학원 주기 감소 항(c)과 대학원 연구비 배수 1.0.
 
 기획서 11절 "대학원", jeja-spec 16절:
-- 대학원 자연 감소 배수 = 1 + 0.5n + 1.0c. n = 대학원 년차,
+- 대학원 자연 감소 배수 = 1 + 1.0n + 1.5c (B안, A안 1 + 0.5n + 1.0c). n = 대학원 년차,
   c = 대학원 진입 뒤 다 채운 60초 주기 수 = floor((elapsed - grad_entry_time) / 60). 학부는 1.
   건강 관리 배수 (1 - 0.1 x 레벨)와 곱한다.
 - Student.grad_entry_time: 대학원에 들어간 순간의 elapsed(학부면 None). Student.get_grad_cycles().
 - 대학원 연구비 배수 = 1 + 1.0n, 연구비 획득 배수 = (1 + 0.1 x 명성) x (1 + 1.0n).
-- 밸런스 메모: 대학원 수료까지 업그레이드 없음 약 5분, 중간 약 8분, 최고 약 24분(끝이 있다).
+- 밸런스 메모(B안): 대학원 수료까지 업그레이드 없음 약 5분, 중간 약 8분, 최고 약 22분(끝이 있다).
 
 이 파일은 conftest 의 AUTO_OFF_FILES / EVENTS_OFF_FILES 에 없다. 단위 테스트는 no_auto·no_events 를 직접 쓰고,
 시뮬레이션은 자동 행동·이벤트를 켠 실제 흐름(시드 고정)으로 돈다.
@@ -40,6 +40,11 @@ def quiet(no_auto, no_events):
     pygame.quit()
 
 
+def expected_ratio(year, cycles):
+    """대학원 자연 감소 배수 1 + GRAD_DECAY_BONUS x n + GRAD_CYCLE_DECAY_BONUS x c (config 를 따른다)."""
+    return 1 + config.GRAD_DECAY_BONUS * year + config.GRAD_CYCLE_DECAY_BONUS * cycles
+
+
 def grad_student(entry=ENTRY, year=1):
     """entry 초에 졸업해 대학원에 들어간 Student. year 가 1보다 크면 지식 목표로 년차를 올린다(시간은 그대로)."""
     s = Student()
@@ -56,8 +61,8 @@ def grad_student(entry=ENTRY, year=1):
 # ======================= config =======================
 
 def test_grad_cycle_constants():
-    assert config.GRAD_DECAY_BONUS == 0.5
-    assert config.GRAD_CYCLE_DECAY_BONUS == 1.0
+    assert config.GRAD_DECAY_BONUS == 1.0          # B안 (A안 0.5)
+    assert config.GRAD_CYCLE_DECAY_BONUS == 1.5    # B안 (A안 1.0)
     assert config.GRAD_CYCLES_NONE == 0
     assert config.GRAD_MONEY_BONUS == 1.0
     assert config.CYCLE_SECONDS == 60
@@ -179,19 +184,20 @@ def test_grad_cycles_zero_when_entry_time_missing():
     s.elapsed = 600.0
     assert s.grad_entry_time is None
     assert s.get_grad_cycles() == 0
-    assert s.get_grad_decay_ratio() == pytest.approx(2.0)
+    assert s.get_grad_decay_ratio() == pytest.approx(expected_ratio(2, 0)) == pytest.approx(3.0)
 
 
-# ======================= 자연 감소 배수 1 + 0.5n + 1.0c =======================
+# ======================= 자연 감소 배수 1 + 1.0n + 1.5c (B안) =======================
 
 @pytest.mark.parametrize("year, cycles, ratio", [
-    (1, 0, 1.5), (1, 1, 2.5), (1, 2, 3.5), (2, 0, 2.0), (2, 1, 3.0), (2, 3, 5.0),
-    (3, 1, 3.5), (4, 5, 8.0), (15, 24, 32.5),
+    (1, 0, 2.0), (1, 1, 3.5), (1, 2, 5.0), (2, 0, 3.0), (2, 1, 4.5), (2, 3, 7.5),
+    (3, 1, 5.5), (4, 5, 12.5), (15, 24, 52.0),
 ])
 def test_grad_decay_ratio_n_and_c(year, cycles, ratio):
     s = grad_student(240.0, year)
     s.elapsed = 240.0 + cycles * config.CYCLE_SECONDS + 1.0    # 주기 안 1초(시험 기간 아님)
     assert s.get_grad_cycles() == cycles
+    assert ratio == pytest.approx(expected_ratio(year, cycles))
     assert s.get_grad_decay_ratio() == pytest.approx(ratio)
     assert s.get_health_decay() == pytest.approx(ratio)
     assert s.get_mental_decay() == pytest.approx(ratio)
@@ -202,39 +208,44 @@ def test_grad_decay_ratio_n_and_c(year, cycles, ratio):
 
 
 @pytest.mark.parametrize("year, cycles, care, ratio", [
-    (1, 0, 1, 1.35), (1, 1, 5, 1.25), (2, 2, 2, 3.2), (3, 0, 5, 1.25), (1, 3, 1, 4.05),
-    (4, 4, 3, 4.9),
+    (1, 0, 1, 1.8), (1, 1, 5, 1.75), (2, 2, 2, 4.8), (3, 0, 5, 2.0), (1, 3, 1, 5.85),
+    (4, 4, 3, 7.7),
 ])
 def test_grad_decay_ratio_times_health_care(year, cycles, care, ratio):
-    """(1 - 0.1 x 건강 관리) x (1 + 0.5n + 1.0c)."""
+    """(1 - 0.1 x 건강 관리) x (1 + 1.0n + 1.5c)."""
     s = grad_student(240.0, year)
     s.upgrades[CARE] = care
     s.elapsed = 240.0 + cycles * config.CYCLE_SECONDS + 1.0
     assert s.get_health_decay() == pytest.approx(ratio)
     assert s.get_mental_decay() == pytest.approx(ratio)
     assert s.get_health_decay() == pytest.approx(
-        (1 - 0.1 * care) * (1 + 0.5 * year + 1.0 * cycles))
+        (1 - 0.1 * care) * expected_ratio(year, cycles))
 
 
 def test_actual_decay_switches_at_cycle_boundary():
-    """240초 진입, 1년차: 241~299초 감소는 x1.5, 300·301초 감소는 c = 1 이라 x2.5."""
+    """240초 진입, 1년차: 281~299초 감소는 x2.0, 300·301초 감소는 c = 1 이라 x3.5 (B안).
+
+    B안 배수로는 241초부터 61초를 흘리면 체력이 0 아래로 가므로 280초에서 시작한다.
+    """
     s = grad_student(240.0)
+    s.elapsed = 280.0
     s.health = 100
     s.mental = 100
-    s.update(61.0)
+    s.update(21.0)
     assert s.elapsed == pytest.approx(301.0)
-    assert s.health == pytest.approx(100 - 59 * 1.5 - 2 * 2.5)
+    assert s.health == pytest.approx(100 - 19 * 2.0 - 2 * 3.5)
+    assert s.health == pytest.approx(100 - 19 * expected_ratio(1, 0) - 2 * expected_ratio(1, 1))
 
 
 def test_decay_ratio_uses_promoted_year_and_cycles_together():
-    """1년차 진입 뒤 c = 2 일 때 지식으로 2년차가 되면 배수는 1 + 1.0 + 2.0 = 4.0."""
+    """1년차 진입 뒤 c = 2 일 때 지식으로 2년차가 되면 배수는 1 + 2.0 + 3.0 = 6.0 (B안)."""
     s = grad_student(240.0)
     s.elapsed = 240.0 + 2 * config.CYCLE_SECONDS + 1.0
-    assert s.get_grad_decay_ratio() == pytest.approx(3.5)
+    assert s.get_grad_decay_ratio() == pytest.approx(5.0)
     s.knowledge = s.get_grad_goal(1)
     s.promote()
     assert s.grad_year == 2
-    assert s.get_grad_decay_ratio() == pytest.approx(4.0)
+    assert s.get_grad_decay_ratio() == pytest.approx(6.0)
 
 
 def test_undergrad_decay_unaffected_by_long_time():
@@ -346,7 +357,7 @@ def test_grad_school_ends_within_15_minutes(seed, name, levels):
 
 @pytest.mark.parametrize("seed", [0])
 def test_grad_school_ends_with_max_upgrades(seed):
-    """전부 최고 레벨이어도 끝이 있다(밸런스 메모: 약 24분, 14~16년차). 상한 40분."""
+    """전부 최고 레벨이어도 끝이 있다(밸런스 메모 B안: 약 22분, 10~11년차). 상한 40분."""
     ending, survived, year = grad_run(seed, MAX_LEVELS, 40 * 60)
     assert ending == config.ENDING_GRAD_TEXT.format(year), (seed, survived)
     assert 15 * 60 < survived < 40 * 60, (seed, survived)

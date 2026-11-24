@@ -20,6 +20,7 @@ import game as game_module  # noqa: E402
 from button import Button  # noqa: E402
 from conftest import press, reach_grade  # noqa: E402
 from game import Game  # noqa: E402
+from student import judge_ending  # noqa: E402
 from student import Student  # noqa: E402
 
 ROOT = Path(config.__file__).parent
@@ -86,13 +87,17 @@ def test_auto_interval_and_no_cooldown_constant():
     assert not hasattr(config, "ACTION_COOLDOWN")
 
 
-@pytest.mark.parametrize("name, key, threshold, k_ratio, c_ratio, text", [
-    (SF, pygame.K_1, 30, 1.4, 1.6, "공부 위주 [1]"),
-    (BAL, pygame.K_2, 50, 1.0, 1.0, "균형 [2]"),
-    (RF, pygame.K_3, 70, 0.8, 0.7, "휴식 위주 [3]"),
+# (M단위) 공부 위주 30/1.4/1.6 -> 20/1.6/1.8, 휴식 위주 지식 0.8 -> 0.7, 휴식 회복 배수·컨디션 보너스 추가
+# (B안) 공부 위주 20/1.6 -> 25/1.8(소모 1.8 그대로), 휴식 위주 컨디션 보너스 0.2 -> 0.5
+@pytest.mark.parametrize("name, key, threshold, k_ratio, c_ratio, text, rest_ratio, bonus", [
+    (SF, pygame.K_1, 25, 1.8, 1.8, "공부 위주 [1]", 1.0, 0.0),
+    (BAL, pygame.K_2, 50, 1.0, 1.0, "균형 [2]", 1.0, 0.0),
+    (RF, pygame.K_3, 70, 0.7, 0.7, "휴식 위주 [3]", 1.5, 0.5),
 ])
-def test_policy_table(name, key, threshold, k_ratio, c_ratio, text):
+def test_policy_table(name, key, threshold, k_ratio, c_ratio, text, rest_ratio, bonus):
     p = config.POLICIES[name]
+    assert p[config.POLICY_REST_RATIO] == rest_ratio
+    assert p[config.POLICY_CONDITION_BONUS] == bonus
     assert p[config.POLICY_THRESHOLD] == threshold
     assert p[config.POLICY_KNOWLEDGE_RATIO] == k_ratio
     assert p[config.POLICY_COST_RATIO] == c_ratio
@@ -123,8 +128,9 @@ def test_first_action_at_2s_not_at_198(g, monkeypatch):
     assert log == [] and g.last_action is None
     assert g.auto_timer == pytest.approx(0.02)
     g.update(0.02)
-    assert log == [(2.0, STUDY)]
-    assert g.last_action == STUDY
+    # (M단위) 시작 게이지 80/80이라 회복은 필요 없고, 든든함이 없으므로 첫 행동은 학식
+    assert log == [(2.0, FEED)]
+    assert g.last_action == FEED
     assert g.auto_timer == pytest.approx(config.AUTO_ACTION_INTERVAL)
 
 
@@ -167,61 +173,70 @@ def test_do_action_does_not_refill_auto_timer(g):
 def test_auto_action_follows_choose_rule(g, monkeypatch):
     log = record_actions(g, monkeypatch)
     g.student.health, g.student.mental = 45, 60
-    g.update(2.0)                      # 자연 감소 2 -> 43, 58 -> 체력 < 50 -> 학식
-    assert log[-1][1] == FEED and g.last_action == FEED
-    assert g.student.health == 43 + config.FEED_HEALTH
+    g.update(2.0)                      # 자연 감소 2 -> 43, 58 -> 체력 < 50 -> 휴식(M단위)
+    assert log[-1][1] == REST and g.last_action == REST
+    assert g.student.health == 43 + config.REST_HEALTH
+    assert g.student.mental == 58 + config.REST_MENTAL
 
 
 # ======================= 3. 행동 고르기 (회복 기준, 동점, 경계) =======================
 
+# (M단위) 새 규칙: 체력이나 멘탈 < 기준 -> 휴식, 아니고 든든함 없음 -> 학식, 아니면 공부.
+# expected 는 든든함이 있을 때의 답이다. 든든함이 없으면 휴식이 아닌 칸은 학식이 된다.
+# 예전 "낮은 쪽 회복(체력이면 학식)"·동점 규칙은 회복이 휴식뿐이라 없어졌다.
 @pytest.mark.parametrize("policy, health, mental, expected", [
     # 균형: 기준 50
     (BAL, 50, 50, STUDY), (BAL, 100, 100, STUDY),
-    (BAL, 49, 80, FEED), (BAL, 80, 49, REST),
-    (BAL, 49, 49, FEED),                         # 동점 -> 학식
-    (BAL, 30, 40, FEED), (BAL, 40, 30, REST),
-    (BAL, 49, 50, FEED), (BAL, 50, 49, REST),
-    (BAL, 10, 49, FEED),                         # 둘 다 미만, 체력이 더 낮음
-    (BAL, 0, 0, FEED),
-    # 공부 위주: 기준 30
-    (SF, 30, 30, STUDY), (SF, 31, 30, STUDY), (SF, 29, 100, FEED), (SF, 100, 29, REST),
-    (SF, 29, 29, FEED), (SF, 35, 35, STUDY), (SF, 49, 49, STUDY),
+    (BAL, 49, 80, REST), (BAL, 80, 49, REST),
+    (BAL, 49, 49, REST),
+    (BAL, 30, 40, REST), (BAL, 40, 30, REST),
+    (BAL, 49, 50, REST), (BAL, 50, 49, REST),
+    (BAL, 10, 49, REST),
+    (BAL, 0, 0, REST),
+    # 공부 위주: 기준 25 (B안, 예전 20)
+    (SF, 25, 25, STUDY), (SF, 26, 25, STUDY), (SF, 24, 100, REST), (SF, 100, 24, REST),
+    (SF, 24, 24, REST), (SF, 29, 29, STUDY), (SF, 35, 35, STUDY), (SF, 49, 49, STUDY),
     # 휴식 위주: 기준 70
-    (RF, 70, 70, STUDY), (RF, 69, 69, FEED), (RF, 69, 90, FEED), (RF, 90, 69, REST),
-    (RF, 60, 50, REST), (RF, 50, 60, FEED), (RF, 69, 70, FEED), (RF, 70, 69, REST),
+    (RF, 70, 70, STUDY), (RF, 69, 69, REST), (RF, 69, 90, REST), (RF, 90, 69, REST),
+    (RF, 60, 50, REST), (RF, 50, 60, REST), (RF, 69, 70, REST), (RF, 70, 69, REST),
 ])
 def test_choose_auto_action(g, policy, health, mental, expected):
     assert g.set_policy(policy)
     g.student.health, g.student.mental = health, mental
+    g.student.feed()                       # 든든함 있음
     assert g.choose_auto_action() == expected
+    g.student.full_until = None            # 든든함 없음
+    assert g.choose_auto_action() == (REST if expected == REST else FEED)
 
 
-@pytest.mark.parametrize("knowledge", [0, 449, 700, 5000])
+@pytest.mark.parametrize("knowledge", [0, 899, 1400, 10000])
 def test_choose_ignores_knowledge_and_time(g, knowledge):
     g.student.knowledge = knowledge
     g.student.elapsed = 50.0           # 시험 기간이어도 같은 규칙
+    assert g.choose_auto_action() == FEED      # (M단위) 든든함 없음 -> 학식
+    g.student.feed()
     assert g.choose_auto_action() == STUDY
     g.student.health = 49
-    assert g.choose_auto_action() == FEED
+    assert g.choose_auto_action() == REST      # (M단위) 회복은 휴식
 
 
 # ======================= 4. 방침별 공부 수치 (기본값+보너스 -> 배수 -> 반올림) =======================
-# 기대값은 기획서 10절 표로 손계산: 공부 위주 지식 10x1.4=14, 체력 -5x1.6=-8, 멘탈 -8x1.6=-12.8->-13
-# 휴식 위주 지식 10x0.8=8, 체력 -5x0.7=-3.5->-4, 멘탈 -8x0.7=-5.6->-6
-# 카페인(체력 -5+2=-3): 공부 위주 -4.8->-5, 휴식 위주 -2.1->-2
+# 기대값은 기획서 2절 표로 손계산(B안): 공부 위주 지식 10x1.8=18, 체력 -5x1.8=-9, 멘탈 -8x1.8=-14.4->-14
+# 휴식 위주 지식 10x0.7=7, 체력 -5x0.7=-3.5->-4, 멘탈 -8x0.7=-5.6->-6
+# 카페인(체력 -5+2=-3): 공부 위주 -5.4->-5, 휴식 위주 -2.1->-2
 
 @pytest.mark.parametrize("policy, exam, caffeine, dk, dh, dm", [
-    (SF, False, False, 14, -8, -13),
-    (SF, True, False, 28, -8, -13),
-    (SF, False, True, 14, -5, -13),
-    (SF, True, True, 28, -5, -13),
+    (SF, False, False, 18, -9, -14),
+    (SF, True, False, 36, -9, -14),
+    (SF, False, True, 18, -5, -14),
+    (SF, True, True, 36, -5, -14),
     (BAL, False, False, 10, -5, -8),
     (BAL, True, False, 20, -5, -8),
     (BAL, False, True, 10, -3, -8),
-    (RF, False, False, 8, -4, -6),
-    (RF, True, False, 16, -4, -6),
-    (RF, False, True, 8, -2, -6),
-    (RF, True, True, 16, -2, -6),
+    (RF, False, False, 7, -4, -6),
+    (RF, True, False, 14, -4, -6),
+    (RF, False, True, 7, -2, -6),
+    (RF, True, True, 14, -2, -6),
 ])
 def test_study_numbers_per_policy_via_game(g, policy, exam, caffeine, dk, dh, dm):
     g.set_policy(policy)
@@ -247,15 +262,20 @@ def test_student_study_ratios_match_game(policy):
     assert isinstance(a.health, int) and isinstance(a.mental, int)
 
 
-@pytest.mark.parametrize("policy", [SF, BAL, RF])
-def test_feed_and_rest_ignore_policy(g, policy):
+# (M단위) 학식은 방침과 상관없이 든든함만. 휴식은 방침의 휴식 회복 배수(휴식 위주 1.5)를 곱한다:
+# 15 x 1.5 = 22.5 -> round 22, 20 x 1.5 = 30. 지식 -2 는 배수 없음.
+@pytest.mark.parametrize("policy, rest_gauges", [
+    (SF, (65, 70, 8)), (BAL, (65, 70, 8)), (RF, (72, 80, 8)),
+])
+def test_feed_ignores_policy_rest_uses_rest_ratio(g, policy, rest_gauges):
     g.set_policy(policy)
     s = g.student
     s.health, s.mental, s.knowledge = 50, 50, 10
     assert g.do_action(FEED)
-    assert (s.health, s.mental, s.knowledge) == (70, 50, 10)
+    assert (s.health, s.mental, s.knowledge) == (50, 50, 10)
+    assert s.get_full_time_left() == config.FULL_DURATION
     assert g.do_action(REST)
-    assert (s.health, s.mental, s.knowledge) == (70, 70, 8)
+    assert (s.health, s.mental, s.knowledge) == rest_gauges
 
 
 def test_study_with_policy_clamped_and_leave(g):
@@ -271,10 +291,11 @@ def test_auto_study_in_exam_uses_policy(g):
     s = g.student
     s.elapsed = 45.0
     s.health, s.mental, s.knowledge = 90, 90, 0
+    s.feed()                           # (M단위) 든든함이 있어야 공부를 고른다
     g.auto_timer = 0.5
     g.update(0.5)
     assert g.last_action == STUDY
-    assert s.knowledge == 28
+    assert s.knowledge == 36           # 20 x 1.8 (B안)
 
 
 # ======================= 5. 방침 바꾸기 (키 1/2/3, 클릭, set_policy) =======================
@@ -313,9 +334,10 @@ def test_policy_change_applies_to_next_auto_action(g):
     g.update(1.0)
     press(g, pygame.K_1)
     g.student.health = g.student.mental = 90
+    g.student.feed()                   # (M단위) 든든함이 있어야 공부
     k = g.student.knowledge
     g.update(1.0)
-    assert g.last_action == STUDY and g.student.knowledge == k + 14
+    assert g.last_action == STUDY and g.student.knowledge == k + 18   # 10 x 1.8 (B안)
 
 
 def test_keys_in_title_and_ending_do_not_change_policy(no_events):
@@ -415,19 +437,19 @@ def test_large_dt_equals_frame_steps(no_events):
     a.update(7.0)
     for _ in range(7 * 60):
         b.update(FRAME)
-    # 0~2초 감소 2 -> 78/78 -> 공부 73/70 k10, 2~4초 71/68 -> 66/60 k20,
-    # 4~6초 64/58 -> 59/50 k30, 6~7초 58/49
-    assert gauges(a) == gauges(b) == (58, 49, 30)
+    # (M단위) 0~2초 감소 2 -> 78/78 -> 학식(든든함: 체력 감소 x0.5), 2~4초 77/76 -> 공부 72/68 k10,
+    # 4~6초 71/66 -> 공부 66/58 k20, 6~7초 65.5/57
+    assert gauges(a) == gauges(b) == (65.5, 57, 20)
     assert a.auto_timer == pytest.approx(1.0) and b.auto_timer == pytest.approx(1.0, abs=1e-6)
     pygame.quit()
 
 
 def test_large_dt_action_saves_student(g):
-    """체력 3: 한 번에 5초를 흘려도 2초에 학식(1 -> 21), 4초에 학식(19 -> 39) 해서 산다."""
+    """체력 3: 한 번에 5초를 흘려도 2초에 휴식(1 -> 16), 4초에 휴식(14 -> 29) 해서 산다(M단위)."""
     g.student.health = 3
     g.update(5.0)
     assert g.state == config.STATE_PLAYING
-    assert g.student.health == 38
+    assert g.student.health == 28
 
 
 def test_large_dt_leave_before_action_at_same_time(g, monkeypatch):
@@ -450,9 +472,11 @@ def test_large_dt_graduation_stops_actions(g, monkeypatch):
     g.student.elapsed = 176.5
     g.auto_timer = 0.5
     g.student.health = g.student.mental = 100
+    g.student.feed()                   # (M단위) 든든함이 있어야 공부를 고른다
     log = record_actions(g, monkeypatch)
     g.update(100.0)
-    assert g.state == config.STATE_ENDING and g.ending == config.ENDING_TOP
+    # 등급은 걸린 시간(177초) 기준 (M단위: 시간 기준은 임시 값이라 judge_ending 으로)
+    assert g.state == config.STATE_ENDING and g.ending == judge_ending(177.0)
     assert [t for t, _ in log] == pytest.approx([177.0])
     assert g.student.elapsed == pytest.approx(177.0)
     assert g.student.graduation_time == pytest.approx(177.0)
@@ -556,8 +580,10 @@ def test_threshold_and_ratios_read_from_config(g, monkeypatch):
     table[BAL][config.POLICY_COST_RATIO] = 0.0
     monkeypatch.setattr(config, "POLICIES", table)
     g.student.health = g.student.mental = 89
-    assert g.choose_auto_action() == FEED
+    assert g.choose_auto_action() == REST      # (M단위) 기준 미만 -> 휴식
     g.student.health = g.student.mental = 90
+    assert g.choose_auto_action() == FEED      # 든든함 없음 -> 학식
+    g.student.feed()
     assert g.choose_auto_action() == STUDY
     assert g.do_action(STUDY)
     assert gauges(g) == (90, 90, 30)

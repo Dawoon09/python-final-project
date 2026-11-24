@@ -403,11 +403,13 @@ def test_panel_gauge_constants():
     assert config.UPGRADE_GAUGE_BAR_HEIGHT == 8
     assert config.UPGRADE_HEADER_Y == 132
     assert config.UPGRADE_ROW_TOP == 166
-    assert config.UPGRADE_ROW_HEIGHT == 27
-    assert config.UPGRADE_ROW_STEP == 28
+    # (M단위) 13줄: 줄 높이 27 -> 20, 간격 28 -> 21 (마지막 줄 아래 끝 445 -> 438)
+    assert config.UPGRADE_ROW_HEIGHT == 20
+    assert config.UPGRADE_ROW_STEP == 21
     assert config.UPGRADE_FOOTER_Y == 454   # K단위 2차: 455 -> 454 (글자 꼬리까지 외곽선 안)
-    last_row_bottom = config.UPGRADE_ROW_TOP + 9 * config.UPGRADE_ROW_STEP + config.UPGRADE_ROW_HEIGHT
-    assert last_row_bottom == 445
+    last_row_bottom = config.UPGRADE_ROW_TOP + 12 * config.UPGRADE_ROW_STEP + config.UPGRADE_ROW_HEIGHT
+    assert last_row_bottom == 438
+    assert len(config.UPGRADE_IDS) == 13
     assert [n for n, _, _ in config.UPGRADE_GAUGES] == [config.GAUGE_HEALTH, config.GAUGE_MENTAL]
 
 
@@ -466,8 +468,8 @@ def test_panel_footer_below_rows_inside_panel(g, monkeypatch, cursor):
     assert panel_inner.inflate(0, 2).contains(ink), (text, ink, panel_inner)
     assert ink.left >= panel_inner.left and ink.right <= panel_inner.right
     for i in range(len(config.UPGRADE_IDS)):
-        assert g.get_upgrade_row_rect(i).top == 166 + 28 * i
-        assert g.get_upgrade_row_rect(i).height == 27
+        assert g.get_upgrade_row_rect(i).top == 166 + 21 * i     # (M단위) 13줄: 간격 21
+        assert g.get_upgrade_row_rect(i).height == 20
 
 
 @pytest.mark.parametrize("health, mental", [(20, 80), (100, 0), (29.9, 30), (30, 29.9),
@@ -496,7 +498,7 @@ def test_panel_gauge_colour_from_real_length_from_shown(g, monkeypatch, real, la
 def test_panel_gauge_follows_smoothed_value(g, monkeypatch):
     g.upgrade_panel_open = True
     g.student.health = 50
-    g.do_action(config.ACTION_FEED)
+    g.do_action(config.ACTION_REST)        # (M단위) 체력 회복은 휴식(+15)
     target = g.student.health
     assert target > 50
     widths = [fill_widths(g, monkeypatch)[0][1]]
@@ -861,17 +863,49 @@ def test_shaded_scenery_no_alpha_and_no_magenta(g, monkeypatch):
                     assert g.screen.get_at((x, y))[:3] != config.COLOR_KEY, (term, t)
 
 
-def test_frame_time_under_3ms_with_shade_changes(g, no_decay):
-    """시설 3개 + 소품 + 패널 열림, 그늘 단계가 세 번 바뀌는 구간 평균 update+draw < 3ms."""
+FRAME_TIME_RUNS = 3          # 프레임 시간을 몇 번 재서 가장 빠른 쪽을 볼지
+FRAME_TIME_LIMIT_MS = 5.0    # 평균 update+draw 기준(ms). 이 PC에서 보통 약 1.5ms, 60fps 한 프레임은 16.7ms
+
+
+def test_frame_time_under_3ms_with_shade_changes(g, no_decay, monkeypatch):
+    """시설 3개 + 소품 + 패널 열림, 그늘 단계가 세 번 바뀌는 구간의 프레임 비용.
+
+    (문서 정리 때 검수팀이 고침) 다른 프로그램이 CPU를 쓰면 시간 측정이 흔들려 실패하던 테스트다.
+    - 결정적인 확인: 배경 그림(make_scenery)은 열쇠(장소·계절·시설·그늘)가 바뀐 프레임에서만
+      새로 그린다(캐시). 이것이 이 테스트가 지키려던 "매 프레임 다시 그리지 않음"의 본뜻이다.
+    - 시간 확인: 3번 재서 가장 빠른 평균이 넉넉한 기준(5ms, 60fps 예산의 1/3) 안.
+      (이름의 3ms는 예전 기준. 테스트 이름은 그대로 둔다)
+    """
     for f in ("library", "cafe", "gym"):
         g.upgrades[f] = 1
     g.last_action = config.ACTION_STUDY
     g.upgrade_panel_open = True
+    frames = 7 * 60          # 8.0 -> 15.0초: 단계 0 -> 1 -> 2 -> 1 -> (여름) 0
+
+    # 1) 결정적: 다시 그린 횟수 == 열쇠가 바뀐 횟수
+    builds = []
+    original = g.make_scenery
+
+    def counting_make_scenery(*args, **kwargs):
+        builds.append(args)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(g, "make_scenery", counting_make_scenery)
     set_term_time(g, 1, 8.0)
     g.draw()
-    frames = 7 * 60          # 8.0 -> 15.0초: 단계 0 -> 1 -> 2 -> 1 -> (여름) 0
+    builds.clear()
+    keys = [g.scenery_key]
+    for _ in range(frames):
+        g.update(FRAME)
+        g.draw()
+        keys.append(g.scenery_key)
+    changes = sum(1 for a, b in zip(keys, keys[1:]) if a != b)
+    assert changes >= 3, keys[-1]            # 그늘 단계가 실제로 여러 번 바뀌는 구간이다
+    assert len(builds) == changes, (len(builds), changes)
+
+    # 2) 시간: 여러 번 재서 가장 빠른 평균
     best = None
-    for _ in range(2):       # 다른 프로세스 영향 줄이려고 두 번 재서 빠른 쪽
+    for _ in range(FRAME_TIME_RUNS):
         set_term_time(g, 1, 8.0)
         g.draw()
         start = time.perf_counter()
@@ -880,4 +914,4 @@ def test_frame_time_under_3ms_with_shade_changes(g, no_decay):
             g.draw()
         avg = (time.perf_counter() - start) / frames * 1000
         best = avg if best is None else min(best, avg)
-    assert best < 3.0, best
+    assert best < FRAME_TIME_LIMIT_MS, best

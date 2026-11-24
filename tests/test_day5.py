@@ -24,6 +24,10 @@ from game import Game  # noqa: E402
 from student import Student, judge_ending  # noqa: E402
 from button import sprite_size  # noqa: E402
 
+# (M단위) 졸업 등급 시간 기준은 임시 값이라 경계 테스트는 config 상수로 쓴다
+TOP = config.TOP_GRADUATE_SECONDS
+NORMAL = config.NORMAL_GRADUATE_SECONDS
+
 FRAME = 1 / 60
 # (L단위) 60초 주기의 시작 시각. 240초 이후에도 주기가 계속 이어진다
 CYCLE_STARTS = [0, 60, 120, 180, 240, 300]
@@ -94,8 +98,9 @@ def test_config_values():
     assert config.MENTAL_DECAY_PER_SEC_EXAM == 2 and config.MENTAL_DECAY_PER_SEC == 1
     assert config.STUDY_KNOWLEDGE_EXAM == 20 and config.STUDY_KNOWLEDGE == 10
     # (L단위) 졸업 기준: 지식 1000/750 -> 걸린 시간 200/360초(11절 A안, 수석 240 -> 200), 졸업 지식 1100
-    assert config.TOP_GRADUATE_SECONDS == 200 and config.NORMAL_GRADUATE_SECONDS == 360
-    assert config.GRADUATION_KNOWLEDGE == 1100
+    # (M단위) 시간 기준은 임시 값(400/720)이라 순서만 본다. 졸업 지식 2배 2200
+    assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
+    assert config.GRADUATION_KNOWLEDGE == 2200
     assert (config.ENDING_LEAVE, config.ENDING_TOP, config.ENDING_NORMAL,
             config.ENDING_BARELY) == ("휴학", "수석 졸업", "무사 졸업", "아슬아슬 졸업")
     assert config.EXAM_BANNER_TEXT == "시험 기간! 공부 효과 2배, 멘탈 감소 2배"
@@ -365,7 +370,7 @@ def test_student_get_ending():
     assert s.get_ending() is None
     s.elapsed = 10000.0
     assert s.get_ending() is None
-    s.elapsed = 200.0   # 11절 A안: 수석은 200초 이하
+    s.elapsed = float(config.TOP_GRADUATE_SECONDS)   # 수석은 기준 초 이하(M단위 임시 400)
     s.knowledge = config.GRADUATION_KNOWLEDGE
     s.promote()
     assert s.get_ending() == config.ENDING_TOP
@@ -376,11 +381,14 @@ def test_student_get_ending():
 # ======================= 기능 12: 졸업 엔딩 =======================
 
 @pytest.mark.parametrize("seconds, ending", [
-    # (L단위) 졸업 등급은 걸린 시간으로: 200 이하 수석, 360 이하 무사, 초과 아슬아슬 (11절 A안)
-    (0, config.ENDING_TOP), (100.0, config.ENDING_TOP), (199.999, config.ENDING_TOP),
-    (200, config.ENDING_TOP), (200.0001, config.ENDING_NORMAL), (239.999, config.ENDING_NORMAL),
-    (240, config.ENDING_NORMAL), (300, config.ENDING_NORMAL),
-    (360, config.ENDING_NORMAL), (360.0001, config.ENDING_BARELY), (361, config.ENDING_BARELY),
+    # (L단위) 졸업 등급은 걸린 시간으로: TOP 이하 수석, NORMAL 이하 무사, 초과 아슬아슬
+    # (M단위) 시간 기준은 임시 값이라 config 상수 기준으로 경계를 잡는다
+    (0, config.ENDING_TOP), (TOP / 2, config.ENDING_TOP), (TOP - 0.001, config.ENDING_TOP),
+    (TOP, config.ENDING_TOP), (TOP + 0.0001, config.ENDING_NORMAL),
+    (TOP + 0.001, config.ENDING_NORMAL), (TOP + 40, config.ENDING_NORMAL),
+    ((TOP + NORMAL) / 2, config.ENDING_NORMAL),
+    (NORMAL, config.ENDING_NORMAL), (NORMAL + 0.0001, config.ENDING_BARELY),
+    (NORMAL + 1, config.ENDING_BARELY),
     (100000, config.ENDING_BARELY),
 ])
 def test_judge_ending_boundaries(seconds, ending):
@@ -394,9 +402,9 @@ def test_judge_ending_boundaries(seconds, ending):
 
 
 @pytest.mark.parametrize("elapsed, ending", [
-    (150.0, config.ENDING_TOP), (199.0, config.ENDING_TOP), (201.0, config.ENDING_NORMAL),
-    (241.0, config.ENDING_NORMAL),
-    (359.0, config.ENDING_NORMAL), (361.0, config.ENDING_BARELY),
+    (TOP - 50.0, config.ENDING_TOP), (TOP - 1.0, config.ENDING_TOP),
+    (TOP + 1.0, config.ENDING_NORMAL), (TOP + 41.0, config.ENDING_NORMAL),
+    (NORMAL - 1.0, config.ENDING_NORMAL), (NORMAL + 1.0, config.ENDING_BARELY),
 ])
 def test_graduation_in_game_flow(playing_game, elapsed, ending):
     """(L단위) 4학년 1090에서 공부(+10, 시험 기간이면 +20)로 1100에 닿는 순간 졸업, 등급은 그 시각."""
@@ -477,7 +485,8 @@ def test_zero_and_graduation_same_moment_leave_wins(playing_game, health, mental
     g = playing_game
     s = g.student
     reach_grade(s, 4)
-    s.health, s.mental, s.knowledge = health, mental, config.GRADUATION_KNOWLEDGE - 10
+    # (M단위) 체력 5(피곤)면 공부 지식 x0.7 = +7이라 5 모자란 데서 시작한다(+7이든 +10이든 넘는다)
+    s.health, s.mental, s.knowledge = health, mental, config.GRADUATION_KNOWLEDGE - 5
     g.do_action(config.ACTION_STUDY)
     assert s.knowledge >= config.GRADUATION_KNOWLEDGE
     assert g.state == config.STATE_ENDING
@@ -633,12 +642,14 @@ def test_study_in_exam_via_game(playing_game):
 
 
 def test_rest_and_feed_unchanged_in_exam():
+    """시험 기간에도 학식·휴식 효과는 그대로(M단위: 학식은 든든함만, 휴식 체력 +15·멘탈 +20)."""
     s = Student()
     s.elapsed = 50.0
     s.health, s.mental, s.knowledge = 50, 50, 10
     s.feed()
     s.rest()
-    assert (s.health, s.mental, s.knowledge) == (70, 70, 8)
+    assert (s.health, s.mental, s.knowledge) == (65, 70, 8)
+    assert s.get_full_time_left() == config.FULL_DURATION
 
 
 @pytest.mark.parametrize("start, mental_drop", [(43.0, 1), (44.0, 2), (58.0, 2), (59.0, 1),

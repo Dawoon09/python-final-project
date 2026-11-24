@@ -315,7 +315,8 @@ def test_d_unit_constants():
     # 새 제자: (L단위) 주기별 이벤트 수는 빈 사전(없는 주기 0), 특성 보정 0
     s = Student()
     assert s.event_counts == {} and s.get_cycle_event_count() == 0
-    for bonus in (config.BONUS_FEED_HEALTH, config.BONUS_REST_MENTAL,
+    # (M단위) BONUS_FEED_HEALTH -> BONUS_FULL_TIME (체력 단련: 든든함 +10초)
+    for bonus in (config.BONUS_FULL_TIME, config.BONUS_REST_MENTAL,
                   config.BONUS_REST_HEALTH, config.BONUS_STUDY_HEALTH):
         assert s.get_trait_bonus(bonus) == 0
 

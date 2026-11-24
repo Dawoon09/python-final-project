@@ -3,278 +3,139 @@ name: jeja-spec
 description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사용. 구현과 검수 모두 이 기준을 따른다.
 ---
 
-# 제자 키우기 기준표
+# 제자 키우기 빠른 기준표
 
-출처: `docs/기획서.md`. 이 표와 기획서가 다르면 기획서가 우선이고, 차이를 발견하면 리드에게 보고한다.
-"확정 해석" 표시는 기획서가 모호해서 사용자와 합의한 내용이다.
+- 완전한 규칙·표·문구는 `docs/기획서.md`(절 번호 같음). 이 표와 다르면 기획서가 우선, 차이는 리드에게 보고.
+- 수치는 모두 `config.py` 상수. 아래 `이름`은 config 상수, 값은 지금 값(밸런스 B안, 2026-11-24).
+- **확정 해석** = 기획서가 모호해 사용자와 합의한 내용.
 
 ## 1. 기본
 
-| 항목 | 값 | config.py 상수 예 |
-|---|---|---|
-| 창 크기 | 800×600 | `SCREEN_WIDTH`, `SCREEN_HEIGHT` |
-| 학년당 시간 | 60초 | `SECONDS_PER_GRADE` |
-| 전체 시간 | 240초 (1~4학년) | `TOTAL_SECONDS` |
-| 시험 기간 | 각 학년 마지막 15초 (학년 내 경과 45초 이상 ~ 60초) | `EXAM_SECONDS` |
-| 폰트 | `pygame.font.SysFont("malgungothic", 크기)` | `FONT_NAME` |
+창 800×600(`SCREEN_WIDTH`/`HEIGHT`), 폰트 `FONT_NAME`, 상태 `STATE_TITLE/PLAYING/EVENT/ENDING`. 시간 제한 없음. 60초 주기(`CYCLE_SECONDS`), 시험 기간 = 주기 마지막 15초(`EXAM_SECONDS`).
 
-## 2. 게이지
+## 2. 게임 규칙
 
-| 게이지 | 범위 | 시작값 | 자연 감소 (1초마다) | 0이 되면 |
-|---|---|---|---|---|
-| 체력 | 0~100 | 80 | -1 | 즉시 휴학 엔딩 |
-| 멘탈 | 0~100 | 80 | -1 (시험 기간 -2) | 즉시 휴학 엔딩 |
-| 지식 | 0 이상, 상한 없음 | 0 | 없음 | 엔딩 등급 기준 |
+### 게이지와 시간
 
-- 체력·멘탈은 어떤 경우에도 0 미만, 100 초과가 되지 않는다(clamp).
-- 지식은 0 미만이 되지 않는다(쉬게 하기 -2로 음수 금지).
-- **"0이 되면 즉시"**: 자연 감소뿐 아니라 행동(공부 체력 -5, 멘탈 -8)으로 0이 되어도 바로 휴학 엔딩.
+- 체력·멘탈 시작 80, 범위 0~`max_health`/`max_mental`(property: `GAUGE_MAX` 100 + 10×체력 증진/멘탈 관리 Lv). 지식 ≥ 0, 상한 없음. 0 판정은 `<= 0` → 즉시 휴학(대학원이면 수료), 원인 무관.
+- `decay_once`(1초마다): 게이지 += `get_self_care_regen()`(0.2×Lv, 0레벨이면 정수 0) − 감소. 감소 = 기본(체력 1, 멘탈 1/시험 2) × (1 − 0.1×건강 관리 Lv) × `get_grad_decay_ratio()`, 체력은 든든함이면 × `FULL_HEALTH_DECAY_RATIO` 0.5. `GAUGE_DECIMALS` 6자리 반올림, 업그레이드 0·학부·든든함 없음이면 정수 유지.
+- **회복은 휴식에서만.** 학식은 버프만. 랜덤 이벤트는 게이지를 바로 바꾼다.
+- **확정 해석 (시험 기간):** 멘탈 *자연 감소만* 2배, 공부 기본 지식 20(보너스는 2배 아님). 공부 체력·멘탈 소모는 그대로.
 
-## 3. 행동 (쿨타임 1초를 세 행동이 공유)
+### 자동 행동과 방침
 
-| 행동 | 버튼 글자 | 키 | 체력 | 멘탈 | 지식 |
-|---|---|---|---|---|---|
-| 학식 먹이기 | 학식 먹이기 [1] | 1 | +20 | - | - |
-| 쉬게 하기 | 쉬게 하기 [2] | 2 | - | +20 | -2 |
-| 공부시키기 | 공부시키기 [3] | 3 | -5 | -8 | +10 (시험 기간 +20) |
+- 간격 `AUTO_ACTION_INTERVAL` 2.0 − 0.2×시간 관리 Lv(최소 1.0), 첫 행동도 2초 뒤, STATE_EVENT 중 정지. 시간 관리 구매 시 `auto_timer = min(auto_timer, 새 간격)`.
+- `choose_auto_action`: health < 기준 or mental < 기준 → rest / 아니고 `not is_full_buff_active()` → feed / 아니면 study.
+- 방침은 새 판(`start_new_game`: Enter·다시 하기·환생)마다 balanced, 대학원 진학은 유지.
 
-- 쿨타임: 행동 후 1초 동안 세 버튼 모두 회색, 클릭·키 입력 모두 무시.
-- 기획서 문구상 버튼 이름은 [학식]/[휴식]/[공부], 화면 예시는 "학식 먹이기 [1]" 형태. 화면 예시를 따른다.
+| 방침 | 키·버튼 | 기준 | 지식 | 소모 | 휴식 `POLICY_REST_RATIO` | `POLICY_CONDITION_BONUS` |
+|---|---|---|---|---|---|---|
+| study_focus | 1 "공부 위주 [1]" | 25 | ×1.8 | ×1.8 | ×1.0 | 0 |
+| balanced | 2 "균형 [2]" | 50 | ×1.0 | ×1.0 | ×1.0 | 0 |
+| rest_focus | 3 "휴식 위주 [3]" | 70 | ×0.7 | ×0.7 | ×1.5 | 0.5 |
 
-## 4. 학년·시험 기간 규칙
+### 행동 계산
 
-| 경과 시간(초) | 학년 | 캐릭터 반지름 | 안경 | 시험 기간 |
-|---|---|---|---|---|
-| 0 ~ 60 미만 | 1학년 | 40 | 없음 | 45~60 |
-| 60 ~ 120 미만 | 2학년 | 50 | 없음 | 105~120 |
-| 120 ~ 180 미만 | 3학년 | 60 | 있음 | 165~180 |
-| 180 ~ 240 | 4학년 | 70 | 있음 | 225~240 |
+- feed: `full_until = elapsed + get_full_duration()`(30 + 6×메뉴 Lv + 체력 단련 10), 다시 먹으면 덮어씀. elapsed 기준(대화창 동안 멈춤), 대학원 유지, 새 판 None.
+- rest(ratio): 체력 round((15 + 연애 5 + 카페 5 + 침대 4/Lv) × ratio), 멘탈 round((20 + 음악 5 + 침대 4/Lv) × ratio), 지식 −2(배수 없음).
+- study(k, c): 지식 round((10|시험 20 + 참고서 2/Lv + 도서관 3) × k × (피곤이면 0.7)), 체력 round((−5 + 카페인 2 + 헬스장 2) × c), 멘탈 round(−8 × c). Python `round()`(−3.5 → −4, 22.5 → 22).
+- 방침만 적용한 공부 1회: 공부 위주 +18(시험 +36)/−9/−14, 균형 +10(+20)/−5/−8, 휴식 위주 +7(+14)/−4/−6.
 
-- 학년은 60초마다 자동으로 오른다. 반지름 = 40 + (학년-1)×10.
-- **확정 해석 (시험 기간):** 멘탈 **자연 감소만** 2배(-2/초), 공부 지식 +20. 공부의 멘탈 -8, 체력 -5는 그대로.
-- 시험 기간에는 상단에 노란 배너 "시험 기간! 공부 효과 2배, 멘탈 감소 2배".
-- **확정 해석 (정보바 남은 시간):** 현재 학년의 남은 시간(60→0, 학년마다 다시 60)을 정수 초로 표시.
+### 디버프와 버프
 
-## 5. 엔딩 조건
-
-| 엔딩 | 조건 | 비고 |
-|---|---|---|
-| 휴학 | 체력 또는 멘탈이 0 | 즉시. 240초 시점과 겹치면 휴학 우선 |
-| 수석 졸업 | 240초 생존, 누적 지식 ≥ 1000 | 학사모 |
-| 무사 졸업 | 240초 생존, 750 ≤ 지식 ≤ 999 | 학사모 |
-| 아슬아슬 졸업 | 240초 생존, 지식 < 750 | 학사모 |
-
-경계값: 749 → 아슬아슬, 750 → 무사, 999 → 무사, 1000 → 수석. (2026-11-19 사용자 승인으로 500/300 → 700/450 변경, 방치형 전환 K단위에서 다시 사용자 승인으로 700/450 → 1000/750 변경. config `TOP_GRADUATE_KNOWLEDGE` 1000, `NORMAL_GRADUATE_KNOWLEDGE` 750)
-
-## 6. 조작키
-
-| 조작 | 마우스 | 키보드 | 화면 |
+| 이름 | 조건 | 효과 | 코드 |
 |---|---|---|---|
-| 학식 먹이기 | 버튼 클릭 | 1 | 게임 |
-| 쉬게 하기 | 버튼 클릭 | 2 | 게임 |
-| 공부시키기 | 버튼 클릭 | 3 | 게임 |
-| 게임 시작 | - | Enter | 타이틀 |
-| 다시 하기 | - | R | 엔딩 (새 판 시작, 모든 값 초기화) |
-| 게임 종료 | 창 닫기 | ESC | 모든 화면 |
+| 피곤 `DEBUFF_TIRED` | 체력 < `LOW_GAUGE_LIMIT` 30 (공부 직전) | 공부 지식 × `TIRED_KNOWLEDGE_RATIO` 0.7 | `is_tired`, `has_debuff` |
+| 우울 `DEBUFF_DEPRESSED` | 멘탈 < 30 (연구비 쌓는 순간) | 지식 연구비 × `DEPRESSED_MONEY_RATIO` 0.7 | `is_depressed`, `has_debuff` |
+| 든든함 `BUFF_FULL` | 학식 뒤 지속 시간 | 체력 감소 ×0.5 | `is_full_buff_active`, `get_full_time_left` |
+| 컨디션 좋음 `CONDITION_GOOD` | rest_focus, 체력·멘탈 ≥ `CONDITION_GOOD_MIN` 70 | 지식 연구비 ×1.5 | `Game.is_good_condition` |
 
-## 7. 화면
+- 배지 순서: `Student.get_statuses()`(피곤·우울·든든함) + 컨디션 좋음 = `Game.get_status_names()`. 툴팁 `get_status_tip_text(name)` ← `STATUS_TIP_TEXTS`(든든함 남은 시간 올림).
 
-| 화면 | 표시 내용 |
-|---|---|
-| 타이틀 | 게임 제목, 최고 기록, "Enter를 눌러 시작" |
-| 게임 | 상단 정보바(학년 / 남은 시간 / 지식), 시험 기간 배너, 게이지 막대(체력·멘탈), 제자, 행동 버튼 3개, "누른 뒤 1초 동안 회색" 안내 |
-| 엔딩 | 엔딩 이름(휴학 / 수석 졸업 / 무사 졸업 / 아슬아슬 졸업), 누적 지식, 졸업이면 학사모, "R을 눌러 다시 하기" |
+### 진급과 졸업 (누적 지식 이상)
 
-- 게이지 막대: 값이 30 미만이면 빨간색, 아니면 정상색(예: 초록). 지식은 숫자로 표시.
-- 표정(입): 멘탈 ≥ 60 웃는 입, 30~59 일자 입, < 30 우는 입.
-- 다크서클: 체력 < 30.
-- 그림은 `pygame.draw`의 원(circle), 사각형(rect), 선(line), 호(arc)만 쓴다. 이미지·사운드 금지.
-
-## 8. 최고 기록
-
-- 게임이 끝날 때(휴학·졸업 모두) 누적 지식이 기존 최고보다 크면 `record.json`에 저장.
-- 타이틀 화면에 최고 기록 표시. 파일이 없거나 깨져 있으면 0으로 본다(크래시 금지).
-- 저장 위치: exe 실행 시 `sys.executable`이 있는 폴더, 파이썬 실행 시 `main.py`가 있는 폴더.
-
-## 9. 클래스 담당
-
-| 클래스 | 파일 | 담당 |
+| 단계 | 목표 | 경계 |
 |---|---|---|
-| Student | student.py | 게이지 값, 자연 감소, 행동 처리, 학년, 캐릭터 그리기 |
-| Button | button.py | 버튼 위치와 글자, 클릭 판정, 쿨타임 표시 |
-| Game | game.py | 메인 루프, 화면 전환(타이틀/게임/엔딩), 시간 관리, 기록 저장 |
+| 2학년 | 400 (`GRADE_GOALS[0]`) | 399 / 400 |
+| 3학년 | 900 | 899 / 900 |
+| 4학년 | 1500 | 1499 / 1500 |
+| 졸업 | 2200 (`GRADUATION_KNOWLEDGE`) | 2199 / 2200 |
 
-모든 수치는 `config.py` 상수. 다른 파일에 숫자를 직접 쓰지 않는다(좌표·색 등 화면 배치 값도 가능하면 config.py).
+- 한 번에 여러 단계 가능, 학년은 안 내려감, 0과 겹치면 휴학 우선. 알림 2초(`EVENT_NOTICE_TIME`). 반지름 40 + 10×(학년−1), 대학원 70, 안경 3학년부터.
 
-## 10. 기능 1~13 체크리스트
+### 졸업 등급 (걸린 게임 시간, `judge_ending(seconds)`, `TIME_EPSILON` 허용)
 
-- [ ] 1. 학식 먹이기 (버튼 또는 1키): 체력 +20
-- [ ] 2. 쉬게 하기 (버튼 또는 2키): 멘탈 +20, 지식 -2
-- [ ] 3. 공부시키기 (버튼 또는 3키): 지식 +10, 체력 -5, 멘탈 -8
-- [ ] 4. 행동 쿨타임: 행동 후 1초간 버튼 회색, 입력 무시
-- [ ] 5. 게이지 자연 감소: 1초마다 체력·멘탈 -1
-- [ ] 6. 게이지 막대: 체력·멘탈 막대, 30 미만 빨간색 / 지식은 숫자
-- [ ] 7. 표정 변화: 멘탈에 따라 입 모양, 체력 30 미만 다크서클
-- [ ] 8. 학년 진급과 성장: 60초마다 학년↑, 반지름 40/50/60/70, 3학년부터 안경
-- [ ] 9. 휴학 엔딩: 체력 또는 멘탈 0 → 엔딩 화면
-- [ ] 10. 화면 전환: 타이틀 →(Enter) 게임 → 엔딩 →(R) 게임, ESC 종료
-- [ ] 11. 시험 기간: 각 학년 마지막 15초 배너, 공부 지식 2배, 멘탈 자연 감소 2배
-- [ ] 12. 졸업 엔딩 3종: 240초 생존 시 지식으로 수석/무사/아슬아슬, 학사모
-- [ ] 13. 최고 기록: 종료 시 최고 지식을 record.json에 저장, 타이틀에 표시
-
-## 11. 루프 단위 (기획서 6. 개발 일정)
-
-| 단위 | 작업 | 기능 | 완료 기준 |
+| 등급 | 조건 | 보너스 | 경계 |
 |---|---|---|---|
-| 1일차 | 창과 메인 루프, 클래스 뼈대(Student/Button/Game, config.py, main.py) | 10 | 800×600 창이 뜨고 ESC로 종료 |
-| 2일차 | Student: 게이지, 자연 감소, 게이지 막대 | 5, 6 | 시간이 지나면 막대가 줄어듦 |
-| 3일차 | Button: 세 행동, 쿨타임, 키보드 단축키 | 1~4 | 클릭과 1~3키로 게이지 변화 |
-| 4일차 | 캐릭터 그리기, 표정, 학년 타이머와 성장 | 7, 8 | 60초마다 학년과 크기 변화 |
-| 5일차 | 타이틀/엔딩 화면, 휴학·졸업 엔딩, 시험 기간 | 9, 11, 12 | 처음부터 끝까지 한 판 플레이 |
-| 6일차 | 최고 기록, 밸런스 테스트, 버그 수정 | 13 | 엔딩 3종을 모두 볼 수 있음 |
+| 수석 | ≤ 330초 (`TOP_GRADUATE_SECONDS`) | 200 | 330 → 수석 |
+| 무사 | 330초 초과 ≤ 720초 (`NORMAL_GRADUATE_SECONDS`) | 100 | 330.0001 → 무사, 720 → 무사 |
+| 아슬아슬 | 720초 초과 | 50 | 720.0001 → 아슬아슬 |
 
-- **확정 해석 (밸런스):** 6일차에 엔딩 3종 도달이 어렵다고 판단되면 수치를 바로 바꾸지 않는다. 근거(시뮬레이션 결과)와 조정안을 리드에게 보고하고, 사용자 승인 후 config.py와 기획서를 함께 바꾼다.
+- 보너스 × (1 + 0.1×명성) 내림, 휴학·수료 0. 엔딩 키: 휴학 R(다시 하기), 졸업 R(환생)·C(대학원), 수료 R(환생).
 
-## 12. 테스트하기 쉬운 구조 (개발·검수 공통 약속)
+### 60초 주기
 
-- Student의 로직(게이지 증감, 자연 감소, 행동, 학년 계산, 휴학 판정, 엔딩 판정)은 화면 없이 호출할 수 있어야 한다. 시간은 인자로 받는다(예: `update(dt)` 또는 경과 초). `pygame.time.get_ticks()`에 직접 묶지 않는다.
-- 엔딩 판정은 지식 값만 넣으면 결과를 돌려주는 함수/메서드로 둔다.
+- 주기 번호 = elapsed // 60 + 1, 주기 안 시간 = elapsed % 60. 봄 0–15, 여름 15–30, 가을 30–45, 겨울(시험) 45–60. 계절 안 낮 0–9, 저녁 9–12, 밤 12–15.
+- 경계: 14.99 봄 / 15 여름, 44.99 시험 아님 / 45 시험, 59.99 주기 1 / 60 주기 2·봄, 104.99 / 105 (주기 2 시험). 대학원에서도 이어서 흐름.
 
-## 13. 화면 연출 (기획서 8절, 사용자 요청으로 추가)
+## 3. 성장
 
-게임 규칙·수치(1~11절)는 바뀌지 않는다. 연출은 보기만 바꾸며 게이지·쿨타임·학년·엔딩 결과에 영향을 주지 않는다.
+- 연구비 += floor(지식 증가량 × (1 + `FAME_MONEY_BONUS` 0.1×명성) × (1 + `GRAD_MONEY_BONUS` 1.0×년차) × 컨디션 배수(우울 0.7/좋음 1.5/1.0)). 감소 시 0. `get_money_multiplier` = 명성 × 대학원 × `get_condition_money_ratio`. 졸업 보너스는 명성 배수만, 장학금(+30×학년, 대학원 4)은 배수 없음.
+- 명성 +1(`FAME_STEP`): 졸업·수료 뒤 환생. 저장: 판 끝·업그레이드 구매·환생.
+- 가격 = floor(기본가 × `UPGRADE_COST_GROWTH` 2.0^Lv). 13종 전부 92,590.
 
-### 도트(픽셀) 스타일
+| id | 최대 | 기본가 | 레벨당 | id | 최대 | 기본가 | 레벨당 |
+|---|---|---|---|---|---|---|---|
+| menu | 5 | 240 | 든든함 +6초 | cafe | 1 | 900 | 휴식 체력 +5 |
+| bed | 5 | 240 | 휴식 +4/+4 | gym | 1 | 900 | 공부 체력 +2 |
+| reference_book | 5 | 360 | 지식 +2 | lucky_charm | 3 | 600 | 확률 +5%p |
+| time_management | 5 | 450 | 간격 −0.2 | scholarship | 1 | 750 | 장학금 이벤트 |
+| health_care | 5 | 450 | 감소 −10% | health_max / mental_max | 5 | 300 | 최대 +10 |
+| library | 1 | 900 | 지식 +3 | self_care | 5 | 400 | 0.2/초 회복 |
 
-| 항목 | 기준 |
+- 패널: U·[업그레이드 U], 게임·엔딩에서만, ↑↓ 순환·Enter, 클릭 = 고르고 사기, 게임 시간은 흐름. 줄 `UPGRADE_ROW_TOP` 166 / `HEIGHT` 20 / `STEP` 21.
+- 툴팁(마우스 줄만, `TOOLTIP_X` 276, y 116~460 안): "이름  Lv l/max" / "지금: 효과"(0레벨 "지금: 아직 없음") / "다음: 효과"|"다음: 최고 레벨" / "무대: …" / "가격: 연구비 n"|"가격: MAX" / (부족) 빨간 "연구비가 모자라요". 효과 = `UPGRADE_LEVEL_EFFECTS[id].format(round(Lv×per_level, 6))`.
+- 대학원 년차 목표 = 2200 + Σ_{k=1..n}(`GRAD_GOAL_FIRST_STEP` 800 + `GRAD_GOAL_STEP_GROWTH` 200×(k−1)) → 3000/4000/5200/6600 (경계 2999/3000, 3999/4000, 5199/5200).
+- 대학원 감소 배수 = 1 + `GRAD_DECAY_BONUS` 1.0×n + `GRAD_CYCLE_DECAY_BONUS` 1.5×c, c = floor((elapsed − `grad_entry_time`)/60) → 진학 직후 ×2.0, 60초 ×3.5, 120초 ×5.0. 학부 1.
+- 진학 시 게이지·지식·특성·외형·플래그·last_event_time·elapsed·full_until 유지, auto_timer 다시 채움, 바로 check_promotion. 대학원은 선택지형 없음, get_grade() = 4.
+- record.json = {"best_knowledge", "money", "fame", "upgrades": {id: Lv}}. 없거나 깨진·잘못된 값 0, 모르는 id 무시. 위치: exe면 `sys.executable` 폴더, 아니면 `main.py` 폴더.
+
+## 4. 랜덤 이벤트와 성장 요소
+
+| 항목 | 값 |
 |---|---|
-| 픽셀 단위 | 화면의 도트 1칸 = `PIXEL_SIZE`(4)×4 사각형. 도형은 `pygame.draw.rect`로 칸을 찍어 그린다(원·선·호도 허용이지만 도트 느낌 유지) |
-| 외곽선 | 진한 남색 외곽선 1칸. 버튼·게이지·배너·정보바는 모서리 1칸을 깎은 계단형 사각형 |
-| 팔레트 | 파스텔 레트로: 크림 배경, 진한 남색 외곽선, 민트·하늘·살구·연분홍·노랑 포인트 |
-| 경고색 | 게이지 30 미만 빨간 계열, 30 이상 초록 계열 — 둘이 확실히 구분되어야 한다(기능 6 유지) |
-| 쿨타임 | 버튼 회색 계열(기능 4 유지) |
-| 글자 | `SysFont("malgungothic", 크기)`, `render(..., antialias=False)`로 도트 느낌 |
-| 제자 | 도트 스프라이트(문자열 격자 → 칸). 얼굴 지름 ≈ 2×반지름(40/50/60/70)으로 학년마다 커짐. 표정·다크서클·안경 규칙(7·8) 그대로 |
-| 학사모·배너·정보바 | 모두 같은 도트 스타일 |
+| `EVENT_CHANCE` | 0.25 (+0.05/행운 부적 Lv) |
+| `EVENT_GUARANTEE_INTERVAL` | 11.25초 (주기 안 0~45를 4구간) |
+| `EVENT_MIN_PER_GRADE` / `EVENT_MAX_PER_GRADE` | 4 / 5 (이름만 예전, 값은 주기당) |
+| `EVENT_CHOICE_RATIO` | 0.5 (선택지형 후보 있을 때) |
+| `EVENT_MIN_GAP` | 8.0초 (주기·학년 넘어 이어서, 보장은 예외) |
+| `EVENT_INPUT_DELAY` | 0.3초 |
 
-### 효과 (모두 `update(dt)`로 진행, 시간 상수는 config)
+- do_action 순서: 행동 → last_action → 연구비 → 연출 → check_promotion → check_ending → (엔딩 아니면) roll_event.
+- roll_event: 주기 수 ≥ 5 없음 / 보장(주기 안 경과 ≥ 11.25k인 최대 k ≤ 4에 대해 수 < k) 반드시 / 아니면 간격 지났을 때만 `rng.random() < 확률`(간격 미달이면 rng 안 뽑음). 보장 경계 11.24 → 0, 11.25 → 1, 22.5 → 2, 33.75 → 3, 45 → 4.
+- 선택지형: 지금 학년 조건, 한 판 1회, STATE_EVENT(정지, 키 1·2/클릭, 방침·U 무시, ESC 동작). 선택 후 효과 → 연구비 → 팝업 → 진급 → 휴학 판정.
+- 특성 보정: 체력 단련 든든함 +10초(`BONUS_FULL_TIME`), 음악 힐링 휴식 멘탈 +5, 연애 중 휴식 체력 +5, 카페인 공부 체력 +2. 이벤트·외형·연계 표는 기획서 4절 = config.
+- 난수: Game의 `random.Random(seed)`만(이벤트 전용).
 
-| # | 효과 | 기준 |
-|---|---|---|
-| E1 | 버튼 호버·눌림·쿨타임 | 마우스가 버튼 위면 밝은 색. 행동 실행 시 버튼이 `BUTTON_PRESS_OFFSET`(4px) 내려갔다가 `BUTTON_PRESS_TIME`(0.12초) 뒤 복귀. 쿨타임 동안 세 버튼 회색 + 쿨타임 진행 막대가 1초에 걸쳐 차오름 |
-| E2 | 행동별 파티클 | 행동마다 제자 주변에서 도트 파티클 8~12개가 퍼지며 0.6~0.8초 뒤 사라짐. 학식=하트·밥알(분홍·흰), 휴식=Zzz·구름(하늘), 공부=별·연필(노랑). 정해진 각도·속도 표 사용(결정적 — random은 14절 이벤트 전용) |
-| E3 | 수치 팝업 | 실제로 바뀐 게이지마다 "체력 +20", "멘탈 -8", "지식 +10" 글자가 0.8초 동안 위로 떠오르며 사라짐. clamp가 반영된 실제 변화량을 쓰고, 변화가 0이면 띄우지 않는다. 시험 기간 공부는 "지식 +20" |
-| E4 | 게이지 부드러운 변화 | 막대 길이는 표시값이 실제 값을 약 `GAUGE_ANIM_TIME`(0.25초)에 걸쳐 따라간다. 빨강/초록 판정은 **실제 값** 기준. 새 판 시작 시 표시값 = 실제 값 |
-| E5 | 제자 반응 | 행동 시 통통 튀는 점프(0.3초, 최대 8px). 평소엔 1.5초 주기로 위아래 4px 이내 숨쉬기. 크기(반지름)는 바뀌지 않음 |
-| E6 | 화면 안내 깜빡임 | 타이틀 "Enter를 눌러 시작", 엔딩 "R을 눌러 다시 하기"가 0.5초 간격으로 깜빡임 |
+## 5~6. 조작과 화면
 
-- 쿨타임 중이라 무시된 입력에는 눌림·파티클·팝업·점프가 생기지 않는다.
-- 엔딩으로 넘어가거나 R로 새 판을 시작하면 남은 파티클·팝업은 비운다.
-- 클래스는 Student/Button/Game 3개 유지. 파티클·팝업은 dict 리스트로 Game(또는 Student)이 관리한다.
+- 키: Enter 시작, 1/2/3 방침, U 패널, ↑↓·Enter 사기, 1/2 선택지, R 환생/다시 하기, C 대학원, ESC 종료. 숫자판 키 안 씀.
+- 화면 문구·배치·장식·연출(E1~E6) 기준은 기획서 6절. 도트 1칸 `PIXEL_SIZE` 4, `antialias=False`, Surface 알파 금지, 연출은 random 금지.
 
-## 14. 랜덤 이벤트와 성장 (기획서 9절)
+## 9. 구조와 테스트 계약
 
-기획서 9절이 기준이다(이벤트 목록·효과 수치·특성·외형은 9절 표를 그대로 config에 옮긴다). 1~11절 기본 규칙은 바뀌지 않는다. 엔딩 기준은 이벤트 반영으로 700/450이었고, 방치형 전환 뒤 1000/750(5절). 13절 파티클은 계속 결정적 표를 쓴다(random은 이벤트에만).
+- Student(student.py): 게이지·행동·진급·주기·대학원·이벤트 기록·엔딩·제자 그리기. Button(button.py): 버튼 + 도트 도우미. Game(game.py): 루프·화면·자동 행동·이벤트·연구비·업그레이드·기록·배경·연출.
+- Student 로직은 화면 없이 `update(dt)`로 호출 가능(`get_ticks()`에 묶지 않음).
 
-### 수치 (config 상수)
+### 테스트가 쓰는 이름 (바꾸지 않는다)
 
-| 항목 | 값 | 상수 예 |
-|---|---|---|
-| 행동 후 발생 확률 | 0.25 | `EVENT_CHANCE` |
-| 보장 구간 길이 | 11.25초 (학년 안 0~45초를 4구간) | `EVENT_GUARANTEE_INTERVAL` |
-| 학년당 최소 보장 | 4 | `EVENT_MIN_PER_GRADE` |
-| 학년당 최대 | 5 | `EVENT_MAX_PER_GRADE` |
-| 선택지형 비율(후보 있을 때) | 0.5 | `EVENT_CHOICE_RATIO` |
-| 자동형 알림 표시 시간 | 2.0초 | `EVENT_NOTICE_TIME` |
-| 확률 이벤트 최소 간격 | 8.0초 (게임 시간, 같은 판에서 학년 구분 없이 이어서 셈, 보장 이벤트는 예외) | `EVENT_MIN_GAP` |
+- 모듈: `student.judge_ending`, `game.format_time`, `button.sprite_size`·`draw_pixel_box`·`draw_cut_rect`·`render_text`
+- Game 상태: `state`, `running`, `student`, `policy`, `auto_timer`, `last_action`, `ending`, `current_event`, `dialog_time`, `money`, `fame`, `upgrades`, `best_record`, `record_path`, `rng`, `graduation_bonus`, `grad_year`(property), `upgrade_panel_open`, `upgrade_cursor`, `notice`, `promotion_notice`, `particles`, `popups`, `press_timers`, `jump_timer`, `gauge_lag`, `buttons`, `choice_buttons`, `upgrade_button`, `ending_upgrade_button`, `mouse_pos`, `blink_time`, `screen`, `scenery_key`
+- Game 메서드: `handle_event`, `update`, `draw`, `start_new_game`, `reset_round`, `set_policy`, `choose_auto_action`, `do_action`, `get_auto_interval`, `get_auto_progress`, `get_event_chance`, `check_promotion`, `check_ending`, `end_game`, `roll_event`, `pick_event`, `start_event`, `get_event_candidates`, `choose_option`, `is_dialog_ready`, `earn_knowledge_money`, `get_money_multiplier`, `get_fame_multiplier`, `get_condition_money_ratio`, `is_good_condition`, `get_status_names`, `get_grad_money_multiplier`, `get_upgrade_cost`, `can_buy_upgrade`, `buy_upgrade`, `is_upgrade_maxed`, `get_upgrade_row_rect`, `reincarnate`, `enter_grad_school`, `can_reincarnate`, `is_graduation_ending`, `is_grad_school_ending`, `load_record`, `save_record`, `load_best_record`, `save_best_record`, `update_best_record`, `get_season`, `get_time_of_day`, `get_sky_color`, `get_place`, `get_owned_facilities`, `get_scene_shade`, `get_goal_text`, `get_ending_layout`, `get_shown_gauge`, `get_gauge_values`, `get_student_lift`, `is_blink_on`, `clear_effects`, `get_upgrade_effect_text(id, level)`, `get_upgrade_tooltip_rows(id)`, `get_hovered_upgrade_index`, `get_tooltip_rect(rows, anchor_top)`, `draw_tooltip`, `draw_upgrade_tooltip`, `get_status_tip_text(name)`, `get_hovered_status`, `draw_status_tooltip`, `get_decor_levels`, `get_decor_pieces`, `get_decor_rects`, `draw_decorations`, `make_scenery(place, season, facilities, shade=0, decor_levels=None)`
+- Student 상태: `health`, `mental`, `knowledge`, `elapsed`, `decay_timer`, `grade`, `grad_year`, `graduation_time`, `grad_entry_time`, `traits`, `looks`, `flags`, `seen_events`, `event_counts`, `last_event_time`, `upgrades`, `full_until`, `max_health`·`max_mental`(property)
+- Student 메서드: `update(dt)`, `feed`, `rest(recovery_ratio)`, `study(knowledge_ratio, cost_ratio)`, `is_tired`, `is_depressed`, `has_debuff(name)`, `is_full_buff_active`, `get_full_time_left`, `get_full_duration`, `get_statuses`, `get_self_care_regen`, `decay_once`, `promote`, `get_grade`, `get_next_goal`, `get_goal_start`, `get_goal_progress`, `get_knowledge_to_goal`, `has_graduated`, `get_cycle_index`, `get_cycle_time`, `is_exam_period`, `is_in_grad_school`, `enter_grad_school`, `get_grad_goal(year)`, `get_grad_cycles`, `get_grad_decay_ratio`, `get_health_decay`, `get_mental_decay`, `get_study_knowledge`, `get_upgrade_bonus`, `get_trait_bonus`, `is_dropped_out`, `get_ending`, `get_graduation_ending`, `get_radius`, `get_mouth`, `has_dark_circles`, `has_glasses`, `get_cycle_event_count`, `count_event`, `is_event_gap_passed`, `can_have_event`, `needs_guaranteed_event`, `can_see_event`, `apply_effects`, `add_trait`, `add_look`, `add_flag`, `change_health`, `change_mental`, `change_knowledge`, `get_badge_rect(index, top)`, `draw_traits`, `draw_looks`, `draw_status_badges`
+- Button: `rect`, `text`, `is_clicked(pos)`, `draw(...)`
 
-### 판정 순서 (do_action 안)
+## 10. 밸런스
 
-1. 쿨타임이면 무시(이벤트 없음).
-2. 행동 효과 적용(특성 보정 포함) → 쿨타임 시작 → 연출 시작.
-3. 휴학 판정. 휴학이면 엔딩, 이벤트 없음.
-4. 이벤트 판정: 그 학년 이벤트 수 < 최대 이고, (보장 조건 또는 (최소 간격 지남 그리고 rng.random() < EVENT_CHANCE))면 이벤트 1개 발생.
-   - 보장 조건: 학년 안 경과 ≥ INTERVAL×k 인 가장 큰 k(최대 4)에 대해 그 학년 이벤트 수 < k. 보장 이벤트는 최소 간격의 예외.
-   - 최소 간격: 직전 이벤트 시각(Student.last_event_time, 이번 판에 없으면 None = 통과) 이후 게임 경과 ≥ EVENT_MIN_GAP(8초). 대화창 정지 시간은 게임 시간이 아니므로 포함 안 됨. 간격이 안 찼으면 rng를 뽑지 않는다.
-   - 이벤트가 뜨면(보장·확률 모두) 그 시각을 직전 이벤트 시각으로 기록한다.
-5. 자동형이면 효과 즉시 적용 + 알림, 그 뒤 휴학 판정. 선택지형이면 대화 상태로 전환(게임 정지).
-
-### 대화(선택지형) 상태
-
-- 정지: Game.update에서 경과 시간·자연 감소·쿨타임·게이지 애니메이션 외 게임 진행이 멈춘다(연출 깜빡임 정도는 흘러도 됨).
-- 입력: 키 1·2, 또는 대화창 선택 버튼 클릭. 행동 키·행동 버튼은 무시. ESC/QUIT는 종료.
-- 입력 대기: 대화창이 뜬 직후 `EVENT_INPUT_DELAY`(0.3초) 동안은 선택 입력(키·클릭, `choose_option`)을 무시한다(행동 키 연타가 선택으로 들어가는 것 방지). 이 시간은 대화 상태에서도 흐르는 대화창 시계로 재며, 게임 시간·게이지·쿨타임은 계속 정지. ESC/QUIT는 대기 중에도 동작.
-- 선택 후: 효과·특성·외형·연계 플래그 적용 → 휴학 판정 → 아니면 게임 재개. 선택 결과도 수치 팝업(E3)으로 보여 준다.
-- 같은 선택지형 이벤트는 한 판에 한 번(id로 기록).
-
-### 특성 보정 (행동 효과에 더함, clamp는 기존대로)
-
-| 특성 | 학식 체력 | 휴식 멘탈 | 휴식 체력 | 공부 체력 |
-|---|---|---|---|---|
-| 없음 | +20 | +20 | 0 | -5 |
-| 체력 단련 | +25 | | | |
-| 음악 힐링 | | +25 | | |
-| 연애 중 | | | +5 | |
-| 카페인 | | | | -3 |
-
-여러 특성이 함께 있으면 각각 적용된다. 시험 기간 공부 지식 +20 규칙은 그대로.
-
-### 상태 저장 위치
-
-- 특성·외형·연계 플래그·나온 선택지형 id·학년별 이벤트 수·직전 이벤트 시각은 Student(제자의 성장)에 둔다. 새 판(R)에서 Student를 새로 만들면 모두 초기화.
-- 난수 생성기는 Game이 `random.Random(seed)`로 가진다. Game(seed=None) 인자로 테스트에서 시드를 고정한다.
-- 클래스는 Student/Button/Game 3개 유지. 이벤트 데이터는 config의 dict/list.
-
-### 화면 (D단위)
-
-- 대화창: 무대 패널 위 중앙 도트 상자. 제목(이벤트 이름), 상황 한 줄, 선택 버튼 2개 "[1] …", "[2] …"(효과 수치 미리보기 포함). 뒤 화면은 어둡게 덮지 말고(Surface 알파 금지) 점무늬 등 도트 방식으로 강조.
-- 자동형 알림: 무대 위쪽 배너, EVENT_NOTICE_TIME 동안 표시.
-- 외형 5종 도트 스프라이트(config 격자): 학년별 얼굴 크기에 맞춰 같이 커짐. 안경·다크서클·표정·점프/숨쉬기와 함께 그려짐.
-- 특성 배지: 상태 패널 안 아래쪽, 얻은 순서대로.
-
-## 15. 방치형 전환 (기획서 10절) — 앞 절과 다르면 이 절이 우선
-
-### 루프 단위
-| 단위 | 내용 |
-|---|---|
-| G | 자동 행동(2초) + 일과표 방침 3종, 쿨타임 제거, 방침 버튼·진행 막대 |
-| H | 연구비·업그레이드 10종·패널(U)·record.json 확장(예전 형식 호환) |
-| I | 졸업 후 환생(R, 명성+1)·대학원(C, 끝없이, 년차 배수)·엔딩 화면 분기·타이틀 표시 |
-| J | 배경 4겹(장소·하늘/계절·행동 소품·시설) |
-| K | 밸런스 시뮬레이션, README·기획서 정리 |
-
-### 수치 (config 상수, 이름은 예시)
-- AUTO_ACTION_INTERVAL 2.0, 첫 행동도 2초 뒤. 대화창(STATE_EVENT) 중 정지.
-- 방침: study_focus(키1, 기준 30, 지식×1.4, 소모×1.6) / balanced(키2, 50, ×1.0, ×1.0, 시작값) / rest_focus(키3, 70, ×0.8, ×0.7)
-- 행동 고르기: health < 기준 or mental < 기준 → (health <= mental ? feed : rest), 아니면 study.
-- 공부 계산: (기본 10 또는 시험 20) + 참고서 2×Lv + 도서관 3 → ×지식배수 → round. 소모: (기본 -5/-8 + 특성 카페인 +2 + 헬스장 +2(체력만)) → ×소모배수 → round.
-- 방침은 새 판마다(start_new_game: 타이틀 Enter·다시 하기·환생) 균형으로 돌아간다. 대학원 진학은 방침 유지.
-- 배수 계산 반올림은 Python `round()`(.5는 짝수 쪽). 실제 .5는 휴식 위주 공부 체력 -5×0.7 = -3.5 → -4뿐.
-- 졸업 기준(K단위 최종): 수석 ≥ 1000, 무사 750~999, 아슬아슬 < 750 (5절).
-- 연구비 += floor(지식 증가량 × (1 + 0.1×명성) × 대학원배수), 대학원 연구비 배수 = 1 + 1.0×n (학부는 1, `GRAD_MONEY_BONUS` 1.0, 11절 밸런스로 0.25 → 1.0).
-- 장학금 이벤트: 연구비 +30 × 학년(대학원은 4). 명성·대학원 배수를 곱하지 않는다.
-- 졸업 보너스 200/100/50 × 명성 배수(floor). 휴학·대학원 수료 0.
-- record.json 저장: 판이 끝날 때마다(휴학·졸업·수료), 업그레이드를 살 때, 환생할 때.
-- 업그레이드 가격 floor(기본가 × 2.0^레벨) (`UPGRADE_COST_GROWTH` 2.0, 11절 밸런스로 1.8 → 2.0). 기본가(K단위 최종, 처음 값의 3배): 학식 메뉴 개선 240, 푹신한 침대 240, 참고서 360, 시간 관리 450, 건강 관리 450, 도서관 900, 카페 900, 헬스장 900, 행운 부적 600, 장학금 제도 750. 전부 최대까지 합계 61590 (×1.8 때는 45990). 표는 기획서 10절.
-- 건강 관리: 자연 감소 ×(1 - 0.1×Lv). 대학원: ×(1 + 0.5n + 1.0c) (`GRAD_DECAY_BONUS` 0.5, `GRAD_CYCLE_DECAY_BONUS` 1.0, 16절). 체력·멘탈은 소수 가능, 표시는 round, 휴학은 <= 0.
-- 행운 부적: 이벤트 확률 0.25 + 0.05×Lv.
-- 업그레이드 패널: 왼쪽 상태 패널 자리(x 12~268, y 116~468)에 겹쳐 그림. 머리 줄(제목·연구비) → 체력·멘탈 미니 게이지 줄 → 항목 10줄(y 166부터 28 간격, 높이 27) → 바닥 줄 "효과: …"(글자 잉크가 마지막 줄 아래, 패널 외곽선 안). 엔딩 화면에서 열면 가운데 패널·엔딩 글자를 오른쪽 무대 자리(x 284~788)로 옮겨 그림.
-- 배경 그늘: 바깥 장소는 저녁·밤에 땅·나무·건물 색을 밤 남색 쪽으로 단계별로 섞음(연구실 제외). 수치 팝업은 남색 그림자 + 크림 테두리.
-
-### 테스트가 쓰는 이름 (Game)
-- `policy`, `set_policy(name)`, `choose_auto_action()` → "feed"/"rest"/"study", `auto_timer`(다음 행동까지 남은 초), `do_action(name)`(쿨타임 없음, 게임 화면에서만)
-- `money`, `fame`, `upgrades`(dict id→레벨), `get_upgrade_cost(id)`, `can_buy_upgrade(id)`, `buy_upgrade(id)`→bool, `upgrade_panel_open`
-- `grad_year`(0이면 학부, n이면 대학원 n년차), `reincarnate()`, `enter_grad_school()`
-- `load_record()`/`save_record()`: record.json = {"best_knowledge", "money", "fame", "upgrades"}
-- 배경 계산은 화면 없이 확인 가능하게: `get_season()`("spring"/"summer"/"autumn"/"winter"), `get_time_of_day()`("day"/"evening"/"night"), `get_sky_color()`, `last_action`
-
-## 16. 시간 제한 없애기 (기획서 11절) — 앞 절과 다르면 이 절이 우선
-
-- 진급 목표(누적 지식 이상): 2학년 200, 3학년 450, 4학년 750, 졸업 1100. 학년은 내려가지 않음. 0이 되면 휴학이 졸업보다 먼저.
-- 졸업 등급 = 걸린 게임 시간: 수석 ≤ 200초(`TOP_GRADUATE_SECONDS` 200), 무사 ≤ 360초, 아슬아슬 > 360초. 경계: 200/200.0001, 360/360.0001.
-- 60초 주기: cycle_time = elapsed % 60. 계절·낮밤·시험 기간(45~60)·이벤트 보장 구간은 주기 기준. 이벤트 횟수 키 = 주기 번호(elapsed // 60 + 1).
-- 대학원 n년차 → n+1 목표 누적: 1500, 2000, 2600, …(1100 + Σ_{k=1..n}(400+100(k−1))).
-- 대학원 자연 감소 배수 = 1 + 0.5n + 1.0c (n = 대학원 년차, c = 대학원 진입 뒤 다 채운 60초 주기 수 = floor((elapsed − grad_entry_time) / 60)). 건강 관리 배수와 곱한다. 학부는 1(시간 제한 없음). 대학원 연구비 배수 = 1 + 1.0n.
-- 업그레이드 가격 증가 ×2.0 (예: 학식 메뉴 240/480/960/1920/3840).
-- 밸런스 확정 2026-11-23(A안): 수석 200초, 가격 증가 2.0, 대학원 주기 감소 1.0, 대학원 연구비 1.0.
-- 테스트가 쓰는 이름: Student.get_grade()(지식 기준), Student.get_next_goal(), Student.get_cycle_time(), Student.get_cycle_index(), Student.graduation_time(졸업 순간 elapsed, 없으면 None), Student.grad_entry_time(대학원 진입 순간 elapsed, 학부면 None), Student.get_grad_cycles(), Student.get_grad_decay_ratio(), Game.check_promotion()(진급·졸업 판정, 진급 수 반환)
+- **확정 해석:** 수치를 바꿀 이유가 생기면 바로 바꾸지 않는다. 시뮬레이션 근거와 조정안을 리드에게 보고하고, 사용자 승인 후 config.py와 기획서를 함께 바꾼다. 목표·시뮬레이션 결과는 기획서 10절.

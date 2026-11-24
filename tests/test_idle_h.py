@@ -38,6 +38,8 @@ SPEC_TABLE = {
     "time_management": (5, 450), "health_care": (5, 450),
     "library": (1, 900), "cafe": (1, 900), "gym": (1, 900),
     "lucky_charm": (3, 600), "scholarship": (1, 750),
+    # (M단위) 컨디션 3종 추가: 체력 증진·멘탈 관리·자기 관리
+    "health_max": (5, 300), "mental_max": (5, 300), "self_care": (5, 400),
 }
 
 
@@ -54,7 +56,9 @@ def levels(**kw):
     d = {uid: 0 for uid in config.UPGRADE_IDS}
     for key, value in kw.items():
         d[{"menu": MENU, "bed": BED, "book": BOOK, "time": TIME, "care": CARE, "lib": LIB,
-           "cafe": CAFE, "gym": GYM, "charm": CHARM, "schol": SCHOL}[key]] = value
+           "cafe": CAFE, "gym": GYM, "charm": CHARM, "schol": SCHOL,
+           "hmax": config.UPGRADE_HEALTH_MAX, "mmax": config.UPGRADE_MENTAL_MAX,
+           "self": config.UPGRADE_SELF_CARE}[key]] = value
     return d
 
 
@@ -77,16 +81,17 @@ def g(no_events, no_auto):
 
 
 # (L단위) 예전 지식 기준(1000/750)을 같은 등급이 나오는 졸업 시각으로 바꾼다: 수석 200초, 무사 300초, 아슬아슬 400초
+# (M단위) 시간 기준이 임시 값(400/720)이라 config 상수로: 수석 = 기준 초, 무사 = 두 기준 가운데, 아슬아슬 = 무사 기준 + 40
 OLD_TOP_KNOWLEDGE, OLD_NORMAL_KNOWLEDGE = 1000, 750
 
 
 def graduation_seconds_for(old_knowledge):
     """예전 테스트의 "지식 old_knowledge로 졸업"과 같은 등급이 나오는 졸업 시각(초)."""
     if old_knowledge >= OLD_TOP_KNOWLEDGE:
-        return 200.0
+        return float(config.TOP_GRADUATE_SECONDS)
     if old_knowledge >= OLD_NORMAL_KNOWLEDGE:
-        return 300.0
-    return 400.0
+        return (config.TOP_GRADUATE_SECONDS + config.NORMAL_GRADUATE_SECONDS) / 2
+    return config.NORMAL_GRADUATE_SECONDS + 40.0
 
 
 def graduated_knowledge(old_knowledge):
@@ -128,9 +133,11 @@ def test_upgrade_table_matches_spec():
         assert u[config.UPGRADE_MAX_LEVEL] == max_level, uid
         assert u[config.UPGRADE_BASE_COST] == base, uid
     per = {uid: config.UPGRADES_BY_ID[uid][config.UPGRADE_PER_LEVEL] for uid in SPEC_TABLE}
-    assert per == {"menu": 4, "bed": 4, "reference_book": 2, "time_management": 0.2,
+    # (M단위) 학식 메뉴 개선: 학식 체력 +4 -> 든든함 +6초. 컨디션 3종 추가
+    assert per == {"menu": 6, "bed": 4, "reference_book": 2, "time_management": 0.2,
                    "health_care": 0.1, "library": 3, "cafe": 5, "gym": 2,
-                   "lucky_charm": 0.05, "scholarship": 30}
+                   "lucky_charm": 0.05, "scholarship": 30,
+                   "health_max": 10, "mental_max": 10, "self_care": 0.2}
 
 
 def test_money_constants():
@@ -149,32 +156,38 @@ def test_money_constants():
 
 # ======================= 업그레이드 효과 (Student) =======================
 
+# (M단위) 학식 메뉴 개선: 예전 "학식 체력 +4/Lv" -> 든든함 지속 +6초/Lv (학식은 게이지를 바꾸지 않는다)
 @pytest.mark.parametrize("lv", range(6))
 def test_menu_feed_health(lv):
     s = Student(levels(menu=lv))
     s.health = 10
     s.feed()
-    assert s.health == 10 + 20 + 4 * lv
+    assert s.health == 10
+    assert s.get_full_duration() == 30 + 6 * lv
+    assert s.get_full_time_left() == 30 + 6 * lv
 
 
 @pytest.mark.parametrize("lv", [0, 3, 5])
 def test_menu_stacks_with_fitness_trait_and_caps(lv):
+    """체력 단련(+10초)과 학식 메뉴(+6초/Lv)가 더해지고, 다시 먹으면 쌓이지 않고 다시 채운다."""
     s = Student(levels(menu=lv))
     s.add_trait(config.TRAIT_FITNESS)
     s.health = 10
     s.feed()
-    assert s.health == 10 + 25 + 4 * lv
-    s.health = 90
+    assert s.health == 10
+    assert s.get_full_time_left() == 40 + 6 * lv
+    s.elapsed += 5.0
     s.feed()
-    assert s.health == 100
+    assert s.get_full_time_left() == 40 + 6 * lv
 
 
 @pytest.mark.parametrize("lv", range(6))
 def test_bed_rest_mental(lv):
+    """(M단위) 푹신한 침대: 휴식 멘탈 +4/Lv -> 체력·멘탈 각각 +4/Lv, 휴식 기본 체력 +15."""
     s = Student(levels(bed=lv))
     s.mental, s.health, s.knowledge = 10, 50, 30
     s.rest()
-    assert (s.mental, s.health, s.knowledge) == (10 + 20 + 4 * lv, 50, 28)
+    assert (s.mental, s.health, s.knowledge) == (10 + 20 + 4 * lv, 50 + 15 + 4 * lv, 28)
 
 
 def test_bed_stacks_with_music_trait():
@@ -192,23 +205,24 @@ def test_cafe_rest_health_and_love_trait(traits, expected):
         s.add_trait(t)
     s.health = 40
     s.rest()
-    assert s.health == 40 + expected
-    s0 = Student()   # 카페가 없으면 휴식 체력 변화 없음
+    assert s.health == 40 + 15 + expected     # (M단위) 휴식 기본 체력 +15
+    s0 = Student()   # 카페가 없으면 휴식 체력은 기본 +15만
     s0.health = 40
     s0.rest()
-    assert s0.health == 40
+    assert s0.health == 40 + 15
 
 
 # 공부: (기본 10/시험 20 + 참고서 2/Lv + 도서관 3) x 지식배수 -> round
 @pytest.mark.parametrize("book, lib, policy, exam, expected", [
     (0, 0, BAL, False, 10), (1, 0, BAL, False, 12), (5, 0, BAL, False, 20),
     (0, 1, BAL, False, 13), (5, 1, BAL, False, 23),
-    (5, 1, SF, False, round(23 * 1.4)),   # 32.2 -> 32
-    (5, 1, RF, False, round(23 * 0.8)),   # 18.4 -> 18
-    (2, 1, SF, False, round(17 * 1.4)),   # 23.8 -> 24
-    (5, 1, BAL, True, 33), (5, 1, SF, True, round(33 * 1.4)),   # 46.2 -> 46
-    (1, 0, RF, True, round(22 * 0.8)),    # 17.6 -> 18
-    (0, 1, SF, True, round(23 * 1.4)),    # 시험 20+3=23 -> 32
+    # (B안) 공부 위주 지식 x1.8, 휴식 위주 x0.7
+    (5, 1, SF, False, round(23 * 1.8)),   # 41.4 -> 41
+    (5, 1, RF, False, round(23 * 0.7)),   # 16.1 -> 16
+    (2, 1, SF, False, round(17 * 1.8)),   # 30.6 -> 31
+    (5, 1, BAL, True, 33), (5, 1, SF, True, round(33 * 1.8)),   # 59.4 -> 59
+    (1, 0, RF, True, round(22 * 0.7)),    # 15.4 -> 15
+    (0, 1, SF, True, round(23 * 1.8)),    # 시험 20+3=23 -> 41.4 -> 41
 ])
 def test_study_knowledge_book_library_policy_exam(book, lib, policy, exam, expected):
     s = Student(levels(book=book, lib=lib))
@@ -223,8 +237,9 @@ def test_study_knowledge_book_library_policy_exam(book, lib, policy, exam, expec
 # 공부 체력: (-5 + 카페인 2 + 헬스장 2) x 소모배수 -> round. 멘탈은 헬스장과 무관
 @pytest.mark.parametrize("gym, caffeine, policy, d_health, d_mental", [
     (0, False, BAL, -5, -8), (1, False, BAL, -3, -8), (1, True, BAL, -1, -8),
-    (1, False, SF, round(-3 * 1.6), round(-8 * 1.6)),   # -4.8 -> -5, -12.8 -> -13
-    (1, True, SF, round(-1 * 1.6), -13),                # -1.6 -> -2
+    # (M단위) 공부 위주 소모 x1.8
+    (1, False, SF, round(-3 * 1.8), round(-8 * 1.8)),   # -5.4 -> -5, -14.4 -> -14
+    (1, True, SF, round(-1 * 1.8), -14),                # -1.8 -> -2
     (1, False, RF, round(-3 * 0.7), round(-8 * 0.7)),   # -2.1 -> -2, -5.6 -> -6
     (1, True, RF, round(-1 * 0.7), -6),                 # -0.7 -> -1
 ])
@@ -303,7 +318,7 @@ def test_fractional_popups_show_integers(g):
     g.upgrades[CARE] = 1
     g.update(1.0)          # 체력 79.1
     g.student.health = 90.6
-    g.do_action(FEED)      # 100 까지 -> 실제 변화 9.4 -> 표시 +9
+    g.do_action(REST)      # (M단위) 휴식 +15, 100 까지 -> 실제 변화 9.4 -> 표시 +9
     texts = [p["text"] for p in g.popups]
     assert any(t.startswith(config.HEALTH_LABEL) for t in texts)
     assert all("." not in t for t in texts), texts
@@ -491,7 +506,9 @@ def test_purchase_applies_immediately_to_current_student(g):
     g.buy_upgrade(MENU)
     g.student.health = 10
     g.do_action(FEED)
-    assert g.student.health == 34
+    # (M단위) 학식 메뉴 개선 1레벨: 든든함 30 + 6 = 36초 (게이지는 그대로)
+    assert g.student.health == 10
+    assert g.student.get_full_time_left() == 36
 
 
 def test_purchase_saves_immediately(g, isolated_record_path):
@@ -514,10 +531,12 @@ def test_failed_purchase_does_not_write(g, isolated_record_path):
 
 @pytest.mark.parametrize("fame, policy, exam, expected", [
     (0, BAL, False, 10), (1, BAL, False, 11), (3, BAL, False, 13),
-    (0, SF, False, 14), (1, SF, False, 15),   # 14 x 1.1 = 15.4 -> 15
-    (3, SF, False, 18),                       # 14 x 1.3 = 18.2 -> 18
-    (1, BAL, True, 22), (3, SF, True, 36),    # 28 x 1.3 = 36.4 -> 36
-    (3, RF, False, 10),                       # 8 x 1.3 = 10.4 -> 10
+    # (B안) 공부 위주 지식 x1.8, 휴식 위주 x0.7
+    (0, SF, False, 18), (1, SF, False, 19),   # 18 x 1.1 = 19.8 -> 19
+    (3, SF, False, 23),                       # 18 x 1.3 = 23.4 -> 23
+    (1, BAL, True, 22), (3, SF, True, 46),    # 36 x 1.3 = 46.8 -> 46
+    # 7 x 1.3 x 1.5(컨디션 좋음: 휴식 위주, 공부 뒤 체력 76·멘탈 74 >= 70) = 13.65 -> 13
+    (3, RF, False, 13),
 ])
 def test_money_from_study(g, fame, policy, exam, expected):
     g.fame = fame
@@ -676,7 +695,10 @@ def test_round_end_with_zero_knowledge_still_saves(g, isolated_record_path):
 
 def test_best_knowledge_only_increases(g, isolated_record_path):
     # (L단위) 졸업 지식은 graduated_knowledge(k) = 1100 + k
-    for k, best in [(300, 1400), (100, 1400), (300, 1400), (301, 1401), (0, 1401)]:
+    # (M단위) 졸업 지식 2200 -> graduated_knowledge(k) = 2200 + k
+    top = config.GRADUATION_KNOWLEDGE
+    for k, best in [(300, top + 300), (100, top + 300), (300, top + 300), (301, top + 301),
+                    (0, top + 301)]:
         graduate_with(g, k)
         data = read_record(isolated_record_path)
         assert data["best_knowledge"] == best == g.best_record
@@ -699,7 +721,8 @@ def test_persistence_across_game_instances(g, isolated_record_path):
     assert g2.student.upgrades is g2.upgrades
     g2.student.health = 10
     g2.do_action(FEED)
-    assert g2.student.health == 34
+    assert g2.student.health == 10                       # (M단위) 학식은 든든함만
+    assert g2.student.get_full_time_left() == 36         # 학식 메뉴 개선 1레벨: 30 + 6
     pygame.quit()
 
 
@@ -899,9 +922,10 @@ def test_cursor_wraps(g):
     assert g.upgrade_cursor == len(config.UPGRADE_IDS) - 1
     press(g, pygame.K_DOWN)
     assert g.upgrade_cursor == 0
-    for i in range(1, 12):
+    n = len(config.UPGRADE_IDS)                 # (M단위) 13종
+    for i in range(1, n + 2):
         press(g, pygame.K_DOWN)
-        assert g.upgrade_cursor == i % 10
+        assert g.upgrade_cursor == i % n
 
 
 def test_arrows_ignored_when_panel_closed(g):
@@ -1031,7 +1055,8 @@ def test_panel_texts_fit_inside_rows(g, monkeypatch, setup):
         assert panel.contains(rect), (text, rect)
     for index, uid in enumerate(config.UPGRADE_IDS):
         row = g.get_upgrade_row_rect(index)
-        inner = row.inflate(-config.BOX_INSET, -config.BOX_INSET)
+        # (M단위) 13줄이라 줄은 외곽선 없는 얇은 띠(높이 20) -> 글자는 띠 안에 들어가면 된다
+        inner = row
         name = config.UPGRADES_BY_ID[uid][config.UPGRADE_NAME]
         in_row = [(t, r) for t, r in texts if inner.colliderect(r)]
         assert any(t == name for t, _ in in_row)

@@ -71,7 +71,9 @@ def button_body_point(g, name):
 # ======================= 기능 1~3: Student 행동 수치 =======================
 
 def test_config_action_values_match_spec():
-    assert config.FEED_HEALTH == 20
+    # M단위: 학식 체력 +20(FEED_HEALTH) 삭제 -> 학식은 버프 든든함, 휴식이 체력 +15
+    assert not hasattr(config, "FEED_HEALTH")
+    assert config.REST_HEALTH == 15
     assert (config.REST_MENTAL, config.REST_KNOWLEDGE) == (20, -2)
     assert (config.STUDY_HEALTH, config.STUDY_MENTAL, config.STUDY_KNOWLEDGE) == (-5, -8, 10)
     assert config.STUDY_KNOWLEDGE_EXAM == 20
@@ -79,10 +81,12 @@ def test_config_action_values_match_spec():
 
 
 def test_feed():
+    """(M단위) 학식은 게이지를 바로 바꾸지 않고 버프 든든함만 붙인다."""
     s = Student()
     s.health = 50
     s.feed()
-    assert (s.health, s.mental, s.knowledge) == (70, 80, 0)
+    assert (s.health, s.mental, s.knowledge) == (50, 80, 0)
+    assert s.is_full_buff_active()
 
 
 def test_rest():
@@ -90,7 +94,7 @@ def test_rest():
     s.mental = 50
     s.knowledge = 10
     s.rest()
-    assert (s.health, s.mental, s.knowledge) == (80, 70, 8)
+    assert (s.health, s.mental, s.knowledge) == (95, 70, 8)   # M단위: 휴식 체력 +15
 
 
 def test_study():
@@ -103,11 +107,12 @@ def test_study_knowledge_is_10_now():
     assert Student().get_study_knowledge() == 10
 
 
-@pytest.mark.parametrize("start, expected", [(90, 100), (81, 100), (80, 100), (79, 99), (100, 100)])
-def test_feed_clamp(start, expected):
+@pytest.mark.parametrize("start, expected", [(90, 100), (86, 100), (85, 100), (84, 99), (100, 100)])
+def test_rest_health_clamp(start, expected):
+    """(M단위) 예전 학식 체력 +20 clamp -> 휴식 체력 +15 clamp(최댓값 100)."""
     s = Student()
     s.health = start
-    s.feed()
+    s.rest()
     assert s.health == expected
 
 
@@ -160,7 +165,9 @@ def test_repeated_actions_stay_in_range():
     assert (s.health, s.mental, s.knowledge) == (100, 100, 0)
     for _ in range(30):
         s.study()
-    assert (s.health, s.mental, s.knowledge) == (0, 0, 300)
+    # M단위: 체력 30 미만(피곤)이면 공부 지식 x0.7 -> 처음 15번 10, 다음 15번 7
+    tired = round(config.STUDY_KNOWLEDGE * config.TIRED_KNOWLEDGE_RATIO)
+    assert (s.health, s.mental, s.knowledge) == (0, 0, 15 * 10 + 15 * tired)
 
 
 # ======================= Game.do_action =======================
@@ -169,11 +176,12 @@ def test_repeated_actions_stay_in_range():
 
 def test_do_action_each(game):
     assert game.do_action(config.ACTION_FEED) is True
-    assert gauges(game) == (100, 80, 0)
+    assert gauges(game) == (80, 80, 0)          # M단위: 학식은 든든함만
+    assert game.student.is_full_buff_active()
     assert game.do_action(config.ACTION_STUDY) is True
-    assert gauges(game) == (95, 72, 10)
+    assert gauges(game) == (75, 72, 10)
     assert game.do_action(config.ACTION_REST) is True
-    assert gauges(game) == (95, 92, 8)
+    assert gauges(game) == (90, 92, 8)          # 휴식 체력 +15
     assert game.last_action == config.ACTION_REST
 
 
@@ -194,8 +202,8 @@ def test_no_cooldown_attribute(game):
 
 
 @pytest.mark.parametrize("second, expected", [
-    (config.ACTION_FEED, (95, 72, 10)),     # 체력 75 + 20 = 95
-    (config.ACTION_REST, (75, 92, 8)),
+    (config.ACTION_FEED, (75, 72, 10)),     # M단위: 학식은 게이지 그대로(든든함만)
+    (config.ACTION_REST, (90, 92, 8)),      # 휴식 체력 +15
     (config.ACTION_STUDY, (70, 64, 20)),
 ])
 def test_consecutive_actions_all_run(game, second, expected):
@@ -426,15 +434,15 @@ def test_escape_quits_in_any_state(game, state):
 def test_done_criteria_play_sequence(game):
     """학식 -> 1초 -> 공부 -> 1초 -> 휴식 (G단위: 행동은 do_action, 균형 방침이라 배수 1.0)."""
     game.do_action(config.ACTION_FEED)
-    assert gauges(game) == (100, 80, 0)
+    assert gauges(game) == (80, 80, 0)            # M단위: 학식은 든든함만
     for _ in range(60):
-        game.update(1 / 60)                       # 자연 감소 1회: 99, 79
+        game.update(1 / 60)                       # 자연 감소 1회(든든함 체력 x0.5): 79.5, 79
     game.do_action(config.ACTION_STUDY)
-    assert gauges(game) == (94, 71, 10)
+    assert gauges(game) == (74.5, 71, 10)
     for _ in range(60):
-        game.update(1 / 60)                       # 93, 70
+        game.update(1 / 60)                       # 74, 70
     game.do_action(config.ACTION_REST)
-    assert gauges(game) == (93, 90, 8)
+    assert gauges(game) == (89, 90, 8)            # 휴식 체력 +15, 멘탈 +20
     game.draw()
 
 
@@ -442,7 +450,7 @@ def test_done_criteria_bar_redrawn_after_action(game):
     """행동 후 다시 그리면 체력 막대 채움 폭이 바뀐다.
 
     (화면 연출 E4 이후) 행동 직후 그림은 아직 이전 길이이고, GAUGE_ANIM_TIME 이 지나면
-    새 길이가 된다. 막대 색은 처음부터 실제 값 기준(70 -> 초록).
+    새 길이가 된다. 막대 색은 처음부터 실제 값 기준(65 -> 초록).
     """
     game.student.health = 50
     game.draw()
@@ -450,14 +458,14 @@ def test_done_criteria_bar_redrawn_after_action(game):
     x_after_50 = config.GAUGE_X + config.BAR_WIDTH * 60 // config.GAUGE_MAX
     x_inside_50 = config.GAUGE_X + config.BAR_WIDTH * 40 // config.GAUGE_MAX
     assert color_at(game.screen, (x_after_50, y)) == config.COLOR_BAR_BG
-    game.do_action(config.ACTION_FEED)
-    assert game.student.health == 70
+    game.do_action(config.ACTION_REST)             # M단위: 체력 회복은 휴식(+15)
+    assert game.student.health == 65
     assert game.get_shown_gauge(config.GAUGE_HEALTH) == 50
     game.draw()
-    # 행동 직후: 길이는 이전(50), 색은 실제 값(70) 기준 초록
+    # 행동 직후: 길이는 이전(50), 색은 실제 값(65) 기준 초록
     assert color_at(game.screen, (x_after_50, y)) == config.COLOR_BAR_BG
     assert color_at(game.screen, (x_inside_50, y)) == config.COLOR_GREEN
     game.update(config.GAUGE_ANIM_TIME)
-    assert game.get_shown_gauge(config.GAUGE_HEALTH) == 70
+    assert game.get_shown_gauge(config.GAUGE_HEALTH) == 65
     game.draw()
     assert color_at(game.screen, (x_after_50, y)) == config.COLOR_GREEN
