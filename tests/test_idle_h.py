@@ -752,7 +752,7 @@ def test_title_shows_fame_and_money(isolated_record_path):
         game.draw()
     finally:
         game_module.render_text = real
-    assert config.TITLE_WALLET_TEXT.format(2, 340) in texts
+    assert config.TITLE_WALLET_TEXT.format("조교수", 2, 340) in texts   # (명성 칭호) 명성 2 = 조교수
     assert "최고 기록: 지식 5" in texts
     pygame.quit()
 

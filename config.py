@@ -1284,7 +1284,7 @@ SCHOLARSHIP_EVENT = {
 MONEY_LABEL = "연구비"
 MONEY_TEXT = "{} {}"                # 정보바·패널의 연구비 글자: "연구비 340"
 INFO_ITEM_GAP = 28                  # 정보바에서 연구비 글자와 지식 글자 사이 간격
-TITLE_WALLET_TEXT = "명성 {} · 연구비 {}"  # 타이틀 화면 최고 기록 아래 글자
+TITLE_WALLET_TEXT = "{} · 명성 {} · 연구비 {}"  # 타이틀 화면 최고 기록 아래 글자 (칭호 · 명성 · 연구비)
 TITLE_WALLET_Y = 364                # 그 글자 가운데 y (최고 기록 배지 아래, 시작 안내 위)
 GRADUATION_BONUS_TEXT = "졸업 보너스: 연구비 +{}"  # 엔딩 화면 누적 지식 아래 글자
 GRADUATION_BONUS_Y = 398            # 그 글자 가운데 y
@@ -1379,6 +1379,10 @@ GRAD_CYCLE_DECAY_BONUS = 2.5  # 대학원에서 60초 주기를 하나 다 채�
 GRAD_CYCLES_NONE = 0        # 학부이거나 대학원 진입 시각이 없을 때의 대학원 주기 수
 GRAD_MONEY_BONUS = 1.0      # n년차 연구비 획득 배수 = 1 + 1.0 x n
 FAME_STEP = 1               # 졸업한 판에서 환생하면 오르는 명성
+# 명성 칭호 (2026-11-24 추가): (이 명성 이상, 칭호). 보여 주기용이라 게임 수치에는 영향이 없다.
+# 업그레이드를 모두 채우는 데 환생 약 20번이 걸려서 명예교수 = 사실상 완주
+FAME_TITLES = [(0, "시간강사"), (2, "조교수"), (5, "부교수"), (10, "정교수"), (20, "명예교수")]
+FAME_TITLE_PROMOTION_TEXT = "{} 승진!"   # 환생으로 칭호가 오르면 새 판 무대 오른쪽 위 알림
 
 GRAD_YEAR_TEXT = "대학원 {}년차"        # 정보바 왼쪽 글자 (학부는 GRADE_TEXT)
 PROMOTION_TEXT = "{}학년 진급!"          # 진급 알림 글자 (2초, 자동형 알림과 같은 모양)

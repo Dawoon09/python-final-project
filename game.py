@@ -195,9 +195,24 @@ class Game:
 
     def reincarnate(self):
         """환생: 명성 +1 하고 record.json에 저장한 뒤, 새 신입생으로 처음부터 시작한다."""
+        before = self.get_fame_title()
         self.fame += config.FAME_STEP
         self.save_record()
         self.start_new_game()
+        after = self.get_fame_title()
+        if after != before:   # 칭호가 오르면 새 판 무대 오른쪽 위에 알림
+            self.promotion_notice = {"text": config.FAME_TITLE_PROMOTION_TEXT.format(after),
+                                     "timer": config.EVENT_NOTICE_TIME, "good": True}
+
+    def get_fame_title(self, fame=None):
+        """명성 fame(없으면 지금 명성)에 맞는 칭호(시간강사·조교수·부교수·정교수·명예교수)를 돌려준다."""
+        if fame is None:
+            fame = self.fame
+        title = config.FAME_TITLES[config.FIRST_ROW][config.LEVEL_STEP]
+        for need, name in config.FAME_TITLES:
+            if fame >= need:
+                title = name
+        return title
 
     def enter_grad_school(self):
         """대학원 진학: 졸업한 같은 제자로 "대학원 1년차"를 이어서 시작한다."""
@@ -1625,7 +1640,8 @@ class Game:
         self.draw_dot_line(config.TITLE_LINE_Y)
         self.draw_badge(config.BEST_RECORD_TEXT.format(self.best_record),
                         config.BEST_RECORD_Y, config.COLOR_PINK_LIGHT, config.COLOR_WHITE)
-        self.draw_text_center(self.font, config.TITLE_WALLET_TEXT.format(self.fame, self.money),
+        self.draw_text_center(self.font, config.TITLE_WALLET_TEXT.format(self.get_fame_title(),
+                                                                         self.fame, self.money),
                               config.TITLE_WALLET_Y, config.COLOR_TEXT_SOFT)
         if self.new_game_confirm:
             self.draw_new_game_confirm()

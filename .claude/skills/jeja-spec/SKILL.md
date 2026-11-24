@@ -82,7 +82,7 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 ## 3. 성장
 
 - 연구비 += floor(지식 증가량 × (1 + `FAME_MONEY_BONUS` 0.1×명성) × (1 + `GRAD_MONEY_BONUS` 1.0×년차) × 컨디션 배수(우울 0.7/좋음 1.5/1.0)). 감소 시 0. `get_money_multiplier` = 명성 × 대학원 × `get_condition_money_ratio`. 졸업 보너스는 명성 배수만, 장학금(+30×학년, 대학원 4)은 배수 없음.
-- 명성 +1(`FAME_STEP`): 졸업·수료 뒤 환생. 저장: 판 끝·업그레이드 구매·환생·새 게임(N).
+- 명성 +1(`FAME_STEP`): 졸업·수료 뒤 환생. 칭호 `get_fame_title(fame=None)` ← `FAME_TITLES` 0 시간강사·2 조교수·5 부교수·10 정교수·20 명예교수(보여 주기용), 타이틀 `TITLE_WALLET_TEXT`(칭호·명성·연구비), 환생으로 오르면 `promotion_notice` "{칭호} 승진!". 저장: 판 끝·업그레이드 구매·환생·새 게임(N).
 - 가격 = floor(기본가 × `UPGRADE_COST_GROWTH` 2.0^Lv). 13종 전부 92,590.
 
 | id | 최대 | 기본가 | 레벨당 | id | 최대 | 기본가 | 레벨당 |

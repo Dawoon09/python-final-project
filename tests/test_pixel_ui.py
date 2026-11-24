@@ -507,7 +507,7 @@ SPEC_UI_STRINGS = [
     config.MONEY_LABEL,
     *(config.POLICIES[p][config.POLICY_TEXT] for p in config.POLICY_ORDER),
     config.BEST_RECORD_TEXT.format("n"),
-    config.TITLE_WALLET_TEXT.format("n", "n"),
+    config.TITLE_WALLET_TEXT.format("칭호", "n", "n"),
     config.ENDING_KNOWLEDGE_TEXT.format("n"),
     config.GRADUATION_BONUS_TEXT.format("n"),
     config.ENDING_TIME_TEXT.format(config.TIME_TEXT.format("m", "s")),

@@ -229,7 +229,7 @@ def test_confirm_box_layout_texts_fit(make):
         for other in rows[i + 1:]:
             assert not r.colliderect(other), (r, other)
     # 위쪽 명성·연구비 글자와 겹치지 않는다
-    wallet = text_rect(g.font, config.TITLE_WALLET_TEXT.format(99, 999999), config.TITLE_WALLET_Y)
+    wallet = text_rect(g.font, config.TITLE_WALLET_TEXT.format("명예교수", 99, 999999), config.TITLE_WALLET_Y)
     assert not wallet.colliderect(box)
 
 
