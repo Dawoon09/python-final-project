@@ -838,6 +838,7 @@ class Game:
                 self.draw_upgrade_tooltip()
             else:
                 self.draw_status_tooltip()
+                self.draw_trait_tooltip()
         elif self.state == config.STATE_EVENT:
             # 대화창이 떠 있는 동안에는 업그레이드 패널을 숨긴다(닫힌 것은 아니다)
             self.draw_playing()
@@ -1294,6 +1295,34 @@ class Game:
         lines = [(self.get_status_tip_text(name), config.COLOR_TOOLTIP_TITLE)]
         return self.draw_tooltip(lines,
                                  self.student.get_badge_rect(index, config.STATUS_BADGE_Y).top)
+
+    def get_trait_tip_text(self, name):
+        """특성 배지 name의 툴팁 글자(이름: 효과, 이번 판 끝까지)를 config 값으로 채워 돌려준다."""
+        effects = [config.TRAIT_TIP_EFFECTS[bonus_name].format(bonus=amount)
+                   for bonus_name, amount in config.TRAIT_BONUSES[name].items()]
+        return config.TRAIT_TIP_TEXT.format(name=name, effects=config.TRAIT_TIP_JOIN.join(effects))
+
+    def get_hovered_trait(self):
+        """마우스가 올라간 특성 배지의 (번호, 이름)을 돌려준다. 없으면 None."""
+        if (self.mouse_pos is None or self.state != config.STATE_PLAYING
+                or self.upgrade_panel_open):
+            return None
+        for index, name in enumerate(self.student.traits):
+            if self.student.get_badge_rect(index, config.TRAIT_BADGE_Y).collidepoint(
+                    self.mouse_pos):
+                return index, name
+        return None
+
+    def draw_trait_tooltip(self):
+        """마우스를 올린 특성 배지가 있으면 그 효과 툴팁을 상태 패널 오른쪽(무대 위)에 그린다.
+        그린 상자 사각형(없으면 None)을 돌려준다."""
+        hovered = self.get_hovered_trait()
+        if hovered is None:
+            return None
+        index, name = hovered
+        lines = [(self.get_trait_tip_text(name), config.COLOR_TOOLTIP_TITLE)]
+        return self.draw_tooltip(lines,
+                                 self.student.get_badge_rect(index, config.TRAIT_BADGE_Y).top)
 
     # ------------------------------------------------------------
     # 랜덤 이벤트 화면: 자동형 알림, 대화창, 멈춤 점무늬

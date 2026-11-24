@@ -2024,6 +2024,15 @@ STATUS_TIP_TEXTS = {
     BUFF_FULL: "{name}: 남은 시간 {left}초 — 체력 감소 ×{ratio:g}",
     CONDITION_GOOD: "{name}: 휴식 위주, 체력·멘탈 {limit} 이상 — 버는 연구비 ×{ratio:g}",
 }
+# 특성 배지 툴팁: "{이름}: {효과들} (이번 판 끝까지)". 효과 = TRAIT_BONUSES의 보정 이름별 글자 틀
+TRAIT_TIP_TEXT = "{name}: {effects} (이번 판 끝까지)"
+TRAIT_TIP_EFFECTS = {
+    BONUS_FULL_TIME: "학식 든든함 +{bonus}초",
+    BONUS_REST_MENTAL: "휴식 멘탈 +{bonus}",
+    BONUS_REST_HEALTH: "휴식 체력 +{bonus}",
+    BONUS_STUDY_HEALTH: "공부 체력 소모 -{bonus}",
+}
+TRAIT_TIP_JOIN = ", "               # 효과가 여럿이면 사이에 넣는 글자
 
 # 무대 장식: 시설이 아닌 업그레이드 10종은 레벨 1부터 무대에 작은 도트 소품이 생긴다.
 # 시설 3종(도서관·카페·헬스장)은 예전처럼 건물(FACILITY_SPRITES)이다.
