@@ -332,16 +332,18 @@ class Student:
         self.change_knowledge(config.REST_KNOWLEDGE)
 
     def study(self, knowledge_ratio=config.NO_RATIO, cost_ratio=config.NO_RATIO):
-        """공부시키기: 지식 +(공부 지식량), 체력 -5 (카페인 특성이면 -3), 멘탈 -8."""
+        """공부시키기: 지식 +(공부 지식량), 체력 -5, 멘탈 -8 (특성·업그레이드 보정 뒤 방침 배수)."""
         health = (config.STUDY_HEALTH + self.get_trait_bonus(config.BONUS_STUDY_HEALTH)
                   + self.get_upgrade_bonus(config.UPGRADE_GYM))
         knowledge = (self.get_study_knowledge() + self.get_upgrade_bonus(config.UPGRADE_BOOK)
-                     + self.get_upgrade_bonus(config.UPGRADE_LIBRARY)) * knowledge_ratio
+                     + self.get_upgrade_bonus(config.UPGRADE_LIBRARY)
+                     + self.get_trait_bonus(config.BONUS_STUDY_KNOWLEDGE)) * knowledge_ratio
         if self.is_tired():
             knowledge *= config.TIRED_KNOWLEDGE_RATIO
         self.change_knowledge(round(knowledge))
         self.change_health(round(health * cost_ratio))
-        self.change_mental(round(config.STUDY_MENTAL * cost_ratio))
+        mental = config.STUDY_MENTAL + self.get_trait_bonus(config.BONUS_STUDY_MENTAL)
+        self.change_mental(round(mental * cost_ratio))
 
     def get_study_knowledge(self):
         """공부시키기 한 번에 오르는 지식 양을 돌려준다: 평소 10, 시험 기간 20."""

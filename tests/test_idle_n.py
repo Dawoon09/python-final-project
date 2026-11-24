@@ -601,13 +601,13 @@ def test_status_badge_icon_pixels_and_name_fit(g, name):
 
 
 def test_badge_layout_unchanged(g):
-    """배지 자리·크기는 예전(특성 배지와 같은 2열)과 같다."""
+    """배지 크기는 예전과 같은 2열, 사이 간격은 (특성 8종) 8 -> 4."""
     r0 = g.student.get_badge_rect(0, 128)
     r1 = g.student.get_badge_rect(1, 128)
     r2 = g.student.get_badge_rect(2, 128)
     assert tuple(r0) == (24, 128, 112, 24)
-    assert tuple(r1) == (144, 128, 112, 24)
-    assert tuple(r2) == (24, 160, 112, 24)
+    assert tuple(r1) == (140, 128, 112, 24)
+    assert tuple(r2) == (24, 156, 112, 24)
 
 
 # ============================== 6. 장식 조각·레벨 ==============================

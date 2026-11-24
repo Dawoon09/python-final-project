@@ -115,7 +115,7 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 - do_action 순서: 행동 → last_action → 연구비 → 연출 → check_promotion → check_ending → (엔딩 아니면) roll_event.
 - roll_event: 주기 수 ≥ 5 없음 / 보장(주기 안 경과 ≥ 11.25k인 최대 k ≤ 4에 대해 수 < k) 반드시 / 아니면 간격 지났을 때만 `rng.random() < 확률`(간격 미달이면 rng 안 뽑음). 보장 경계 11.24 → 0, 11.25 → 1, 22.5 → 2, 33.75 → 3, 45 → 4.
 - 선택지형: 지금 학년 조건, 한 판 1회, STATE_EVENT(정지, 키 1·2/클릭, 방침·U 무시, ESC 동작). 선택 후 효과 → 연구비 → 팝업 → 진급 → 휴학 판정.
-- 특성 보정: 체력 단련 든든함 +10초(`BONUS_FULL_TIME`), 음악 힐링 휴식 멘탈 +5, 연애 중 휴식 체력 +5, 카페인 공부 체력 +2. 이벤트·외형·연계 표는 기획서 4절 = config.
+- 특성 보정(8종): 체력 단련 든든함 +10초(`BONUS_FULL_TIME`), 음악 힐링 휴식 멘탈 +5, 연애 중 휴식 체력 +5, 카페인 공부 체력 +2, 아침형 인간 휴식 체력·멘탈 +3, 스터디 그룹 공부 지식 +2(`BONUS_STUDY_KNOWLEDGE`, 방침 배수 전, 시험 2배 없음), 자취 요리 든든함 +5초, 명상 공부 멘탈 +2(`BONUS_STUDY_MENTAL`). 선택지형 14개(특성 이벤트 morning_class 1·study_group 2·living_alone 3·thesis_stress 4학년). 특성 배지 `TRAIT_BADGE_Y` 344, 간격 4, 2열 4줄; 멘탈 라벨·막대 280·312. 이벤트·외형·연계 표는 기획서 4절 = config.
 - 난수: Game의 `random.Random(seed)`만(이벤트 전용).
 
 ## 5~6. 조작과 화면

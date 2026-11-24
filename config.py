@@ -488,8 +488,8 @@ BAR_WIDTH = 200             # 막대 전체 가로 길이(값 100일 때)
 BAR_HEIGHT = 24             # 막대 세로 길이(도트 6칸)
 HEALTH_LABEL_Y = 200        # 체력 아이콘·라벨 줄의 위쪽 y (게이지 묶음 200~380: 패널 안쪽 위아래 여백 80/76)
 HEALTH_BAR_Y = 232          # 체력 막대 위쪽 y
-MENTAL_LABEL_Y = 320        # 멘탈 아이콘·라벨 줄의 위쪽 y
-MENTAL_BAR_Y = 352          # 멘탈 막대 위쪽 y
+MENTAL_LABEL_Y = 280        # 멘탈 아이콘·라벨 줄의 위쪽 y (특성 배지 4줄 자리를 위해 320 -> 280)
+MENTAL_BAR_Y = 312          # 멘탈 막대 위쪽 y (테두리 아래 끝 340)
 GAUGE_LABEL_GAP = 8         # 아이콘과 라벨 글자 사이 간격
 
 HEALTH_LABEL = "체력"
@@ -759,12 +759,18 @@ TRAIT_FITNESS = "체력 단련"          # 든든함 지속 시간 +10초
 TRAIT_MUSIC = "음악 힐링"            # 쉬게 하기 멘탈 +20 -> +25
 TRAIT_CAFFEINE = "카페인"            # 공부시키기 체력 -5 -> -3
 TRAIT_LOVE = "연애 중"               # 쉬게 하기 체력 +15 -> +20
+TRAIT_MORNING = "아침형 인간"        # 쉬게 하기 체력·멘탈 각각 +3
+TRAIT_STUDY_GROUP = "스터디 그룹"    # 공부시키기 지식 +2
+TRAIT_COOKING = "자취 요리"          # 든든함 지속 시간 +5초
+TRAIT_MEDITATION = "명상"            # 공부시키기 멘탈 -8 -> -6
 
 # 특성 보정을 받는 행동 효과 이름
 BONUS_FULL_TIME = "full_time"       # 학식 먹이기로 붙는 든든함 지속 시간(초)
 BONUS_REST_MENTAL = "rest_mental"   # 쉬게 하기 멘탈
 BONUS_REST_HEALTH = "rest_health"   # 쉬게 하기 체력
 BONUS_STUDY_HEALTH = "study_health"  # 공부시키기 체력
+BONUS_STUDY_KNOWLEDGE = "study_knowledge"  # 공부시키기 지식 (방침 배수 전에 더한다, 시험 기간 2배 없음)
+BONUS_STUDY_MENTAL = "study_mental"  # 공부시키기 멘탈
 TRAIT_BONUS_START = 0               # 특성 보정 합계의 시작값 (특성이 없으면 0)
 
 # 특성 -> {보정 받는 효과: 기본 수치에 더하는 양}. 여러 특성이 있으면 각각 더한다
@@ -773,6 +779,10 @@ TRAIT_BONUSES = {
     TRAIT_MUSIC: {BONUS_REST_MENTAL: 5},       # +20 -> +25
     TRAIT_CAFFEINE: {BONUS_STUDY_HEALTH: 2},   # -5 -> -3
     TRAIT_LOVE: {BONUS_REST_HEALTH: 5},        # +15 -> +20
+    TRAIT_MORNING: {BONUS_REST_HEALTH: 3, BONUS_REST_MENTAL: 3},  # 체력 +15 -> +18, 멘탈 +20 -> +23
+    TRAIT_STUDY_GROUP: {BONUS_STUDY_KNOWLEDGE: 2},  # 지식 +10 -> +12
+    TRAIT_COOKING: {BONUS_FULL_TIME: 5},       # 든든함 30초 -> 35초
+    TRAIT_MEDITATION: {BONUS_STUDY_MENTAL: 2},  # -8 -> -6
 }
 
 # 외형 5종 (얻으면 그 판 끝까지 제자에게 붙어 있다)
@@ -829,7 +839,7 @@ AUTO_EVENTS = [
      EVENT_EFFECTS: {GAUGE_KNOWLEDGE: 15, GAUGE_MENTAL: 5}},
 ]
 
-# 선택지형 이벤트 10개 (연계 3개 포함, 한 판에 한 번씩)
+# 선택지형 이벤트 14개 (연계 3개, 특성 이벤트 4개 포함, 한 판에 한 번씩)
 CHOICE_EVENTS = [
     {EVENT_ID: "mt_invite", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [1],
      EVENT_REQUIRES: None, EVENT_TITLE: "MT 초대",
@@ -905,8 +915,38 @@ CHOICE_EVENTS = [
          make_option("데이트한다", {GAUGE_MENTAL: 20, GAUGE_HEALTH: -5}),
          make_option("도서관에 간다", {GAUGE_KNOWLEDGE: 15}),
      ]},
+    # 특성 이벤트 4개 (2026-11-24 추가): 학년마다 하나씩, 새 특성 4종을 준다
+    {EVENT_ID: "morning_class", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [1],
+     EVENT_REQUIRES: None, EVENT_TITLE: "1교시 시간표",
+     EVENT_TEXT: "수강 신청에서 1교시 수업만 남았다.",
+     EVENT_OPTIONS: [
+         make_option("1교시를 듣는다", {GAUGE_HEALTH: -5}, trait=TRAIT_MORNING),
+         make_option("다음 학기에", {GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "study_group", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [2],
+     EVENT_REQUIRES: None, EVENT_TITLE: "스터디 모집",
+     EVENT_TEXT: "전공 스터디원을 모집한다는 글이 올라왔다.",
+     EVENT_OPTIONS: [
+         make_option("들어간다", {GAUGE_KNOWLEDGE: 10, GAUGE_MENTAL: -5},
+                     trait=TRAIT_STUDY_GROUP),
+         make_option("혼자 한다", {GAUGE_KNOWLEDGE: 5}),
+     ]},
+    {EVENT_ID: "living_alone", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [3],
+     EVENT_REQUIRES: None, EVENT_TITLE: "자취 시작",
+     EVENT_TEXT: "학교 앞 원룸으로 이사했다. 밥은 어떻게 할까?",
+     EVENT_OPTIONS: [
+         make_option("직접 해 먹는다", {GAUGE_HEALTH: 5}, trait=TRAIT_COOKING),
+         make_option("배달시킨다", {GAUGE_MENTAL: 5}),
+     ]},
+    {EVENT_ID: "thesis_stress", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [4],
+     EVENT_REQUIRES: None, EVENT_TITLE: "졸업 논문 스트레스",
+     EVENT_TEXT: "졸업 논문 마감이 다가와 머리가 복잡하다.",
+     EVENT_OPTIONS: [
+         make_option("명상을 배운다", {GAUGE_MENTAL: 10}, trait=TRAIT_MEDITATION),
+         make_option("밤새 쓴다", {GAUGE_KNOWLEDGE: 20, GAUGE_HEALTH: -10}),
+     ]},
 ]
-ALL_EVENTS = AUTO_EVENTS + CHOICE_EVENTS   # 이벤트 표 전체 (자동형 5 + 선택지형 10)
+ALL_EVENTS = AUTO_EVENTS + CHOICE_EVENTS   # 이벤트 표 전체 (자동형 5 + 선택지형 14)
 
 # ---------------------------------------------------------------
 # 18. 랜덤 이벤트 화면 (기획서·jeja-spec 4절). 보기만 바꾸며 게임 결과에는 영향이 없다
@@ -1006,10 +1046,10 @@ EVENT_POPUP_TOP_MARGIN = 28         # 위 경계(무대 위 끝 또는 알림 �
 
 # 특성 배지: 상태 패널 안 아래쪽(멘탈 막대 아래), 얻은 순서대로 2열
 TRAIT_BADGE_X = 24                  # 첫 열 왼쪽 x
-TRAIT_BADGE_Y = 392                 # 첫 줄 위쪽 y (멘탈 막대 테두리 아래 끝 380 + 여백)
+TRAIT_BADGE_Y = 344                 # 첫 줄 위쪽 y (멘탈 막대 테두리 아래 끝 340 + 여백). 특성 8종 = 2열 4줄 -> 아래 끝 452, 그림자 456
 TRAIT_BADGE_WIDTH = 112             # 배지 가로 길이 -> 2열: 24~136, 144~256 (패널 안쪽 16~264)
 TRAIT_BADGE_HEIGHT = 24             # 배지 세로 길이 (+그림자 1칸)
-TRAIT_BADGE_GAP = 8                 # 배지 사이 간격(가로·세로)
+TRAIT_BADGE_GAP = 4                 # 배지 사이 간격(가로·세로)
 TRAIT_BADGE_COLUMNS = 2             # 한 줄에 놓는 배지 수
 # 특성 -> (몸통, 위 하이라이트 줄)
 TRAIT_COLORS = {
@@ -1017,11 +1057,15 @@ TRAIT_COLORS = {
     TRAIT_MUSIC: (COLOR_SKY, COLOR_SKY_LIGHT),
     TRAIT_CAFFEINE: (COLOR_YELLOW, COLOR_YELLOW_LIGHT),
     TRAIT_LOVE: (COLOR_PINK, COLOR_PINK_LIGHT),
+    TRAIT_MORNING: (COLOR_MINT, COLOR_MINT_LIGHT),
+    TRAIT_STUDY_GROUP: (COLOR_SKY_LIGHT, COLOR_WHITE),
+    TRAIT_COOKING: (COLOR_GREEN_LIGHT, COLOR_WHITE),
+    TRAIT_MEDITATION: (COLOR_GRAY_LIGHT, COLOR_WHITE),
 }
 
 # 상태 배지: 상태 패널 위쪽(체력 라벨 줄 200 위)에
 # 지금 붙어 있는 디버프·버프를 특성 배지와 같은 모양으로 2열로 보인다
-STATUS_BADGE_Y = 128                # 첫 줄 위쪽 y (두 줄이면 아래 끝 128 + 24 + 8 + 24 = 184, 그림자 188)
+STATUS_BADGE_Y = 128                # 첫 줄 위쪽 y (두 줄이면 아래 끝 128 + 24 + 4 + 24 = 180, 그림자 184)
 # 상태 이름 -> (몸통, 위 하이라이트 줄). 디버프는 분홍·회색, 버프는 민트·노랑
 STATUS_COLORS = {
     DEBUFF_TIRED: (COLOR_PINK, COLOR_PINK_LIGHT),
@@ -2031,6 +2075,8 @@ TRAIT_TIP_EFFECTS = {
     BONUS_REST_MENTAL: "휴식 멘탈 +{bonus}",
     BONUS_REST_HEALTH: "휴식 체력 +{bonus}",
     BONUS_STUDY_HEALTH: "공부 체력 소모 -{bonus}",
+    BONUS_STUDY_KNOWLEDGE: "공부 지식 +{bonus}",
+    BONUS_STUDY_MENTAL: "공부 멘탈 소모 -{bonus}",
 }
 TRAIT_TIP_JOIN = ", "               # 효과가 여럿이면 사이에 넣는 글자
 

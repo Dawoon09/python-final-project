@@ -166,6 +166,19 @@ SPEC_CHOICE = [
     ([4], "연애 중", "졸업 전 데이트", [
         ("데이트한다", {M: 20, H: -5}, None, None, None),
         ("도서관에 간다", {K: 15}, None, None, None)]),
+    # (특성 이벤트 2026-11-24) 학년마다 하나, 새 특성 4종
+    ([1], None, "1교시 시간표", [
+        ("1교시를 듣는다", {H: -5}, "아침형 인간", None, None),
+        ("다음 학기에", {M: 5}, None, None, None)]),
+    ([2], None, "스터디 모집", [
+        ("들어간다", {K: 10, M: -5}, "스터디 그룹", None, None),
+        ("혼자 한다", {K: 5}, None, None, None)]),
+    ([3], None, "자취 시작", [
+        ("직접 해 먹는다", {H: 5}, "자취 요리", None, None),
+        ("배달시킨다", {M: 5}, None, None, None)]),
+    ([4], None, "졸업 논문 스트레스", [
+        ("명상을 배운다", {M: 10}, "명상", None, None),
+        ("밤새 쓴다", {K: 20, H: -10}, None, None, None)]),
 ]
 
 
@@ -187,11 +200,11 @@ def test_choice_event_matches_spec(grades, requires, title, options):
 
 
 def test_choice_event_list_complete_and_ids_unique():
-    assert len(config.CHOICE_EVENTS) == 10
+    assert len(config.CHOICE_EVENTS) == 14   # (특성 이벤트) 10 -> 14
     assert sorted(e[config.EVENT_TITLE] for e in config.CHOICE_EVENTS) == \
         sorted(row[2] for row in SPEC_CHOICE)
     ids = [e[config.EVENT_ID] for e in config.ALL_EVENTS]
-    assert len(ids) == len(set(ids)) == 15
+    assert len(ids) == len(set(ids)) == 19
     assert config.ALL_EVENTS == config.AUTO_EVENTS + config.CHOICE_EVENTS
 
 
@@ -216,6 +229,11 @@ def test_trait_bonus_table():
         "음악 힐링": {config.BONUS_REST_MENTAL: 5},
         "카페인": {config.BONUS_STUDY_HEALTH: 2},
         "연애 중": {config.BONUS_REST_HEALTH: 5},
+        # (특성 이벤트) 새 특성 4종
+        "아침형 인간": {config.BONUS_REST_HEALTH: 3, config.BONUS_REST_MENTAL: 3},
+        "스터디 그룹": {config.BONUS_STUDY_KNOWLEDGE: 2},
+        "자취 요리": {config.BONUS_FULL_TIME: 5},
+        "명상": {config.BONUS_STUDY_MENTAL: 2},
     }
     # (M단위) 휴식 기본 체력 0 -> +15, 학식 체력 +20(FEED_HEALTH) 삭제 -> 든든함 30초
     assert config.REST_HEALTH == 15
@@ -395,8 +413,10 @@ def test_choice_event_once_per_round(make_game, monkeypatch):
     g.choose_option(config.CHOICE_SECOND)
     choices, _ = g.get_event_candidates()
     assert mt not in choices
-    assert [e[config.EVENT_ID] for e in choices] == ["club_fair"]
+    assert [e[config.EVENT_ID] for e in choices] == ["club_fair", "morning_class"]
     g.start_event(event_by_id("club_fair"))
+    g.choose_option(config.CHOICE_SECOND)
+    g.start_event(event_by_id("morning_class"))
     g.choose_option(config.CHOICE_SECOND)
     choices, autos = g.get_event_candidates()
     assert choices == [] and autos == config.AUTO_EVENTS
@@ -406,18 +426,18 @@ def test_choice_event_once_per_round(make_game, monkeypatch):
 
 
 @pytest.mark.parametrize("grade, flags, expected", [
-    (1, set(), {"mt_invite", "club_fair"}),
-    (1, {"MT 참석", "밴드부", "연애 중"}, {"mt_invite", "club_fair"}),
-    (2, set(), {"free_rider", "all_nighter"}),
-    (2, {"MT 참석"}, {"free_rider", "all_nighter", "senior_notes"}),
-    (2, {"밴드부", "연애 중"}, {"free_rider", "all_nighter"}),
-    (3, set(), {"confession", "exchange_student"}),
-    (3, {"MT 참석", "밴드부"}, {"confession", "exchange_student", "senior_notes",
-                              "festival_stage"}),
-    (3, {"연애 중"}, {"confession", "exchange_student"}),
-    (4, set(), {"job_fair"}),
-    (4, {"MT 참석", "밴드부", "연애 중"}, {"job_fair", "senior_notes", "festival_stage",
-                                       "graduation_date"}),
+    (1, set(), {"mt_invite", "club_fair", "morning_class"}),
+    (1, {"MT 참석", "밴드부", "연애 중"}, {"mt_invite", "club_fair", "morning_class"}),
+    (2, set(), {"free_rider", "all_nighter", "study_group"}),
+    (2, {"MT 참석"}, {"free_rider", "all_nighter", "study_group", "senior_notes"}),
+    (2, {"밴드부", "연애 중"}, {"free_rider", "all_nighter", "study_group"}),
+    (3, set(), {"confession", "exchange_student", "living_alone"}),
+    (3, {"MT 참석", "밴드부"}, {"confession", "exchange_student", "living_alone",
+                              "senior_notes", "festival_stage"}),
+    (3, {"연애 중"}, {"confession", "exchange_student", "living_alone"}),
+    (4, set(), {"job_fair", "thesis_stress"}),
+    (4, {"MT 참석", "밴드부", "연애 중"}, {"job_fair", "thesis_stress", "senior_notes",
+                                       "festival_stage", "graduation_date"}),
 ])
 def test_candidates_by_grade_and_flags(make_game, grade, flags, expected):
     """(L단위) 학년 조건은 지식으로 오른 지금 학년으로 본다(경과 시간은 1초 그대로)."""
@@ -438,13 +458,14 @@ def test_pick_ratio_and_uniformity(make_game):
     for _ in range(n):
         e = g.pick_event()
         counts[e[config.EVENT_ID]] = counts.get(e[config.EVENT_ID], 0) + 1
-    choice = counts.get("mt_invite", 0) + counts.get("club_fair", 0)
+    first_grade = {"mt_invite", "club_fair", "morning_class"}   # (특성 이벤트) 1학년 3개
+    choice = sum(counts.get(i, 0) for i in first_grade)
     assert 0.46 < choice / n < 0.54
-    assert set(counts) == {"mt_invite", "club_fair"} | {e[config.EVENT_ID]
-                                                        for e in config.AUTO_EVENTS}
+    assert set(counts) == first_grade | {e[config.EVENT_ID] for e in config.AUTO_EVENTS}
     for e in config.AUTO_EVENTS:
         assert 0.07 < counts[e[config.EVENT_ID]] / n < 0.13
-    assert 0.2 < counts["mt_invite"] / n < 0.3
+    for i in first_grade:
+        assert 0.13 < counts[i] / n < 0.2
 
 
 def test_seen_choice_marked_and_counted_at_start(make_game):

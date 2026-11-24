@@ -638,10 +638,10 @@ def test_gap_continues_across_late_cycle_boundary(g, monkeypatch, gap, fires):
 
 
 @pytest.mark.parametrize("grade, elapsed, expected", [
-    (1, 200.0, {"mt_invite", "club_fair"}),             # 4번 주기지만 1학년
-    (2, 5.0, {"free_rider", "all_nighter"}),             # 1번 주기지만 2학년
-    (3, 400.0, {"confession", "exchange_student"}),
-    (4, 5.0, {"job_fair"}),
+    (1, 200.0, {"mt_invite", "club_fair", "morning_class"}),   # 4번 주기지만 1학년
+    (2, 5.0, {"free_rider", "all_nighter", "study_group"}),    # 1번 주기지만 2학년
+    (3, 400.0, {"confession", "exchange_student", "living_alone"}),
+    (4, 5.0, {"job_fair", "thesis_stress"}),
 ])
 def test_choice_events_use_current_grade(g, grade, elapsed, expected):
     g.student.elapsed = elapsed
@@ -653,11 +653,12 @@ def test_choice_events_use_current_grade(g, grade, elapsed, expected):
 
 def test_choice_candidates_follow_promotion_mid_cycle(g):
     g.student.elapsed = 20.0
-    assert {e[config.EVENT_ID] for e in g.get_event_candidates()[0]} == {"mt_invite", "club_fair"}
+    assert {e[config.EVENT_ID] for e in g.get_event_candidates()[0]} == \
+        {"mt_invite", "club_fair", "morning_class"}
     g.student.knowledge = 900                # (M단위) 3학년 목표 900
     g.check_promotion()
     assert {e[config.EVENT_ID] for e in g.get_event_candidates()[0]} == \
-        {"confession", "exchange_student"}
+        {"confession", "exchange_student", "living_alone"}
 
 
 def test_scholarship_uses_current_grade(g):

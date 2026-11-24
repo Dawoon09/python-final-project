@@ -1212,7 +1212,9 @@ def test_no_traits_no_badges(surface):
     assert pygame.image.tobytes(surf, "RGB") == pygame.image.tobytes(blank, "RGB")
 
 
-ALL_TRAITS = [config.TRAIT_FITNESS, config.TRAIT_MUSIC, config.TRAIT_CAFFEINE, config.TRAIT_LOVE]
+ALL_TRAITS = [config.TRAIT_FITNESS, config.TRAIT_MUSIC, config.TRAIT_CAFFEINE, config.TRAIT_LOVE,
+              config.TRAIT_MORNING, config.TRAIT_STUDY_GROUP, config.TRAIT_COOKING,
+              config.TRAIT_MEDITATION]  # (특성 이벤트) 8종
 
 
 @pytest.mark.parametrize("traits", [
@@ -1239,7 +1241,7 @@ def test_badges_order_color_text(surface, traits):
 def test_badge_colors_distinct_per_trait():
     assert set(config.TRAIT_COLORS) == set(ALL_TRAITS)
     fills = [config.TRAIT_COLORS[t][0] for t in ALL_TRAITS]
-    assert len(set(map(tuple, fills))) == 4
+    assert len(set(map(tuple, fills))) == len(ALL_TRAITS)
 
 
 def test_four_badges_2x2_inside_panel_without_overlap():
