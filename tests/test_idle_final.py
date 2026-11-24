@@ -279,7 +279,7 @@ def test_key_numbers_in_spec():
         assert old not in s, old
         assert old in history, old
     assert (config.GRAD_DECAY_BONUS, config.GRAD_CYCLE_DECAY_BONUS, config.GRAD_MONEY_BONUS) \
-        == (1.0, 1.5, 1.0)
+        == (1.0, 2.5, 1.0)   # 개운함 조정으로 c 항 1.5 -> 2.5
 
     # 졸업 보너스, 명성, 자동 행동 간격, 이벤트 확률
     assert "수석 +200, 무사 +100, 아슬아슬 +50" in s

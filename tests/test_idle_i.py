@@ -165,7 +165,7 @@ def test_constants():
     assert config.GRAD_YEAR_UNDERGRAD == 0
     assert config.GRAD_FIRST_YEAR == 1
     assert config.GRAD_DECAY_BONUS == 1.0    # B안 승인(K단위 0.5, 그 전 0.25)
-    assert config.GRAD_CYCLE_DECAY_BONUS == 1.5   # B안: 대학원 주기 하나마다 +1.5 (A안 1.0)
+    assert config.GRAD_CYCLE_DECAY_BONUS == 2.5   # 개운함 조정: 대학원 주기 하나마다 +2.5 (B안 1.5, A안 1.0)
     assert config.GRAD_CYCLES_NONE == 0
     assert config.GRAD_MONEY_BONUS == 1.0    # 11절 A안 승인(K단위 0.25 -> 1.0)
     assert config.FAME_STEP == 1
