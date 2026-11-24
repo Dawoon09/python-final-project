@@ -75,7 +75,7 @@ BUFF_FULL = "든든함"
 FULL_DURATION = 30.0            # 든든함 기본 지속 시간(초, 게임 시간). 다시 먹으면 처음부터 다시 잰다
 FULL_HEALTH_DECAY_RATIO = 0.5   # 든든함인 동안 체력 자연 감소 배수
 
-# 휴식 위주 방침의 "컨디션 좋음" (기획서 2절): 체력·멘탈이 모두 70 이상이면 연구비 +20%
+# 휴식 위주 방침의 "컨디션 좋음" (기획서 2절): 체력·멘탈이 모두 70 이상이면 연구비 +50%
 CONDITION_GOOD = "컨디션 좋음"
 CONDITION_GOOD_MIN = 70         # 체력·멘탈이 둘 다 이 값 이상이어야 한다
 
@@ -113,7 +113,7 @@ POLICY_TEXT = "text"                      # 방침 버튼 글자
 
 # 방침 3가지 (기획서 2절 방침 표)
 POLICIES = {
-    POLICY_STUDY_FOCUS: {POLICY_THRESHOLD: 20, POLICY_KNOWLEDGE_RATIO: 1.6,
+    POLICY_STUDY_FOCUS: {POLICY_THRESHOLD: 25, POLICY_KNOWLEDGE_RATIO: 1.8,
                          POLICY_COST_RATIO: 1.8, POLICY_REST_RATIO: 1.0,
                          POLICY_CONDITION_BONUS: 0.0, POLICY_TEXT: "공부 위주 [1]"},
     POLICY_BALANCED: {POLICY_THRESHOLD: 50, POLICY_KNOWLEDGE_RATIO: 1.0,
@@ -121,7 +121,7 @@ POLICIES = {
                       POLICY_CONDITION_BONUS: 0.0, POLICY_TEXT: "균형 [2]"},
     POLICY_REST_FOCUS: {POLICY_THRESHOLD: 70, POLICY_KNOWLEDGE_RATIO: 0.7,
                         POLICY_COST_RATIO: 0.7, POLICY_REST_RATIO: 1.5,
-                        POLICY_CONDITION_BONUS: 0.2, POLICY_TEXT: "휴식 위주 [3]"},
+                        POLICY_CONDITION_BONUS: 0.5, POLICY_TEXT: "휴식 위주 [3]"},
 }
 NO_RATIO = 1.0              # 배수를 곱하지 않을 때의 값(×1.0). Student.study 의 기본값
 
@@ -150,9 +150,9 @@ MOUTH_CRY = "cry"           # 우는 입 (입꼬리가 내려간 ∩자)
 GRADE_GOALS = [400, 900, 1500]  # 2학년·3학년·4학년 진급 목표(누적 지식)
 GRADUATION_KNOWLEDGE = 2200     # 4학년에서 누적 지식 2200 이상이면 졸업
 # 졸업 등급은 졸업까지 걸린 게임 시간(대화창 정지 시간은 빼고 센다)으로 정한다.
-# (임시 값: 예전 200/360초를 2배로 둔 것. 밸런스 단위에서 다시 정한다)
-TOP_GRADUATE_SECONDS = 400      # 400초 이하: 수석 졸업
-NORMAL_GRADUATE_SECONDS = 720   # 400초 초과 720초 이하: 무사 졸업, 초과: 아슬아슬 졸업
+# (밸런스 B안, 2026-11-24: 업그레이드를 모아 4번째 판쯤 첫 수석, 업그레이드 없는 첫 판은 무사)
+TOP_GRADUATE_SECONDS = 330      # 330초 이하: 수석 졸업
+NORMAL_GRADUATE_SECONDS = 720   # 330초 초과 720초 이하: 무사 졸업, 초과: 아슬아슬 졸업
 
 ENDING_LEAVE = "휴학"
 ENDING_TOP = "수석 졸업"
@@ -1298,10 +1298,10 @@ GRAD_YEAR_STEP = 1          # 년차 목표를 넘을 때마다 대학원 년차
 # -> 1년차 3000, 2년차 4000, 3년차 5200, 4년차 6600 … (기획서 3절)
 GRAD_GOAL_FIRST_STEP = 800  # 1년차에 더 모아야 하는 지식
 GRAD_GOAL_STEP_GROWTH = 200  # 해마다 더 모아야 하는 지식이 늘어나는 양
-# 대학원 자연 감소 배수 = 1 + 0.5 x n + 1.0 x c
+# 대학원 자연 감소 배수 = 1 + 1.0 x n + 1.5 x c
 #   n = 대학원 년차, c = 대학원에 들어간 뒤 다 채운 60초 주기 수 (대학원에서만 시간 압박)
-GRAD_DECAY_BONUS = 0.5      # 년차 하나마다 더하는 자연 감소 배수
-GRAD_CYCLE_DECAY_BONUS = 1.0  # 대학원에서 60초 주기를 하나 다 채울 때마다 더하는 자연 감소 배수
+GRAD_DECAY_BONUS = 1.0      # 년차 하나마다 더하는 자연 감소 배수
+GRAD_CYCLE_DECAY_BONUS = 1.5  # 대학원에서 60초 주기를 하나 다 채울 때마다 더하는 자연 감소 배수
 GRAD_CYCLES_NONE = 0        # 학부이거나 대학원 진입 시각이 없을 때의 대학원 주기 수
 GRAD_MONEY_BONUS = 1.0      # n년차 연구비 획득 배수 = 1 + 1.0 x n
 FAME_STEP = 1               # 졸업한 판에서 환생하면 오르는 명성

@@ -465,7 +465,7 @@ class Game:
                 and self.student.mental >= config.CONDITION_GOOD_MIN)
 
     def get_condition_money_ratio(self):
-        """컨디션에 따른 연구비 배수를 돌려준다: 우울 0.7, 컨디션 좋음 1.2, 그 밖에는 1.0.
+        """컨디션에 따른 연구비 배수를 돌려준다: 우울 0.7, 컨디션 좋음 1.5, 그 밖에는 1.0.
 
         우울(멘탈 30 미만)과 컨디션 좋음(멘탈 70 이상)은 동시에 될 수 없다.
         """
@@ -478,7 +478,7 @@ class Game:
     def get_money_multiplier(self):
         """지식으로 버는 연구비 배수 = 명성 배수 x 대학원 배수 x 컨디션 배수 를 돌려준다.
 
-        컨디션 배수(우울 0.7 / 컨디션 좋음 1.2)는 연구비를 쌓는 순간의 게이지로 정한다
+        컨디션 배수(우울 0.7 / 컨디션 좋음 1.5)는 연구비를 쌓는 순간의 게이지로 정한다
         (행동·이벤트 효과가 적용된 뒤).
         """
         return (self.get_fame_multiplier() * self.get_grad_money_multiplier()

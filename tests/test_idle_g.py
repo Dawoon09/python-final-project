@@ -88,10 +88,11 @@ def test_auto_interval_and_no_cooldown_constant():
 
 
 # (M단위) 공부 위주 30/1.4/1.6 -> 20/1.6/1.8, 휴식 위주 지식 0.8 -> 0.7, 휴식 회복 배수·컨디션 보너스 추가
+# (B안) 공부 위주 20/1.6 -> 25/1.8(소모 1.8 그대로), 휴식 위주 컨디션 보너스 0.2 -> 0.5
 @pytest.mark.parametrize("name, key, threshold, k_ratio, c_ratio, text, rest_ratio, bonus", [
-    (SF, pygame.K_1, 20, 1.6, 1.8, "공부 위주 [1]", 1.0, 0.0),
+    (SF, pygame.K_1, 25, 1.8, 1.8, "공부 위주 [1]", 1.0, 0.0),
     (BAL, pygame.K_2, 50, 1.0, 1.0, "균형 [2]", 1.0, 0.0),
-    (RF, pygame.K_3, 70, 0.7, 0.7, "휴식 위주 [3]", 1.5, 0.2),
+    (RF, pygame.K_3, 70, 0.7, 0.7, "휴식 위주 [3]", 1.5, 0.5),
 ])
 def test_policy_table(name, key, threshold, k_ratio, c_ratio, text, rest_ratio, bonus):
     p = config.POLICIES[name]
@@ -192,9 +193,9 @@ def test_auto_action_follows_choose_rule(g, monkeypatch):
     (BAL, 49, 50, REST), (BAL, 50, 49, REST),
     (BAL, 10, 49, REST),
     (BAL, 0, 0, REST),
-    # 공부 위주: 기준 20
-    (SF, 20, 20, STUDY), (SF, 21, 20, STUDY), (SF, 19, 100, REST), (SF, 100, 19, REST),
-    (SF, 19, 19, REST), (SF, 29, 29, STUDY), (SF, 35, 35, STUDY), (SF, 49, 49, STUDY),
+    # 공부 위주: 기준 25 (B안, 예전 20)
+    (SF, 25, 25, STUDY), (SF, 26, 25, STUDY), (SF, 24, 100, REST), (SF, 100, 24, REST),
+    (SF, 24, 24, REST), (SF, 29, 29, STUDY), (SF, 35, 35, STUDY), (SF, 49, 49, STUDY),
     # 휴식 위주: 기준 70
     (RF, 70, 70, STUDY), (RF, 69, 69, REST), (RF, 69, 90, REST), (RF, 90, 69, REST),
     (RF, 60, 50, REST), (RF, 50, 60, REST), (RF, 69, 70, REST), (RF, 70, 69, REST),
@@ -220,15 +221,15 @@ def test_choose_ignores_knowledge_and_time(g, knowledge):
 
 
 # ======================= 4. 방침별 공부 수치 (기본값+보너스 -> 배수 -> 반올림) =======================
-# 기대값은 기획서 2절 표로 손계산(M단위): 공부 위주 지식 10x1.6=16, 체력 -5x1.8=-9, 멘탈 -8x1.8=-14.4->-14
+# 기대값은 기획서 2절 표로 손계산(B안): 공부 위주 지식 10x1.8=18, 체력 -5x1.8=-9, 멘탈 -8x1.8=-14.4->-14
 # 휴식 위주 지식 10x0.7=7, 체력 -5x0.7=-3.5->-4, 멘탈 -8x0.7=-5.6->-6
 # 카페인(체력 -5+2=-3): 공부 위주 -5.4->-5, 휴식 위주 -2.1->-2
 
 @pytest.mark.parametrize("policy, exam, caffeine, dk, dh, dm", [
-    (SF, False, False, 16, -9, -14),
-    (SF, True, False, 32, -9, -14),
-    (SF, False, True, 16, -5, -14),
-    (SF, True, True, 32, -5, -14),
+    (SF, False, False, 18, -9, -14),
+    (SF, True, False, 36, -9, -14),
+    (SF, False, True, 18, -5, -14),
+    (SF, True, True, 36, -5, -14),
     (BAL, False, False, 10, -5, -8),
     (BAL, True, False, 20, -5, -8),
     (BAL, False, True, 10, -3, -8),
@@ -294,7 +295,7 @@ def test_auto_study_in_exam_uses_policy(g):
     g.auto_timer = 0.5
     g.update(0.5)
     assert g.last_action == STUDY
-    assert s.knowledge == 32           # 20 x 1.6
+    assert s.knowledge == 36           # 20 x 1.8 (B안)
 
 
 # ======================= 5. 방침 바꾸기 (키 1/2/3, 클릭, set_policy) =======================
@@ -336,7 +337,7 @@ def test_policy_change_applies_to_next_auto_action(g):
     g.student.feed()                   # (M단위) 든든함이 있어야 공부
     k = g.student.knowledge
     g.update(1.0)
-    assert g.last_action == STUDY and g.student.knowledge == k + 16
+    assert g.last_action == STUDY and g.student.knowledge == k + 18   # 10 x 1.8 (B안)
 
 
 def test_keys_in_title_and_ending_do_not_change_policy(no_events):

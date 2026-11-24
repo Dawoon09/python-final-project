@@ -14,8 +14,8 @@ def clamp(value, low, high):
 def judge_ending(seconds):
     """졸업까지 걸린 게임 시간 seconds(초)로 졸업 엔딩 이름을 돌려준다(기획서 2절).
 
-    400초 이하 "수석 졸업", 400초 초과 720초 이하 "무사 졸업", 720초 초과 "아슬아슬 졸업"
-    (시간 기준은 임시 값, config.TOP_GRADUATE_SECONDS / NORMAL_GRADUATE_SECONDS).
+    330초 이하 "수석 졸업", 330초 초과 720초 이하 "무사 졸업", 720초 초과 "아슬아슬 졸업"
+    (config.TOP_GRADUATE_SECONDS / NORMAL_GRADUATE_SECONDS).
     소수 덧셈 오차(199.9999… 등)는 TIME_EPSILON 만큼 봐준다.
     (휴학은 체력·멘탈로 정하므로 여기서 다루지 않는다.)
     """
@@ -259,7 +259,7 @@ class Student:
         return int(max(config.ZERO_TIME, spent) // config.CYCLE_SECONDS)
 
     def get_grad_decay_ratio(self):
-        """대학원 자연 감소 배수 = 1 + 0.5 x n + 1.0 x c 를 돌려준다(학부는 1).
+        """대학원 자연 감소 배수 = 1 + 1.0 x n + 1.5 x c 를 돌려준다(학부는 1).
 
         n은 대학원 년차, c는 대학원에 들어간 뒤 다 채운 60초 주기 수다(get_grad_cycles).
         학부에는 시간 제한이 없고, 대학원에서만 오래 버틸수록 체력·멘탈이 빨리 준다.

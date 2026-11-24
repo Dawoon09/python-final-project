@@ -356,8 +356,9 @@ def _readme():
     # 방치형 README 3절 조작표(화면 열 추가)
     "| 게임 시작 | - | Enter | 타이틀 |",
     "| 환생 (졸업·대학원 수료) / 다시 하기 (휴학) | - | R | 엔딩 |",
-    "| 학식 먹이기 | +20 | - | - |",
-    "| 쉬게 하기 | - | +20 | -2 |",
+    # (M단위) 학식은 버프 든든함만, 휴식이 체력·멘탈을 회복한다
+    "| 학식 먹이기 | - (버프 든든함 {:g}초) | - | - |".format(config.FULL_DURATION),
+    "| 쉬게 하기 | +{} | +{} | {} |".format(config.REST_HEALTH, config.REST_MENTAL, config.REST_KNOWLEDGE),
     "| 공부시키기 | -5 | -8 | +10 (시험 기간 +20) |",
     # (L단위) 지식 기준 졸업 문구("수석 졸업(1000 이상)…", "엔딩 경계값(749/750/999/1000)")는
     # 기획서 11절로 규칙이 없어져 뺐다. 새 규칙 문구는 test_readme_describes_no_time_limit에서 본다.
@@ -371,13 +372,13 @@ def test_readme_mentions(text):
 
 @pytest.mark.parametrize("old, new", [
     ("240초(1~4학년, 학년당 60초)", "누적 지식"),
-    ("60초마다 학년이 오르고", "200"),
-    ("수석 졸업(1000 이상)", "200초"),
+    ("60초마다 학년이 오르고", "| 2학년 | {} |".format(config.GRADE_GOALS[0])),
+    ("수석 졸업(1000 이상)", "{}초".format(config.TOP_GRADUATE_SECONDS)),
 ])
 def test_readme_describes_no_time_limit(old, new):
     """(L단위) README가 예전 시간 제한 규칙을 말하지 않고 새 규칙(지식 진급·걸린 시간 등급)을 설명한다.
 
-    (11절 A안) 수석 기준은 200초다. 팀장 결정으로 README에는 "240초"가 어디에도 남지 않는다.
+    수석 기준은 config.TOP_GRADUATE_SECONDS(B안 330초)를 따른다. 팀장 결정으로 README에는 "240초"가 어디에도 남지 않는다.
     """
     text = _readme()
     assert old not in text and new in text

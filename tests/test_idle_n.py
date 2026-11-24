@@ -449,7 +449,7 @@ def test_status_tip_texts_exact(g):
     assert g.get_status_tip_text(TIRED) == "피곤: 체력 30 미만 — 공부 지식 ×0.7"
     assert g.get_status_tip_text(DEPRESSED) == "우울: 멘탈 30 미만 — 버는 연구비 ×0.7"
     assert (g.get_status_tip_text(GOOD)
-            == "컨디션 좋음: 휴식 위주, 체력·멘탈 70 이상 — 버는 연구비 ×1.2")
+            == "컨디션 좋음: 휴식 위주, 체력·멘탈 70 이상 — 버는 연구비 ×1.5")   # B안
     g.student.elapsed = 100.0
     g.student.full_until = 112.0
     assert g.get_status_tip_text(FULL) == "든든함: 남은 시간 12초 — 체력 감소 ×0.5"

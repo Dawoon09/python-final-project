@@ -1,7 +1,7 @@
 """M단위 검수: 회복은 휴식에서만·든든함·새 자동 행동 규칙·최댓값·디버프·방침 수치·업그레이드 13종·진급 기준 2배.
 
 기준: docs/기획서.md 2·3·6절, jeja-spec 2·3·6절 (M단위 반영).
-- 졸업 등급 시간 기준(지금 400/720초)은 임시 값이라 config 상수로만 경계를 잡는다.
+- 졸업 등급 시간 기준은 B안(2026-11-24)으로 330/720초로 확정했다. 경계는 config 상수로 잡는다.
 - 밸런스 분포는 고정하지 않는다(불변식만).
 
 이 파일은 conftest 의 AUTO_OFF_FILES / EVENTS_OFF_FILES 에 없다. 필요한 테스트만 no_auto / no_events 를 쓴다.
@@ -98,7 +98,8 @@ def test_m_constants():
     assert config.GAUGE_MAX == 100
     assert config.GRADE_GOALS == [400, 900, 1500] and config.GRADUATION_KNOWLEDGE == 2200
     assert (config.GRAD_GOAL_FIRST_STEP, config.GRAD_GOAL_STEP_GROWTH) == (800, 200)
-    # 시간 기준은 임시 값: 순서만
+    # 시간 기준은 B안으로 확정(예전 임시 400/720)
+    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (330, 720)
     assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
     assert config.STATUS_BADGE_Y == 128 and config.GAUGE_VALUE_TEXT.format(80, 100) == "80/100"
     assert (config.UPGRADE_ROW_TOP, config.UPGRADE_ROW_HEIGHT, config.UPGRADE_ROW_STEP) == \
@@ -106,9 +107,9 @@ def test_m_constants():
 
 
 @pytest.mark.parametrize("policy, threshold, k_ratio, c_ratio, rest_ratio, bonus", [
-    (SF, 20, 1.6, 1.8, 1.0, 0.0),
+    (SF, 25, 1.8, 1.8, 1.0, 0.0),     # B안 (M단위 20/1.6)
     (BAL, 50, 1.0, 1.0, 1.0, 0.0),
-    (RF, 70, 0.7, 0.7, 1.5, 0.2),
+    (RF, 70, 0.7, 0.7, 1.5, 0.5),     # B안 (M단위 0.2)
 ])
 def test_policy_table_m(policy, threshold, k_ratio, c_ratio, rest_ratio, bonus):
     p = config.POLICIES[policy]
@@ -257,13 +258,13 @@ def test_full_halves_health_decay_until_expiry():
 
 
 @pytest.mark.parametrize("care, grad, expected", [(0, False, 0.5), (2, False, 0.4),
-                                                  (5, False, 0.25), (0, True, 0.75)])
+                                                  (5, False, 0.25), (0, True, 1.0)])
 def test_full_decay_combines_with_care_and_grad(care, grad, expected):
     s = student(health_care=care)
     if grad:
         s.knowledge = GOAL
         s.promote()
-        assert s.enter_grad_school()            # 1년차 c = 0: 배수 1.5
+        assert s.enter_grad_school()            # 1년차 c = 0: 배수 2.0 (B안)
     s.feed()
     assert s.get_health_decay() == pytest.approx(expected)
     assert s.get_mental_decay() == pytest.approx(expected * 2)   # 멘탈은 버프와 상관없음
@@ -515,7 +516,7 @@ def test_tired_judged_before_study():
 
 
 @pytest.mark.parametrize("policy, book, lib, exam, expected", [
-    (SF, 5, 1, False, round((10 + 10 + 3) * 1.6 * 0.7)),   # 25.76 -> 26
+    (SF, 5, 1, False, round((10 + 10 + 3) * 1.8 * 0.7)),   # 28.98 -> 29 (B안)
     (RF, 0, 0, True, round(20 * 0.7 * 0.7)),               # 9.8 -> 10
     (BAL, 1, 0, False, round(12 * 0.7)),                   # 8.4 -> 8
 ])
@@ -565,13 +566,13 @@ def test_condition_good_boundary(g, policy, health, mental, good):
     g.set_policy(policy)
     g.student.health, g.student.mental = health, mental
     assert g.is_good_condition() is good
-    assert g.get_condition_money_ratio() == pytest.approx(1.2 if good else 1.0)
+    assert g.get_condition_money_ratio() == pytest.approx(1.5 if good else 1.0)   # B안 (M단위 1.2)
     assert (config.CONDITION_GOOD in g.get_status_names()) is good
 
 
-@pytest.mark.parametrize("start, money", [(90, 8), (75, 7)])
+@pytest.mark.parametrize("start, money", [(90, 10), (75, 7)])
 def test_condition_money_judged_after_study(g, start, money):
-    """휴식 위주 공부(지식 7): 공부 뒤 체력·멘탈 둘 다 70 이상이면 x1.2 -> 8, 아니면 7."""
+    """휴식 위주 공부(지식 7): 공부 뒤 체력·멘탈 둘 다 70 이상이면 x1.5 -> 10.5 -> 10, 아니면 7."""
     g.set_policy(RF)
     g.student.health = g.student.mental = start
     g.do_action(STUDY)
@@ -584,7 +585,7 @@ def test_money_multiplier_combines(g, fame):
     g.fame = fame
     g.set_policy(RF)
     g.student.health = g.student.mental = 90
-    assert g.get_money_multiplier() == pytest.approx((1 + 0.1 * fame) * 1.2)
+    assert g.get_money_multiplier() == pytest.approx((1 + 0.1 * fame) * 1.5)
     g.student.mental = 20
     assert g.get_money_multiplier() == pytest.approx((1 + 0.1 * fame) * 0.7)
 
@@ -607,7 +608,7 @@ def test_graduation_bonus_not_affected_by_condition(g, setup):
     assert g.state == config.STATE_ENDING and g.ending == judge_ending(10.0)
     bonus = config.GRADUATION_BONUS[g.ending]
     assert g.graduation_bonus == bonus
-    ratio = 1.2 if setup == "good" else 0.7
+    ratio = 1.5 if setup == "good" else 0.7
     assert g.money == int(gain * ratio + 1e-9) + bonus
 
 

@@ -216,13 +216,13 @@ def test_cafe_rest_health_and_love_trait(traits, expected):
 @pytest.mark.parametrize("book, lib, policy, exam, expected", [
     (0, 0, BAL, False, 10), (1, 0, BAL, False, 12), (5, 0, BAL, False, 20),
     (0, 1, BAL, False, 13), (5, 1, BAL, False, 23),
-    # (M단위) 공부 위주 지식 x1.6, 휴식 위주 x0.7
-    (5, 1, SF, False, round(23 * 1.6)),   # 36.8 -> 37
+    # (B안) 공부 위주 지식 x1.8, 휴식 위주 x0.7
+    (5, 1, SF, False, round(23 * 1.8)),   # 41.4 -> 41
     (5, 1, RF, False, round(23 * 0.7)),   # 16.1 -> 16
-    (2, 1, SF, False, round(17 * 1.6)),   # 27.2 -> 27
-    (5, 1, BAL, True, 33), (5, 1, SF, True, round(33 * 1.6)),   # 52.8 -> 53
+    (2, 1, SF, False, round(17 * 1.8)),   # 30.6 -> 31
+    (5, 1, BAL, True, 33), (5, 1, SF, True, round(33 * 1.8)),   # 59.4 -> 59
     (1, 0, RF, True, round(22 * 0.7)),    # 15.4 -> 15
-    (0, 1, SF, True, round(23 * 1.6)),    # 시험 20+3=23 -> 37
+    (0, 1, SF, True, round(23 * 1.8)),    # 시험 20+3=23 -> 41.4 -> 41
 ])
 def test_study_knowledge_book_library_policy_exam(book, lib, policy, exam, expected):
     s = Student(levels(book=book, lib=lib))
@@ -531,12 +531,12 @@ def test_failed_purchase_does_not_write(g, isolated_record_path):
 
 @pytest.mark.parametrize("fame, policy, exam, expected", [
     (0, BAL, False, 10), (1, BAL, False, 11), (3, BAL, False, 13),
-    # (M단위) 공부 위주 지식 x1.6, 휴식 위주 x0.7
-    (0, SF, False, 16), (1, SF, False, 17),   # 16 x 1.1 = 17.6 -> 17
-    (3, SF, False, 20),                       # 16 x 1.3 = 20.8 -> 20
-    (1, BAL, True, 22), (3, SF, True, 41),    # 32 x 1.3 = 41.6 -> 41
-    # 7 x 1.3 x 1.2(컨디션 좋음: 휴식 위주, 공부 뒤 체력 76·멘탈 74 >= 70) = 10.92 -> 10
-    (3, RF, False, 10),
+    # (B안) 공부 위주 지식 x1.8, 휴식 위주 x0.7
+    (0, SF, False, 18), (1, SF, False, 19),   # 18 x 1.1 = 19.8 -> 19
+    (3, SF, False, 23),                       # 18 x 1.3 = 23.4 -> 23
+    (1, BAL, True, 22), (3, SF, True, 46),    # 36 x 1.3 = 46.8 -> 46
+    # 7 x 1.3 x 1.5(컨디션 좋음: 휴식 위주, 공부 뒤 체력 76·멘탈 74 >= 70) = 13.65 -> 13
+    (3, RF, False, 13),
 ])
 def test_money_from_study(g, fame, policy, exam, expected):
     g.fame = fame

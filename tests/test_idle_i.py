@@ -164,8 +164,8 @@ def spec_money(gain, fame, year):
 def test_constants():
     assert config.GRAD_YEAR_UNDERGRAD == 0
     assert config.GRAD_FIRST_YEAR == 1
-    assert config.GRAD_DECAY_BONUS == 0.5    # K단위 승인(예전 0.25)
-    assert config.GRAD_CYCLE_DECAY_BONUS == 1.0   # 11절 A안: 대학원 주기 하나마다 +1.0
+    assert config.GRAD_DECAY_BONUS == 1.0    # B안 승인(K단위 0.5, 그 전 0.25)
+    assert config.GRAD_CYCLE_DECAY_BONUS == 1.5   # B안: 대학원 주기 하나마다 +1.5 (A안 1.0)
     assert config.GRAD_CYCLES_NONE == 0
     assert config.GRAD_MONEY_BONUS == 1.0    # 11절 A안 승인(K단위 0.25 -> 1.0)
     assert config.FAME_STEP == 1
@@ -455,11 +455,12 @@ def test_exam_study_bonus_in_grad(no_decay):
 # ======================= 자연 감소 배수 =======================
 
 # K단위: n년차 자연 감소 배수 = 1 + 0.5 x n (예전 0.25)
-# (11절 A안) 배수 = 1 + 0.5n + 1.0c. 년차 항만 보려고 c = 0(cycles=0)으로 둔다. c 항은 test_idle_grad_cycle.py
-@pytest.mark.parametrize("year, ratio", [(1, 1.5), (2, 2.0), (3, 2.5), (4, 3.0)])
+# (B안) 배수 = 1 + 1.0n + 1.5c. 년차 항만 보려고 c = 0(cycles=0)으로 둔다. c 항은 test_idle_grad_cycle.py
+@pytest.mark.parametrize("year, ratio", [(1, 2.0), (2, 3.0), (3, 4.0), (4, 5.0)])
 def test_grad_decay_ratio(year, ratio):
     s = grad_student(year, cycles=0)
     assert s.get_grad_decay_ratio() == pytest.approx(ratio)
+    assert ratio == pytest.approx(1 + config.GRAD_DECAY_BONUS * year)
     assert s.get_health_decay() == pytest.approx(ratio)
     assert s.get_mental_decay() == pytest.approx(ratio)
 
@@ -470,9 +471,9 @@ def test_undergrad_decay_ratio_is_one():
     assert s.get_health_decay() == 1 and s.get_mental_decay() == 1
 
 
-# (1 - 0.1 x 건강 관리) x (1 + 0.5 x 년차)
-@pytest.mark.parametrize("year, care, ratio", [(1, 2, 1.2), (2, 2, 1.6), (3, 5, 1.25),
-                                               (1, 5, 0.75), (2, 1, 1.8)])
+# (1 - 0.1 x 건강 관리) x (1 + 1.0 x 년차)  (B안)
+@pytest.mark.parametrize("year, care, ratio", [(1, 2, 1.6), (2, 2, 2.4), (3, 5, 2.0),
+                                               (1, 5, 1.0), (2, 1, 2.7)])
 def test_grad_decay_with_health_care(year, care, ratio):
     s = grad_student(year, cycles=0)        # (11절 A안) c = 0: 주기 안 50초로 옮겨도 c 는 0
     s.upgrades[CARE] = care
@@ -486,22 +487,25 @@ def test_grad_actual_decay_one_second():
     s = grad_student(1)
     s.health = s.mental = 80
     s.update(1.0)
-    assert s.health == pytest.approx(78.5)    # 80 - 1 x 1.5
-    assert s.mental == pytest.approx(78.5)
+    assert s.health == pytest.approx(78.0)    # 80 - 1 x 2.0 (B안 1년차 배수)
+    assert s.mental == pytest.approx(78.0)
 
 
 def test_grad_decay_in_year2_exam():
     s = grad_student(2, cycles=0)           # (11절 A안) c = 0: 46초 동안 대학원 주기를 다 채우지 않는다
-    s.health = s.mental = 100                 # K단위: 2년차 배수 2.0 이라 80 으로는 46초 안에 0이 된다
-    s.update(46.0)
-    # 년차 안 1~44초 시각의 감소: 평소, 45·46초 시각의 감소: 시험 기간(멘탈 x2)
+    s.health = s.mental = 100
+    # (B안) 2년차 배수 3.0 이라 46초를 다 흘리면 0이 되므로 주기 안 30초에서 시작해 16초만 흘린다
+    s.elapsed = 240.0 + 30.0
+    s.update(16.0)
+    # 주기 안 31~44초 시각의 감소(14번): 평소, 45·46초 시각의 감소: 시험 기간(멘탈 x2)
     # (학부와 같은 규칙: 감소가 일어난 시각으로 판정)
-    assert s.health == pytest.approx(100 - 46 * 2.0)
-    assert s.mental == pytest.approx(100 - 44 * 2.0 - 2 * 4.0)
+    assert s.get_grad_cycles() == 0
+    assert s.health == pytest.approx(100 - 16 * 3.0)
+    assert s.mental == pytest.approx(100 - 14 * 3.0 - 2 * 6.0)
 
 
 def test_decay_after_year_promotion_uses_new_year():
-    """(L단위) 지식으로 2년차가 되면 다음 감소부터 2년차 배수(2.0)를 쓴다.
+    """(L단위) 지식으로 2년차가 되면 다음 감소부터 2년차 배수(B안 3.0)를 쓴다.
 
     (11절 A안) 예전 299.5 -> 300초는 진입(240초) 뒤 주기 하나를 채워 c = 1 이 되므로,
     c = 0 인 279.5 -> 280초로 옮겨 년차 항만 본다.
@@ -514,8 +518,8 @@ def test_decay_after_year_promotion_uses_new_year():
     s.promote()
     s.update(0.5)                     # 280초 시각의 감소 -> 2년차, 시험 기간 아님, c = 0
     assert s.grad_year == 2
-    assert s.health == pytest.approx(78.0)   # 2년차 배수 2.0 (1년차였다면 1.5)
-    assert s.mental == pytest.approx(78.0)
+    assert s.health == pytest.approx(77.0)   # 2년차 배수 3.0 (1년차였다면 2.0)
+    assert s.mental == pytest.approx(77.0)
 
 
 # ======================= 연구비 배수 =======================

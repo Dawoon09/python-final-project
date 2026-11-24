@@ -192,12 +192,10 @@ def game_costs(uid):
 NAME_TO_ID = {u[config.UPGRADE_NAME]: u[config.UPGRADE_ID] for u in config.UPGRADES}
 
 
-# (M단위) README.md 는 아직 M단위 이전(10종 61,590, 방침 30/1.4/1.6, 졸업 1100·200/360초) 그대로다.
-# 리드가 README 를 갱신하면 통과로 바뀌도록 README 쪽 대조는 xfail(strict=True)로 둔다.
-README_PENDING = pytest.mark.xfail(strict=True, reason="README 갱신 대기")
+# (M단위) README 갱신 대기 xfail 표시는 README 최신화(밸런스 B안, 2026-11-24)로 뺐다.
 
 
-@pytest.mark.parametrize("source", ["spec", pytest.param("readme", marks=README_PENDING)])
+@pytest.mark.parametrize("source", ["spec", "readme"])
 def test_upgrade_tables_match_config(source):
     text = spec_part("업그레이드") if source == "spec" else readme()
     rows = table_rows(text, "분류 | 항목")
@@ -225,13 +223,12 @@ def test_total_cost_92590_matches_game():
     pygame.quit()
 
 
-@README_PENDING
 def test_total_cost_in_readme():
     """(M단위) README 의 업그레이드 총합도 13종 기준 92,590 이어야 한다."""
     assert "92,590" in readme()
 
 
-@pytest.mark.parametrize("source", ["spec", pytest.param("readme", marks=README_PENDING)])
+@pytest.mark.parametrize("source", ["spec", "readme"])
 def test_policy_tables_match_config(source):
     text = spec_part("게임 규칙", "자동 행동과 일과표 방침") if source == "spec" else readme()
     rows = table_rows(text, "방침 | 키")
@@ -249,16 +246,21 @@ def test_policy_tables_match_config(source):
 
 
 def grade_rows(top, normal):
-    """졸업 등급 표 줄(시간 기준은 임시 값이라 config 상수로 만든다)."""
+    """졸업 등급 표 줄(시간 기준은 config 상수로 만든다, B안 330/720초)."""
     return ["| 수석 졸업 | {}초 이하".format(top),
             "| 무사 졸업 | {}초 초과 {}초 이하".format(top, normal),
             "| 아슬아슬 졸업 | {}초 초과".format(normal)]
 
 
+def grad_decay_text():
+    """대학원 자연 감소 배수 글자 "×(1 + 1.0n + 1.5c)"를 config 값으로 만든다."""
+    return "×(1 + {:.1f}n + {:.1f}c)".format(config.GRAD_DECAY_BONUS, config.GRAD_CYCLE_DECAY_BONUS)
+
+
 def test_key_numbers_in_spec():
     """(문서 정리) 최종 수치가 기획서 규칙 절(제목으로 찾음)에 있고 config와 같다.
 
-    (M단위) 졸업 지식 2200. 시간 기준(지금 400/720초)은 임시 값이라 config 값으로 표 줄을 만든다.
+    (M단위) 졸업 지식 2200. (B안) 시간 기준 330/720초, 대학원 감소 1 + 1.0n + 1.5c. 표 줄은 config 값으로 만든다.
     README 쪽은 test_key_numbers_in_readme(README 갱신 대기).
     """
     s = spec10()
@@ -271,8 +273,8 @@ def test_key_numbers_in_spec():
     # 가격 증가율 (11절 A안: 1.8 -> 2.0)
     assert "기본 가격 × **2.0**^(현재 레벨)" in spec_part("업그레이드")
     assert config.UPGRADE_COST_GROWTH == 2.0
-    # 대학원 배수 (11절 A안: 자연 감소 1 + 0.5n + 1.0c, 연구비 1 + 1.0n)
-    assert "×(1 + 0.5n + 1.0c)" in grad_rules
+    # 대학원 배수 (B안: 자연 감소 1 + 1.0n + 1.5c, 연구비 1 + 1.0n)
+    assert grad_decay_text() in grad_rules
     assert "연구비 ×(1 + **1.0**n)" in grad_rules
     # 예전 수치(1.8배 가격, 대학원 0.25n, 수석 240초)는 규칙 절에 없고 부록 변경 이력에만 있다
     # (M단위) 방침 공부 위주 소모가 ×1.8이 되어 가격 증가율은 "증가 ×1.8"로 찾는다
@@ -281,7 +283,7 @@ def test_key_numbers_in_spec():
         assert old not in s, old
         assert old in history, old
     assert (config.GRAD_DECAY_BONUS, config.GRAD_CYCLE_DECAY_BONUS, config.GRAD_MONEY_BONUS) \
-        == (0.5, 1.0, 1.0)
+        == (1.0, 1.5, 1.0)
 
     # 졸업 보너스, 명성, 자동 행동 간격, 이벤트 확률
     assert "수석 +200, 무사 +100, 아슬아슬 +50" in s
@@ -299,7 +301,6 @@ def test_key_numbers_in_spec():
         * time_mgmt[config.UPGRADE_MAX_LEVEL] == pytest.approx(1.0)
 
 
-@README_PENDING
 def test_key_numbers_in_readme():
     """(M단위) README 의 졸업 기준·졸업 지식·가격식·대학원 배수·보너스 문구가 config와 같다."""
     r = readme()
@@ -307,13 +308,12 @@ def test_key_numbers_in_readme():
         assert line in r, line
     assert "| 졸업 | {} |".format(config.GRADUATION_KNOWLEDGE) in r
     assert "기본 가격 × 2.0^(현재 레벨)" in r
-    assert "×(1 + 0.5n + 1.0c)" in r and "×(1 + 1.0n)" in r
+    assert grad_decay_text() in r and "×(1 + 1.0n)" in r
     for text in ("수석 +200, 무사 +100, 아슬아슬 +50", "1 + 0.1 × 명성", "25% → 최대 40%",
                  "2.0 → 1.0"):
         assert text in r, text
 
 
-@README_PENDING
 def test_readme_describes_m_rules():
     """(M단위) README 가 M단위 규칙을 설명한다: 진급표 2배, 든든함·디버프, 컨디션 3종, 휴식 체력 +15."""
     r = readme()
@@ -351,7 +351,8 @@ def test_spec_section2_idle_balance_note_present():
 
     예전 "2절 변경 메모(방치형 1000/750)"는 부록 변경 이력의 K단위 줄로 옮겨졌다.
     분포 자체는 아래 시뮬레이션 테스트와 수동 확인 목록에서 본다.
-    (M단위) A안 표·시뮬레이션은 "M단위 이전 규칙" 기록으로 남고, M단위 임시 값 안내가 붙는다.
+    (M단위) A안 표·시뮬레이션은 "M단위 이전 규칙" 기록으로 남는다.
+    (B안) 지금 수치는 B안 표로 확정되어 "임시 값" 안내는 없어졌다.
     """
     balance = spec_part("밸런스")
     assert "| 진급·졸업 목표 | 200 / 450 / 750 / 1100 |" in balance
@@ -359,7 +360,11 @@ def test_spec_section2_idle_balance_note_present():
     assert re.search(r"\| 없음 \| 무사 29 \+ 휴학 1, 평균 \d+초 \| 무사 30, 평균 \d+초 \| "
                      r"무사 15 \+ 아슬아슬 15, 평균 \d+초 \|", balance)
     assert re.search(r"1000 / 750", spec_appendix())
-    assert "임시 값" in balance and "400 / 900 / 1500 / 2200" in balance
+    assert "임시 값" not in balance and "400 / 900 / 1500 / 2200" in balance
+    assert "B안" in balance
+    assert "| 수석 졸업 | {}초 이하 |".format(config.TOP_GRADUATE_SECONDS) in balance
+    assert "| 무사 졸업 | {}초 이하 |".format(config.NORMAL_GRADUATE_SECONDS) in balance
+    assert grad_decay_text() in balance
 
 
 # ======================= 방치형 밸런스 (기획서 2절 변경 메모) =======================
