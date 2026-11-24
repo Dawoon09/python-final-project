@@ -56,8 +56,6 @@ class Game:
     """메인 루프와 화면 전환(타이틀/게임/엔딩), 시간 관리(자동 행동 시계 포함),
     일과표 방침, 기록 저장을 맡는 클래스."""
 
-    new_game_confirm = False  # 타이틀에서 새 게임(N) 확인 상자가 떠 있으면 True (판마다 바뀌지 않는 화면 상태)
-
     def __init__(self, record_path=None, seed=None):
         """pygame을 켜고 800x600 창과 시계, 글꼴, 방침 버튼 3개, 첫 화면(타이틀)을 준비한다."""
         if record_path is None:
@@ -89,6 +87,7 @@ class Game:
         self.graduation_bonus = config.MONEY_START  # 이번 판 졸업 보너스(엔딩 화면 표시용)
         self.upgrade_panel_open = False    # 업그레이드 패널이 열려 있으면 True
         self.upgrade_cursor = config.UPGRADE_CURSOR_START  # 패널에서 고른 줄 번호(↑↓)
+        self.new_game_confirm = False      # 타이틀에서 새 게임(N) 확인 상자가 떠 있으면 True
         self.buttons = self.make_buttons()
         self.choice_buttons = self.make_choice_buttons()  # 대화창 선택 버튼 2개
         # [업그레이드 U] 버튼: 게임 화면용, 엔딩 화면용(가운데 패널 아래)
