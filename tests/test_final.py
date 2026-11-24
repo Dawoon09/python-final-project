@@ -190,9 +190,10 @@ def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_recor
     assert after_r["best"] == knowledge
     with open(isolated_record_path, encoding="utf-8") as f:
         data = json.load(f)
-    # (H단위) 4개 키 형식. 최고 기록은 그대로 확인한다
+    # (H단위) 4개 키 형식 + (이어하기) 판 진행 중 ESC로 끄면 하던 판("run")도 저장된다
     assert set(data) == {config.RECORD_KEY, config.RECORD_MONEY_KEY, config.RECORD_FAME_KEY,
-                         config.RECORD_UPGRADES_KEY}
+                         config.RECORD_UPGRADES_KEY, config.RECORD_RUN_KEY}
+    assert data[config.RECORD_RUN_KEY]["elapsed"] < config.DECAY_INTERVAL   # R 뒤 새 판
     assert data[config.RECORD_KEY] == knowledge
 
 

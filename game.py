@@ -45,6 +45,12 @@ def format_time(seconds):
     return config.TIME_TEXT.format(minutes, rest)
 
 
+def is_time_value(value):
+    """value가 0 이상의 수(정수·실수, bool 아님)면 True (하던 판 검사용)."""
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and value >= config.ZERO_TIME and value == value)
+
+
 def to_count(value):
     """record.json에서 읽은 값 value가 0 이상의 정수면 그대로, 아니면 0을 돌려준다."""
     if not isinstance(value, int) or isinstance(value, bool):
@@ -91,6 +97,7 @@ class Game:
         self.upgrade_cursor = config.UPGRADE_CURSOR_START  # 패널에서 고른 줄 번호(↑↓)
         self.new_game_confirm = False      # 타이틀에서 새 게임(N) 확인 상자가 떠 있으면 True
         self.event_log_open = False        # 게임 화면에서 이벤트 로그 패널(L)이 열려 있으면 True
+        self.autosave_timer = config.ZERO_TIME  # 마지막 자동 저장 뒤 흐른 게임 시간(초)
         self.buttons = self.make_buttons()
         self.choice_buttons = self.make_choice_buttons()  # 대화창 선택 버튼 2개
         # [업그레이드 U] 버튼: 게임 화면용, 엔딩 화면용(가운데 패널 아래)
@@ -133,17 +140,20 @@ class Game:
         self.state = config.STATE_PLAYING
 
     def has_progress(self):
-        """새 게임으로 잃을 진행(업그레이드·연구비·명성)이 하나라도 있으면 True."""
+        """새 게임으로 잃을 진행(업그레이드·연구비·명성·하던 판)이 하나라도 있으면 True."""
         if self.money > config.MONEY_START or self.fame > config.FAME_START:
+            return True
+        if self.saved_run is not None:
             return True
         return any(level > config.LEVEL_START for level in self.upgrades.values())
 
     def reset_progress(self):
-        """업그레이드 레벨·연구비·명성을 0으로 되돌리고 record.json에 저장한다(최고 기록은 남김)."""
+        """업그레이드 레벨·연구비·명성을 0으로, 하던 판을 없애고 record.json에 저장한다(최고 기록은 남김)."""
         for upgrade_id in config.UPGRADE_IDS:
             self.upgrades[upgrade_id] = config.LEVEL_START  # 같은 사전을 고쳐 제자와 계속 함께 쓴다
         self.money = config.MONEY_START
         self.fame = config.FAME_START
+        self.saved_run = None
         return self.save_record()
 
     def start_fresh_game(self):
@@ -160,7 +170,8 @@ class Game:
             elif key in NEW_GAME_NO_KEYS:
                 self.new_game_confirm = False
         elif key == pygame.K_RETURN:
-            self.start_new_game()
+            if not self.resume_run():
+                self.start_new_game()
         elif key == NEW_GAME_KEY:
             if self.has_progress():
                 self.new_game_confirm = True
@@ -237,6 +248,7 @@ class Game:
             self.graduation_bonus = self.floor_money(config.GRADUATION_BONUS[ending]
                                                      * self.get_fame_multiplier())
             self.money += self.graduation_bonus
+        self.saved_run = None   # 끝난 판은 이어할 수 없다
         self.update_best_record(self.student.knowledge)
         self.save_record()
         self.clear_effects()
@@ -268,6 +280,7 @@ class Game:
             config.RECORD_MONEY_KEY: to_count(data.get(config.RECORD_MONEY_KEY)),
             config.RECORD_FAME_KEY: to_count(data.get(config.RECORD_FAME_KEY)),
             config.RECORD_UPGRADES_KEY: upgrades,
+            config.RECORD_RUN_KEY: self.parse_run(data.get(config.RECORD_RUN_KEY)),
         }
 
     def load_record(self):
@@ -277,9 +290,118 @@ class Game:
         self.money = data[config.RECORD_MONEY_KEY]     # 연구비
         self.fame = data[config.RECORD_FAME_KEY]       # 명성 (환생으로 오른다)
         self.upgrades = data[config.RECORD_UPGRADES_KEY]  # {업그레이드 id: 레벨}
+        self.saved_run = data[config.RECORD_RUN_KEY]   # 하던 판(검사를 통과한 사전) 또는 None
         if hasattr(self, "student"):
             self.student.upgrades = self.upgrades
         return data
+
+    # ------------------------------------------------------------
+    # 하던 판 저장·이어하기 (2026-11-24): record.json의 "run"
+    # ------------------------------------------------------------
+    def parse_run(self, run):
+        """record.json의 하던 판 run이 올바르면 그 사전을, 아니면(없음·깨짐·이상한 값) None을 돌려준다."""
+        if not isinstance(run, dict):
+            return None
+        for name in config.RUN_NUMBERS + [config.RUN_AUTO_TIMER]:
+            if not is_time_value(run.get(name)):
+                return None
+        if run["health"] <= config.GAUGE_MIN or run["mental"] <= config.GAUGE_MIN:
+            return None
+        for name in config.RUN_TIMES:
+            if run.get(name) is not None and not is_time_value(run.get(name)):
+                return None
+        grade, grad_year = run.get(config.RUN_GRADE), run.get(config.RUN_GRAD_YEAR)
+        last_grade = len(config.GRADE_GOALS) + config.FIRST_GRADE   # 4학년
+        if type(grade) is not int or not config.FIRST_GRADE <= grade <= last_grade:
+            return None
+        if type(grad_year) is not int or grad_year < config.GRAD_YEAR_UNDERGRAD:
+            return None
+        allowed = {"traits": set(config.TRAIT_BONUSES), "looks": set(config.LOOK_IDS),
+                   "flags": set(config.FLAG_IDS),
+                   "seen_events": {e[config.EVENT_ID] for e in config.CHOICE_EVENTS}}
+        for name in config.RUN_LISTS:
+            items = run.get(name)
+            if not isinstance(items, list) or not set(items) <= allowed[name]:
+                return None
+        counts = run.get(config.RUN_EVENT_COUNTS)
+        if not isinstance(counts, dict) or not all(
+                key.isdigit() and type(value) is int and value >= config.EVENT_COUNT_START
+                for key, value in counts.items()):
+            return None
+        if run.get(config.RUN_POLICY) not in config.POLICY_ORDER:
+            return None
+        log = run.get(config.RUN_EVENT_LOG)
+        if not isinstance(log, list) or not all(
+                isinstance(row, dict) and is_time_value(row.get("time"))
+                and isinstance(row.get("title"), str) and isinstance(row.get("result"), str)
+                for row in log):
+            return None
+        event = run.get(config.RUN_EVENT)
+        if event is not None and event not in allowed["seen_events"]:
+            return None
+        return run
+
+    def capture_run(self):
+        """지금 진행 중인 판(게임·대화창 화면)을 저장용 사전으로 돌려준다. 판이 아니면 None."""
+        if self.state not in (config.STATE_PLAYING, config.STATE_EVENT):
+            return None
+        s = self.student
+        run = {name: getattr(s, name) for name in config.RUN_NUMBERS + config.RUN_TIMES}
+        run[config.RUN_GRADE] = s.grade
+        run[config.RUN_GRAD_YEAR] = s.grad_year
+        run["traits"], run["looks"] = list(s.traits), list(s.looks)
+        run["flags"], run["seen_events"] = sorted(s.flags), sorted(s.seen_events)
+        run[config.RUN_EVENT_COUNTS] = {str(cycle): count for cycle, count in s.event_counts.items()}
+        run[config.RUN_POLICY] = self.policy
+        run[config.RUN_AUTO_TIMER] = self.auto_timer
+        run[config.RUN_EVENT_LOG] = [dict(row) for row in self.event_log]
+        run[config.RUN_EVENT] = None
+        if self.state == config.STATE_EVENT and self.current_event is not None:
+            run[config.RUN_EVENT] = self.current_event[config.EVENT_ID]
+        return run
+
+    def save_run(self):
+        """판이 진행 중이면 하던 판을 record.json에 저장한다(타이틀·엔딩이면 아무것도 안 함)."""
+        run = self.capture_run()
+        if run is None:
+            return False
+        self.saved_run = run
+        self.autosave_timer = config.ZERO_TIME
+        return self.save_record()
+
+    def resume_run(self):
+        """저장된 하던 판이 있으면 그 판을 이어서 시작하고 True, 없으면 False를 돌려준다."""
+        run = self.saved_run
+        if run is None:
+            return False
+        self.reset_round()
+        s = self.student
+        for name in config.RUN_NUMBERS + config.RUN_TIMES:
+            setattr(s, name, run[name])
+        s.grade, s.grad_year = run[config.RUN_GRADE], run[config.RUN_GRAD_YEAR]
+        s.traits, s.looks = list(run["traits"]), list(run["looks"])
+        s.flags, s.seen_events = set(run["flags"]), set(run["seen_events"])
+        s.event_counts = {int(cycle): count for cycle, count in run[config.RUN_EVENT_COUNTS].items()}
+        self.policy = run[config.RUN_POLICY]
+        self.auto_timer = run[config.RUN_AUTO_TIMER]
+        self.event_log = [dict(row) for row in run[config.RUN_EVENT_LOG]]
+        self.autosave_timer = config.ZERO_TIME
+        self.state = config.STATE_PLAYING
+        if run[config.RUN_EVENT] is not None:
+            event = next(e for e in config.CHOICE_EVENTS
+                         if e[config.EVENT_ID] == run[config.RUN_EVENT])
+            self.open_choice_dialog(event)
+        return True
+
+    def get_resume_hint_text(self):
+        """저장된 판이 있으면 타이틀 안내 "Enter를 눌러 이어하기 (2학년, 3분 12초)", 없으면 None."""
+        run = self.saved_run
+        if run is None:
+            return None
+        where = config.GRADE_TEXT.format(run[config.RUN_GRADE])
+        if run[config.RUN_GRAD_YEAR] > config.GRAD_YEAR_UNDERGRAD:
+            where = config.GRAD_YEAR_TEXT.format(run[config.RUN_GRAD_YEAR])
+        return config.RESUME_HINT_TEXT.format(where, format_time(run["elapsed"]))
 
     def save_record(self):
         """최고 기록·연구비·명성·업그레이드 레벨을 record.json에 저장한다."""
@@ -289,6 +411,8 @@ class Game:
             config.RECORD_FAME_KEY: self.fame,
             config.RECORD_UPGRADES_KEY: dict(self.upgrades),
         }
+        if self.saved_run is not None:
+            data[config.RECORD_RUN_KEY] = self.saved_run
         try:
             with open(self.record_path, "w", encoding=config.RECORD_ENCODING) as file:
                 json.dump(data, file)
@@ -618,6 +742,10 @@ class Game:
             self.check_ending()
             return
         self.student.mark_event_seen(event[config.EVENT_ID])
+        self.open_choice_dialog(event)
+
+    def open_choice_dialog(self, event):
+        """선택지형 이벤트 event의 대화창을 띄운다(선택 버튼 글자를 채우고 STATE_EVENT로)."""
         self.current_event = event
         self.dialog_time = config.ZERO_TIME
         options = event[config.EVENT_OPTIONS]
@@ -654,9 +782,9 @@ class Game:
 
     def handle_event(self, event):
         """이벤트 하나를 받아 처리한다."""
-        if event.type == pygame.QUIT:
-            self.running = False
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+        if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN
+                                         and event.key == pygame.K_ESCAPE):
+            self.save_run()   # 판 진행 중에 끄면 하던 판을 저장한다(타이틀·엔딩이면 그대로)
             self.running = False
         elif event.type == pygame.MOUSEMOTION:
             self.mouse_pos = event.pos
@@ -715,6 +843,10 @@ class Game:
                 break   # 이번 dt 안에는 더 할 자동 행동이 없다
             self.auto_timer = self.get_auto_interval()
             self.do_action(self.choose_auto_action())
+        if self.state == config.STATE_PLAYING:
+            self.autosave_timer += dt
+            if self.autosave_timer + config.TIME_EPSILON >= config.AUTOSAVE_SECONDS:
+                self.save_run()
         self.update_effects(dt)
 
     # ------------------------------------------------------------
@@ -1658,18 +1790,30 @@ class Game:
         if self.new_game_confirm:
             self.draw_new_game_confirm()
             return
-        self.draw_key_hint(config.START_HINT_TEXT, config.START_HINT_Y)
+        self.draw_key_hint(self.get_resume_hint_text() or config.START_HINT_TEXT, config.START_HINT_Y)
         self.draw_text_center(self.font, config.NEW_GAME_HINT_TEXT, config.NEW_GAME_HINT_Y,
                               config.COLOR_TEXT_SOFT)
 
     def get_title_stars(self):
-        """타이틀 장식 별 목록. 확인 상자가 떠 있으면 상자와 겹치는 별은 뺀다(삐져나오지 않게)."""
-        if not self.new_game_confirm:
+        """타이틀 장식 별 목록. 확인 상자나 긴 이어하기 안내와 겹치는 별은 뺀다(글자를 가리지 않게)."""
+        if self.new_game_confirm:
+            box = pygame.Rect(config.NEW_GAME_CONFIRM_RECT)
+        elif self.saved_run is not None:
+            box = self.get_key_hint_rect(self.get_resume_hint_text(), config.START_HINT_Y)
+        else:
             return config.TITLE_STARS
         star_width, star_height = sprite_size(config.STAR_SPRITE, config.PIXEL_SIZE)
-        box = pygame.Rect(config.NEW_GAME_CONFIRM_RECT)
         return [(x, y, color) for x, y, color in config.TITLE_STARS
                 if not box.colliderect((x, y, star_width, star_height))]
+
+    def get_key_hint_rect(self, text, center_y, center_x=config.SCREEN_CENTER_X):
+        """draw_key_hint가 그리는 글자 + 앞 화살표를 감싸는 사각형을 돌려준다."""
+        rect = pygame.Rect(config.ORIGIN, self.font.size(text))
+        rect.center = (center_x, center_y)
+        arrow_width, arrow_height = sprite_size(config.ARROW_SPRITE, config.PIXEL_SIZE)
+        arrow = pygame.Rect(rect.left - config.HINT_ARROW_GAP - arrow_width,
+                            center_y - arrow_height // config.HALF, arrow_width, arrow_height)
+        return rect.union(arrow)
 
     def draw_new_game_confirm(self):
         """새 게임 확인 상자(분홍 도트 상자, 알파 없음): 질문, 사라지는 것 경고, Y·N 키 안내."""

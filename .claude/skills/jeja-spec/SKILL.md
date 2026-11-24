@@ -101,7 +101,7 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 - 대학원 감소 배수 = 1 + `GRAD_DECAY_BONUS` 1.0×n + `GRAD_CYCLE_DECAY_BONUS` 2.5×c(개운함 조정, B안 1.5), c = floor((elapsed − `grad_entry_time`)/60) → 진학 직후 ×2.0, 60초 ×4.5, 120초 ×7.0. 학부 1.
 - 진학 시 게이지·지식·특성·외형·플래그·last_event_time·elapsed·full_until 유지, auto_timer 다시 채움, 바로 check_promotion. 대학원은 선택지형 없음, get_grade() = 4.
 - **새 게임(N, 2026-11-24 사용자 승인):** `Game.reset_progress()` = upgrades 14종 0(같은 사전을 고침)·money 0·fame 0(`FAME_START`) 후 save_record, best_record는 유지. `has_progress()` = money·fame·업그레이드 중 0보다 큰 값이 있으면 True → `new_game_confirm = True`(state는 STATE_TITLE 그대로), 아니면 바로 `start_fresh_game()`(= reset_progress + start_new_game). 문구 `NEW_GAME_HINT_TEXT`(y 448)·`NEW_GAME_CONFIRM_*`, 상자 `NEW_GAME_CONFIRM_RECT` (148, 382, 504, 104).
-- record.json = {"best_knowledge", "money", "fame", "upgrades": {id: Lv}}. 없거나 깨진·잘못된 값 0, 모르는 id 무시. 위치: exe면 `sys.executable` 폴더, 아니면 `main.py` 폴더.
+- record.json = {"best_knowledge", "money", "fame", "upgrades": {id: Lv}, "run"(판 진행 중일 때만)}. 하던 판: `save_run`(게임·대화창일 때만, `AUTOSAVE_SECONDS` 10초마다·ESC·QUIT), `capture_run`, `parse_run`(이상하면 None), `resume_run`(타이틀 Enter, 대화창 복원은 `open_choice_dialog`), `saved_run`, 엔딩·`reset_progress`에서 None, 안내 `get_resume_hint_text`(`RESUME_HINT_TEXT`), 별은 안내와 겹치면 숨김(`get_key_hint_rect`). 없거나 깨진·잘못된 값 0, 모르는 id 무시. 위치: exe면 `sys.executable` 폴더, 아니면 `main.py` 폴더.
 
 ## 4. 랜덤 이벤트와 성장 요소
 

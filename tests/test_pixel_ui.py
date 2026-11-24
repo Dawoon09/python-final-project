@@ -417,6 +417,8 @@ def test_game_init_only_adds_backdrop():
         "self.new_game_confirm = False",
         # (이벤트 로그) L 패널 상태
         "self.event_log_open = False",
+        # (이어하기) 자동 저장 시계
+        "self.autosave_timer = config.ZERO_TIME",
         "self.choice_buttons = self.make_choice_buttons()",
         # (H 단위) [업그레이드 U] 버튼 2개(게임/엔딩)
         "self.upgrade_button = Button(config.UPGRADE_BUTTON_X, config.UPGRADE_BUTTON_Y, "

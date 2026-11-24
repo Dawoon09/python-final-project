@@ -171,6 +171,19 @@ RECORD_ENCODING = "utf-8"        # record.json 을 읽고 쓸 때 쓰는 글자 
 RECORD_MONEY_KEY = "money"       # 연구비
 RECORD_FAME_KEY = "fame"         # 명성
 RECORD_UPGRADES_KEY = "upgrades"  # 업그레이드 레벨 {업그레이드 id: 레벨}
+RECORD_RUN_KEY = "run"            # (2026-11-24) 하던 판. 판이 진행 중일 때만 있다(끝나거나 새 게임이면 없음)
+# 하던 판에 저장하는 제자 값 (Student 속성 이름). 숫자는 0 이상, 시각은 숫자 또는 None
+RUN_NUMBERS = ["health", "mental", "knowledge", "elapsed", "decay_timer"]
+RUN_TIMES = ["graduation_time", "grad_entry_time", "last_event_time", "full_until", "refresh_until"]
+RUN_LISTS = ["traits", "looks", "flags", "seen_events"]
+RUN_GRADE = "grade"
+RUN_GRAD_YEAR = "grad_year"
+RUN_EVENT_COUNTS = "event_counts"   # {주기 번호(글자): 이벤트 수}
+RUN_POLICY = "policy"
+RUN_AUTO_TIMER = "auto_timer"
+RUN_EVENT_LOG = "event_log"
+RUN_EVENT = "event"                 # 저장할 때 떠 있던 선택지형 이벤트 id (없으면 None)
+AUTOSAVE_SECONDS = 10.0             # 게임 화면에서 이만큼(게임 시간) 지날 때마다 하던 판을 저장한다
 
 
 def get_base_dir():
@@ -559,6 +572,7 @@ BEST_RECORD_START = 0       # 최고 기록 기본값 (record.json 이 없거나
 BADGE_PADDING_X = 24        # 글자 배지 상자의 좌우 여백
 BADGE_HEIGHT = 48           # 글자 배지 상자의 세로 길이
 START_HINT_TEXT = "Enter를 눌러 시작"
+RESUME_HINT_TEXT = "Enter를 눌러 이어하기 ({}, {})"   # 저장된 판이 있을 때: (n학년, 경과 시간)
 START_HINT_Y = 408          # 시작 안내 가운데 y
 HINT_ARROW_GAP = 12         # 안내 글자와 앞 화살표 사이 간격
 
@@ -802,6 +816,7 @@ LOOK_IDS = [LOOK_GUITAR, LOOK_HEADBAND, LOOK_COFFEE, LOOK_HEART_PIN, LOOK_SUNGLA
 FLAG_MT = "MT 참석"
 FLAG_BAND = "밴드부"
 FLAG_LOVE = "연애 중"
+FLAG_IDS = [FLAG_MT, FLAG_BAND, FLAG_LOVE]   # 연계 플래그 전부 (하던 판 불러올 때 검사)
 
 # 이벤트 dict 키
 EVENT_ID = "id"                     # 이벤트 이름표 (선택지형 한 판 1회 기록용)
