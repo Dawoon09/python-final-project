@@ -44,6 +44,7 @@ class Student:
         self.graduation_time = None  # 졸업한 순간의 경과 시간(초). 아직 졸업 전이면 None
         self.grad_entry_time = None  # 대학원에 들어간 순간의 경과 시간(초). 학부면 None
         self.full_until = None     # 버프 '든든함'이 끝나는 경과 시간(초). 학식을 안 먹었으면 None
+        self.refresh_until = None  # 버프 '개운함'이 끝나는 경과 시간(초). 쉬지 않았으면 None
 
     # ------------------------------------------------------------
     # 최댓값 (기획서 3절: 체력 증진·멘탈 관리 업그레이드)
@@ -92,8 +93,18 @@ class Student:
         """버프 '든든함'이 붙어 있으면 True(남은 시간이 0보다 클 때)."""
         return self.get_full_time_left() > config.TIME_EPSILON
 
+    def get_refresh_time_left(self):
+        """개운함이 끝날 때까지 남은 시간(초)을 돌려준다(없거나 끝났으면 0)."""
+        if self.refresh_until is None:
+            return config.ZERO_TIME
+        return max(config.ZERO_TIME, self.refresh_until - self.elapsed)
+
+    def is_refresh_buff_active(self):
+        """버프 '개운함'이 붙어 있으면 True(남은 시간이 0보다 클 때)."""
+        return self.get_refresh_time_left() > config.TIME_EPSILON
+
     def get_statuses(self):
-        """지금 붙어 있는 디버프·버프 이름 목록을 돌려준다(상태 배지용): 피곤, 우울, 든든함 순서."""
+        """지금 붙어 있는 디버프·버프 이름 목록을 돌려준다(상태 배지용): 피곤, 우울, 든든함, 개운함 순서."""
         statuses = []
         if self.is_tired():
             statuses.append(config.DEBUFF_TIRED)
@@ -101,6 +112,8 @@ class Student:
             statuses.append(config.DEBUFF_DEPRESSED)
         if self.is_full_buff_active():
             statuses.append(config.BUFF_FULL)
+        if self.is_refresh_buff_active():
+            statuses.append(config.BUFF_REFRESH)
         return statuses
 
     # ------------------------------------------------------------
@@ -260,10 +273,14 @@ class Student:
         return decay
 
     def get_mental_decay(self):
-        """1초마다 줄어드는 멘탈 양을 돌려준다: 평소 1, 시험 기간 2 (x 건강 관리 배수)."""
+        """1초마다 줄어드는 멘탈 양을 돌려준다: 평소 1, 시험 기간 2 (x 건강 관리 배수, 개운함이면 x0.5)."""
+        base = config.MENTAL_DECAY_PER_SEC
         if self.is_exam_period():
-            return self.apply_decay_ratio(config.MENTAL_DECAY_PER_SEC_EXAM)
-        return self.apply_decay_ratio(config.MENTAL_DECAY_PER_SEC)
+            base = config.MENTAL_DECAY_PER_SEC_EXAM
+        decay = self.apply_decay_ratio(base)
+        if self.is_refresh_buff_active():
+            decay = round(decay * config.REFRESH_MENTAL_DECAY_RATIO, config.GAUGE_DECIMALS)
+        return decay
 
     def apply_decay_ratio(self, amount):
         """자연 감소량 amount에 건강 관리 배수 (1 - 0.1 x 레벨)와
@@ -322,7 +339,7 @@ class Student:
         self.full_until = self.elapsed + self.get_full_duration()
 
     def rest(self, recovery_ratio=config.NO_RATIO):
-        """쉬게 하기: 체력 +15, 멘탈 +20, 지식 -2."""
+        """쉬게 하기: 체력 +15, 멘탈 +20, 지식 -2, 버프 '개운함'(20초)이 붙는다."""
         bed = self.get_upgrade_bonus(config.UPGRADE_BED)
         health = (config.REST_HEALTH + self.get_trait_bonus(config.BONUS_REST_HEALTH)
                   + self.get_upgrade_bonus(config.UPGRADE_CAFE) + bed)
@@ -330,6 +347,7 @@ class Student:
         self.change_health(round(health * recovery_ratio))
         self.change_mental(round(mental * recovery_ratio))
         self.change_knowledge(config.REST_KNOWLEDGE)
+        self.refresh_until = self.elapsed + config.REFRESH_DURATION
 
     def study(self, knowledge_ratio=config.NO_RATIO, cost_ratio=config.NO_RATIO):
         """공부시키기: 지식 +(공부 지식량), 체력 -5, 멘탈 -8 (특성·업그레이드 보정 뒤 방침 배수)."""

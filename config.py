@@ -70,6 +70,11 @@ BUFF_FULL = "든든함"
 FULL_DURATION = 30.0            # 든든함 기본 지속 시간(초, 게임 시간). 다시 먹으면 처음부터 다시 잰다
 FULL_HEALTH_DECAY_RATIO = 0.5   # 든든함인 동안 체력 자연 감소 배수
 
+# 버프 '개운함' (기획서 2절, 2026-11-24 추가): 쉬게 하기를 하면 붙는다(든든함의 멘탈 짝)
+BUFF_REFRESH = "개운함"
+REFRESH_DURATION = 20.0         # 개운함 지속 시간(초, 게임 시간). 다시 쉬면 처음부터 다시 잰다
+REFRESH_MENTAL_DECAY_RATIO = 0.5  # 개운함인 동안 멘탈 자연 감소 배수
+
 # 휴식 위주 방침의 "컨디션 좋음" (기획서 2절): 체력·멘탈이 모두 70 이상이면 연구비 +50%
 CONDITION_GOOD = "컨디션 좋음"
 CONDITION_GOOD_MIN = 70         # 체력·멘탈이 둘 다 이 값 이상이어야 한다
@@ -1071,6 +1076,7 @@ STATUS_COLORS = {
     DEBUFF_TIRED: (COLOR_PINK, COLOR_PINK_LIGHT),
     DEBUFF_DEPRESSED: (COLOR_GRAY, COLOR_GRAY_LIGHT),
     BUFF_FULL: (COLOR_MINT, COLOR_MINT_LIGHT),
+    BUFF_REFRESH: (COLOR_SKY, COLOR_SKY_LIGHT),
     CONDITION_GOOD: (COLOR_YELLOW, COLOR_YELLOW_LIGHT),
 }
 # 게이지 라벨 줄 오른쪽 끝(막대 오른쪽 끝과 같은 x)에 "지금/최대" 글자를 쓴다: "80/100"
@@ -2069,6 +2075,14 @@ STATUS_ICONS = {
         ".obbbbo.",
         "..oooo..",
     ],
+    BUFF_REFRESH: [                          # 개운함: 물방울 (푹 쉬고 난 맑은 기분)
+        "...o....",
+        "..oWo...",
+        ".oWrro..",
+        ".orrro..",
+        ".orrro..",
+        "..ooo...",
+    ],
     CONDITION_GOOD: [                        # 컨디션 좋음: 반짝 별
         "...o....",
         "..oWo...",
@@ -2087,6 +2101,7 @@ STATUS_TIP_TEXTS = {
     DEBUFF_TIRED: "{name}: 체력 {limit} 미만 — 공부 지식 ×{ratio:g}",
     DEBUFF_DEPRESSED: "{name}: 멘탈 {limit} 미만 — 버는 연구비 ×{ratio:g}",
     BUFF_FULL: "{name}: 남은 시간 {left}초 — 체력 감소 ×{ratio:g}",
+    BUFF_REFRESH: "{name}: 남은 시간 {left}초 — 멘탈 감소 ×{ratio:g}",
     CONDITION_GOOD: "{name}: 휴식 위주, 체력·멘탈 {limit} 이상 — 버는 연구비 ×{ratio:g}",
 }
 # 특성 배지 툴팁: "{이름}: {효과들} (이번 판 끝까지)". 효과 = TRAIT_BONUSES의 보정 이름별 글자 틀

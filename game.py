@@ -1317,6 +1317,10 @@ class Game:
         if name == config.BUFF_FULL:
             left = -int(-self.student.get_full_time_left() // config.LEVEL_STEP)
             return template.format(name=name, left=left, ratio=config.FULL_HEALTH_DECAY_RATIO)
+        if name == config.BUFF_REFRESH:
+            left = -int(-self.student.get_refresh_time_left() // config.LEVEL_STEP)
+            return template.format(name=name, left=left,
+                                   ratio=config.REFRESH_MENTAL_DECAY_RATIO)
         bonus = config.POLICIES[config.POLICY_REST_FOCUS][config.POLICY_CONDITION_BONUS]
         return template.format(name=name, limit=config.CONDITION_GOOD_MIN,
                                ratio=round(config.NO_RATIO + bonus, config.GAUGE_DECIMALS))
