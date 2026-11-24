@@ -121,11 +121,12 @@ SPEC_AUTO = {
     "과제 마감 알림이 울렸다": {M: -10},
     "감기 기운이 돈다": {H: -10},
     "교수님께 칭찬받았다": {K: 15, M: 5},
+    "공모전에 입상했다": {},   # (연구비 이벤트) 게이지 변화 없이 연구비 +40 x 학년
 }
 
 
 def test_auto_events_match_spec():
-    assert len(config.AUTO_EVENTS) == 5
+    assert len(config.AUTO_EVENTS) == 6   # (연구비 이벤트) 5 -> 6
     got = {e[config.EVENT_TITLE]: e[config.EVENT_EFFECTS] for e in config.AUTO_EVENTS}
     assert got == SPEC_AUTO
     for e in config.AUTO_EVENTS:
@@ -204,7 +205,7 @@ def test_choice_event_list_complete_and_ids_unique():
     assert sorted(e[config.EVENT_TITLE] for e in config.CHOICE_EVENTS) == \
         sorted(row[2] for row in SPEC_CHOICE)
     ids = [e[config.EVENT_ID] for e in config.ALL_EVENTS]
-    assert len(ids) == len(set(ids)) == 19
+    assert len(ids) == len(set(ids)) == 20
     assert config.ALL_EVENTS == config.AUTO_EVENTS + config.CHOICE_EVENTS
 
 

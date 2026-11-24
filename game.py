@@ -431,9 +431,13 @@ class Game:
         return config.NO_RATIO
 
     def get_money_multiplier(self):
-        """지식으로 버는 연구비 배수 = 명성 배수 x 대학원 배수 x 컨디션 배수 를 돌려준다."""
+        """지식으로 버는 연구비 배수 = 명성 배수 x 대학원 배수 x 컨디션 배수 x 연구 과제 배수 를 돌려준다."""
         return (self.get_fame_multiplier() * self.get_grad_money_multiplier()
-                * self.get_condition_money_ratio())
+                * self.get_condition_money_ratio() * self.get_research_money_ratio())
+
+    def get_research_money_ratio(self):
+        """연구 과제 수주 업그레이드 배수 = 1 + 0.1 x 레벨 을 돌려준다(0레벨이면 1)."""
+        return config.NO_RATIO + self.student.get_upgrade_bonus(config.UPGRADE_RESEARCH)
 
     def get_status_names(self):
         """상태 배지에 보일 이름 목록: 제자의 디버프·버프(피곤·우울·든든함) + 컨디션 좋음."""
@@ -799,9 +803,12 @@ class Game:
         if self.notice is not None:
             top = config.EVENT_NOTICE_Y + config.EVENT_NOTICE_HEIGHT
         first_y = top + config.EVENT_POPUP_TOP_MARGIN
+        stage_left = self.get_stage_inner().left + config.PIXEL_SIZE
         for row, (label, amount) in enumerate(changes):
-            self.add_popup(label, amount, config.EVENT_POPUP_X,
-                           first_y + row * config.POPUP_LINE_HEIGHT)
+            # 긴 글자("연구비 +160")는 무대 왼쪽 끝을 넘지 않게 가운데를 오른쪽으로 민다
+            width = self.popup_font.size(config.POPUP_TEXT.format(label, amount))[config.FIRST_ROW]
+            x = max(config.EVENT_POPUP_X, stage_left + width // config.HALF)
+            self.add_popup(label, amount, x, first_y + row * config.POPUP_LINE_HEIGHT)
 
     def add_popup(self, label, amount, x, y):
         """수치 팝업 하나("체력 +20")를 글자 가운데 (x, y)에 만든다. 늘면 초록, 줄면 빨강."""

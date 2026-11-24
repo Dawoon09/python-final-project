@@ -666,7 +666,9 @@ def test_study_then_auto_event_no_overlap(quiet_game, grade, event):
     g.student.health, g.student.mental, g.student.knowledge = 60, 60, 10
     assert g.do_action(STUDY)
     g.start_event(event)
-    ev_pops = [p for p in g.popups if p["x"] == config.EVENT_POPUP_X]
+    # (연구비 이벤트) 긴 연구비 글자는 무대 안에 들어가게 x가 조금 밀린다
+    ev_pops = [p for p in g.popups
+               if config.EVENT_POPUP_X <= p["x"] <= config.EVENT_POPUP_X + 4 * config.PIXEL_SIZE]
     assert ev_pops
     assert min(p["y"] for p in ev_pops) == 212
     assert_no_overlap_frames(g, config.EVENT_NOTICE_TIME, (grade, event[config.EVENT_ID]))

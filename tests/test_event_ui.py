@@ -269,7 +269,8 @@ def notice_rect(g):
 
 
 def is_event_popup(p):
-    return p.get("x", CX) == config.EVENT_POPUP_X
+    """이벤트 팝업 열: EVENT_POPUP_X (긴 연구비 글자는 무대 안에 들어가게 오른쪽으로 조금 밀림)."""
+    return config.EVENT_POPUP_X <= p.get("x", CX) <= config.EVENT_POPUP_X + 4 * P
 
 
 def check_frames(g, max_time, tag):
@@ -768,7 +769,8 @@ def test_pause_dots_cover_outside_but_not_dialog(make_game, monkeypatch):
 AUTO_IDS = [e[config.EVENT_ID] for e in config.AUTO_EVENTS]
 SPEC_GOOD = {"엄마가 반찬을 보내셨다": True, "단톡방에서 칭찬받았다": True,
              "과제 마감 알림이 울렸다": False, "감기 기운이 돈다": False,
-             "교수님께 칭찬받았다": True}
+             "교수님께 칭찬받았다": True,
+             "공모전에 입상했다": True}   # (연구비 이벤트) 게이지 변화 없음 -> 좋은 일
 
 
 @pytest.mark.parametrize("event_id", AUTO_IDS)

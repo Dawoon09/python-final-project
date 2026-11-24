@@ -613,7 +613,7 @@ def test_badge_layout_unchanged(g):
 # ============================== 6. 장식 조각·레벨 ==============================
 
 def test_decor_ids_are_ten_non_facilities():
-    assert len(DECOR) == 10
+    assert len(DECOR) == 11   # (연구비) 연구 과제 수주 장식 추가
     assert set(DECOR) | set(FAC) == set(IDS)
     assert not set(DECOR) & set(FAC)
 
@@ -651,7 +651,7 @@ def test_charm_rack_charms_equal_level(g):
 
 
 @pytest.mark.parametrize("uid", [u for u in DECOR if MAXLV[u] == 5
-                                 and u != "reference_book"])
+                                 and u not in ("reference_book", "research_grant")])
 def test_more_pieces_at_lv3_and_lv5(g, uid):
     c = piece_counts(g, uid)
     assert c[1] >= 1

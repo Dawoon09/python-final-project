@@ -40,6 +40,8 @@ SPEC_TABLE = {
     "lucky_charm": (3, 600), "scholarship": (1, 750),
     # (M단위) 컨디션 3종 추가: 체력 증진·멘탈 관리·자기 관리
     "health_max": (5, 300), "mental_max": (5, 300), "self_care": (5, 400),
+    # (연구비) 연구 과제 수주
+    "research_grant": (5, 500),
 }
 
 
@@ -137,7 +139,8 @@ def test_upgrade_table_matches_spec():
     assert per == {"menu": 6, "bed": 4, "reference_book": 2, "time_management": 0.2,
                    "health_care": 0.1, "library": 3, "cafe": 5, "gym": 2,
                    "lucky_charm": 0.05, "scholarship": 30,
-                   "health_max": 10, "mental_max": 10, "self_care": 0.2}
+                   "health_max": 10, "mental_max": 10, "self_care": 0.2,
+                   "research_grant": 0.1}   # (연구비) 버는 연구비 +10%/Lv
 
 
 def test_money_constants():

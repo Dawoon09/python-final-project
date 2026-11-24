@@ -217,8 +217,8 @@ def test_total_cost_92590_matches_game():
 
     (M단위) 업그레이드 13종(컨디션 3종 31,000 추가) -> 61,590 + 31,000 = 92,590.
     """
-    assert "92,590" in spec_part("업그레이드")
-    assert sum(sum(game_costs(uid)) for uid in config.UPGRADE_IDS) == 92590
+    assert "108,090" in spec_part("업그레이드")   # (연구비) 92,590 + 연구 과제 수주 15,500
+    assert sum(sum(game_costs(uid)) for uid in config.UPGRADE_IDS) == 108090
     condition = (config.UPGRADE_HEALTH_MAX, config.UPGRADE_MENTAL_MAX, config.UPGRADE_SELF_CARE)
     assert sum(sum(game_costs(uid)) for uid in condition) == 31000
     pygame.quit()
@@ -313,7 +313,7 @@ def test_readme_describes_m_rules():
     for word in (config.BUFF_FULL, config.DEBUFF_TIRED, config.DEBUFF_DEPRESSED,
                  config.CONDITION_GOOD, "회복은 휴식에서만"):
         assert word in r, word
-    assert "업그레이드 {}종".format(len(config.UPGRADE_IDS)) in r and len(config.UPGRADE_IDS) == 13
+    assert "업그레이드 {}종".format(len(config.UPGRADE_IDS)) in r and len(config.UPGRADE_IDS) == 14   # (연구비) 13 -> 14
     assert "| 학식 먹이기 | +20 |" not in r
     # 컨디션 업그레이드 3종 이름은 기획서 업그레이드 표에 있다
     for word in ("체력 증진", "멘탈 관리", "자기 관리"):

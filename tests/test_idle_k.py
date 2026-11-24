@@ -402,14 +402,14 @@ def test_panel_gauge_constants():
     assert config.UPGRADE_GAUGE_BAR_WIDTH == 64
     assert config.UPGRADE_GAUGE_BAR_HEIGHT == 8
     assert config.UPGRADE_HEADER_Y == 132
-    assert config.UPGRADE_ROW_TOP == 166
+    assert config.UPGRADE_ROW_TOP == 165   # (연구비) 14줄: 166 -> 165
     # (M단위) 13줄: 줄 높이 27 -> 20, 간격 28 -> 21 (마지막 줄 아래 끝 445 -> 438)
-    assert config.UPGRADE_ROW_HEIGHT == 20
-    assert config.UPGRADE_ROW_STEP == 21
+    assert config.UPGRADE_ROW_HEIGHT == 19   # (연구비) 14줄: 20 -> 19
+    assert config.UPGRADE_ROW_STEP == 20     # (연구비) 14줄: 21 -> 20
     assert config.UPGRADE_FOOTER_Y == 454   # K단위 2차: 455 -> 454 (글자 꼬리까지 외곽선 안)
-    last_row_bottom = config.UPGRADE_ROW_TOP + 12 * config.UPGRADE_ROW_STEP + config.UPGRADE_ROW_HEIGHT
-    assert last_row_bottom == 438
-    assert len(config.UPGRADE_IDS) == 13
+    last_row_bottom = config.UPGRADE_ROW_TOP + 13 * config.UPGRADE_ROW_STEP + config.UPGRADE_ROW_HEIGHT
+    assert last_row_bottom == 444   # (연구비) 14줄
+    assert len(config.UPGRADE_IDS) == 14
     assert [n for n, _, _ in config.UPGRADE_GAUGES] == [config.GAUGE_HEALTH, config.GAUGE_MENTAL]
 
 
@@ -468,8 +468,8 @@ def test_panel_footer_below_rows_inside_panel(g, monkeypatch, cursor):
     assert panel_inner.inflate(0, 2).contains(ink), (text, ink, panel_inner)
     assert ink.left >= panel_inner.left and ink.right <= panel_inner.right
     for i in range(len(config.UPGRADE_IDS)):
-        assert g.get_upgrade_row_rect(i).top == 166 + 21 * i     # (M단위) 13줄: 간격 21
-        assert g.get_upgrade_row_rect(i).height == 20
+        assert g.get_upgrade_row_rect(i).top == 165 + 20 * i     # (연구비) 14줄: 간격 20
+        assert g.get_upgrade_row_rect(i).height == 19
 
 
 @pytest.mark.parametrize("health, mental", [(20, 80), (100, 0), (29.9, 30), (30, 29.9),

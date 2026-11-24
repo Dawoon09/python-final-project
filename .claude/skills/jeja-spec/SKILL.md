@@ -81,9 +81,9 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 
 ## 3. 성장
 
-- 연구비 += floor(지식 증가량 × (1 + `FAME_MONEY_BONUS` 0.1×명성) × (1 + `GRAD_MONEY_BONUS` 1.0×년차) × 컨디션 배수(우울 0.7/좋음 1.5/1.0)). 감소 시 0. `get_money_multiplier` = 명성 × 대학원 × `get_condition_money_ratio`. 졸업 보너스는 명성 배수만, 장학금(+30×학년, 대학원 4)은 배수 없음.
+- 연구비 += floor(지식 증가량 × (1 + `FAME_MONEY_BONUS` 0.1×명성) × (1 + `GRAD_MONEY_BONUS` 1.0×년차) × 컨디션 배수(우울 0.7/좋음 1.5/1.0)). 감소 시 0. `get_money_multiplier` = 명성 × 대학원 × `get_condition_money_ratio` × `get_research_money_ratio`. 자동형 6종(공모전 입상 `contest_prize`: 연구비 +`CONTEST_MONEY_PER_GRADE` 40 × 학년, 배수 없음). 이벤트 팝업은 무대 왼쪽 끝을 넘지 않게 x를 민다. 졸업 보너스는 명성 배수만, 장학금(+30×학년, 대학원 4)은 배수 없음.
 - 명성 +1(`FAME_STEP`): 졸업·수료 뒤 환생. 칭호 `get_fame_title(fame=None)` ← `FAME_TITLES` 0 시간강사·2 조교수·5 부교수·10 정교수·20 명예교수(보여 주기용), 타이틀 `TITLE_WALLET_TEXT`(칭호·명성·연구비), 환생으로 오르면 `promotion_notice` "{칭호} 승진!". 저장: 판 끝·업그레이드 구매·환생·새 게임(N).
-- 가격 = floor(기본가 × `UPGRADE_COST_GROWTH` 2.0^Lv). 13종 전부 92,590.
+- 가격 = floor(기본가 × `UPGRADE_COST_GROWTH` 2.0^Lv). 14종 전부 108,090.
 
 | id | 최대 | 기본가 | 레벨당 | id | 최대 | 기본가 | 레벨당 |
 |---|---|---|---|---|---|---|---|
@@ -93,13 +93,14 @@ description: 제자 키우기의 수치·규칙·조작키를 확인할 때 사�
 | time_management | 5 | 450 | 간격 −0.2 | scholarship | 1 | 750 | 장학금 이벤트 |
 | health_care | 5 | 450 | 감소 −10% | health_max / mental_max | 5 | 300 | 최대 +10 |
 | library | 1 | 900 | 지식 +3 | self_care | 5 | 400 | 0.2/초 회복 |
+| research_grant | 5 | 500 | 버는 연구비 +10% (`get_research_money_ratio`, 지식 연구비 배수에 곱함) | | | | |
 
-- 패널: U·[업그레이드 U], 게임·엔딩에서만, ↑↓ 순환·Enter, 클릭 = 고르고 사기, 게임 시간은 흐름. 줄 `UPGRADE_ROW_TOP` 166 / `HEIGHT` 20 / `STEP` 21.
+- 패널: U·[업그레이드 U], 게임·엔딩에서만, ↑↓ 순환·Enter, 클릭 = 고르고 사기, 게임 시간은 흐름. 줄 `UPGRADE_ROW_TOP` 165 / `HEIGHT` 19 / `STEP` 20 (14줄).
 - 툴팁(마우스 줄만, `TOOLTIP_X` 276, y 116~460 안): "이름  Lv l/max" / "지금: 효과"(0레벨 "지금: 아직 없음") / "다음: 효과"|"다음: 최고 레벨" / "무대: …" / "가격: 연구비 n"|"가격: MAX" / (부족) 빨간 "연구비가 모자라요". 효과 = `UPGRADE_LEVEL_EFFECTS[id].format(round(Lv×per_level, 6))`.
 - 대학원 년차 목표 = 2200 + Σ_{k=1..n}(`GRAD_GOAL_FIRST_STEP` 800 + `GRAD_GOAL_STEP_GROWTH` 200×(k−1)) → 3000/4000/5200/6600 (경계 2999/3000, 3999/4000, 5199/5200).
 - 대학원 감소 배수 = 1 + `GRAD_DECAY_BONUS` 1.0×n + `GRAD_CYCLE_DECAY_BONUS` 2.5×c(개운함 조정, B안 1.5), c = floor((elapsed − `grad_entry_time`)/60) → 진학 직후 ×2.0, 60초 ×4.5, 120초 ×7.0. 학부 1.
 - 진학 시 게이지·지식·특성·외형·플래그·last_event_time·elapsed·full_until 유지, auto_timer 다시 채움, 바로 check_promotion. 대학원은 선택지형 없음, get_grade() = 4.
-- **새 게임(N, 2026-11-24 사용자 승인):** `Game.reset_progress()` = upgrades 13종 0(같은 사전을 고침)·money 0·fame 0(`FAME_START`) 후 save_record, best_record는 유지. `has_progress()` = money·fame·업그레이드 중 0보다 큰 값이 있으면 True → `new_game_confirm = True`(state는 STATE_TITLE 그대로), 아니면 바로 `start_fresh_game()`(= reset_progress + start_new_game). 문구 `NEW_GAME_HINT_TEXT`(y 448)·`NEW_GAME_CONFIRM_*`, 상자 `NEW_GAME_CONFIRM_RECT` (148, 382, 504, 104).
+- **새 게임(N, 2026-11-24 사용자 승인):** `Game.reset_progress()` = upgrades 14종 0(같은 사전을 고침)·money 0·fame 0(`FAME_START`) 후 save_record, best_record는 유지. `has_progress()` = money·fame·업그레이드 중 0보다 큰 값이 있으면 True → `new_game_confirm = True`(state는 STATE_TITLE 그대로), 아니면 바로 `start_fresh_game()`(= reset_progress + start_new_game). 문구 `NEW_GAME_HINT_TEXT`(y 448)·`NEW_GAME_CONFIRM_*`, 상자 `NEW_GAME_CONFIRM_RECT` (148, 382, 504, 104).
 - record.json = {"best_knowledge", "money", "fame", "upgrades": {id: Lv}}. 없거나 깨진·잘못된 값 0, 모르는 id 무시. 위치: exe면 `sys.executable` 폴더, 아니면 `main.py` 폴더.
 
 ## 4. 랜덤 이벤트와 성장 요소
