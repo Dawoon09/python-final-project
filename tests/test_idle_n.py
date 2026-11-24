@@ -653,13 +653,14 @@ def test_charm_rack_charms_equal_level(g):
 @pytest.mark.parametrize("uid", [u for u in DECOR if MAXLV[u] == 5
                                  and u not in ("reference_book", "research_grant")])
 def test_more_pieces_at_lv3_and_lv5(g, uid):
+    """(장식 변화 2026-11-24) 예전 Lv1·3·5 -> 이제 레벨마다 조각이 늘어난다(Lv5는 반짝이 포함)."""
     c = piece_counts(g, uid)
     assert c[1] >= 1
-    assert c[1] == c[2] < c[3] == c[4] < c[5], (uid, c)
+    assert c[1] < c[2] < c[3] < c[4] < c[5], (uid, c)
 
 
 def test_scholarship_trophy_lv1(g):
-    assert piece_counts(g, "scholarship") == [0, 1]
+    assert piece_counts(g, "scholarship") == [0, 2]   # (장식 변화) 트로피 + 최고 레벨 반짝이
 
 
 def test_specific_level_pieces(g):

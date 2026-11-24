@@ -1096,8 +1096,13 @@ class Game:
         for upgrade_id in facilities:
             x, bottom, cell = config.FACILITY_SLOTS[place][upgrade_id]
             sprite_name = config.FACILITY_SPRITES[upgrade_id]
-            _, height = sprite_size(config.SCENE_SPRITES[sprite_name][config.FIRST_ROW], cell)
+            width, height = sprite_size(config.SCENE_SPRITES[sprite_name][config.FIRST_ROW], cell)
             self.draw_scene_sprite(surface, sprite_name, x, bottom - height, cell, season, shade)
+            # 시설은 최대 1레벨이라 사면 바로 오른쪽 위에 반짝이를 얹는다(장식의 최고 레벨 반짝이와 같은 모양)
+            sparkle_width, _ = sprite_size(
+                config.SCENE_SPRITES[config.DECOR_SPARKLE][config.FIRST_ROW], cell)
+            self.draw_scene_sprite(surface, config.DECOR_SPARKLE, x + width - sparkle_width,
+                                   bottom - height, cell, season, shade)
         for part in config.PLACE_FRONT[place]:
             self.draw_scene_part(surface, part, season, shade)
         if decor_levels is not None:

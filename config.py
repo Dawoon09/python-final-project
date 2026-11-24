@@ -2283,6 +2283,19 @@ SCENE_SPRITES.update({
     "decor_papers_top": (["ooooo", "oWWWo", "ooooo"],     # 더미 위에 얹은 서류 (5 x 3)
                          {"o": "outline", "W": "white"}),
     "decor_seal": ([".o.", "oGo", ".o."], {"o": "outline", "G": "gold"}),   # 금색 인장 (3 x 3, Lv5)
+    # (2026-11-24) Lv2·Lv4에 더하는 작은 조각: 장식 상자 안 빈칸이나 몸통 위에 얹는다
+    "decor_cup": (["ooo", "oTo", "ooo"], {"o": "outline", "T": "lunch_box"}),          # 찻잔 (도시락 Lv2)
+    "decor_apple": (["g.", "AA", "AA"], {"g": "mat", "A": "charm_red"}),               # 사과 (도시락 Lv4)
+    "decor_patch": (["WPW", "PWP"], {"W": "white", "P": "cushion_pink"}),              # 쿠션 무늬 (침대 Lv2·4)
+    "decor_hand": (["R", "R", "o"], {"R": "charm_red", "o": "outline"}),              # 시계 바늘 (시간 관리 Lv2)
+    "decor_plate": (["GGG"], {"G": "gold"}),                                          # 금색 판 (시간 관리 Lv4)
+    "decor_label": (["WW"], {"W": "white"}),                                          # 병 라벨 (건강 관리 Lv2·4)
+    "decor_towel": (["WWW", "BBB"], {"W": "white", "B": "water"}),                    # 수건 (덤벨 Lv2, 매트 Lv2)
+    "decor_shaker": (["oo", "WW", "oo"], {"o": "outline", "W": "white"}),             # 쉐이커 (덤벨 Lv4)
+    "decor_twig": (["LL"], {"L": "mat"}),                                             # 작은 잎 (화분 Lv2·4)
+    "decor_block": (["ooo", "oYo"], {"o": "outline", "Y": "cushion_yellow"}),         # 요가 블록 (매트 Lv4)
+    # 최고 레벨 반짝이: 장식 상자 오른쪽 위 구석에 얹는다(시설 건물은 사면 바로)
+    "decor_sparkle": ([".G.", "GWG", ".G."], {"G": "gold", "W": "white"}),
 })
 # 장식이 있는 업그레이드 id (시설 3종 제외, 패널 순서) — 11종
 DECOR_IDS = [UPGRADE_MENU, UPGRADE_BED, UPGRADE_BOOK, UPGRADE_TIME, UPGRADE_HEALTH_CARE,
@@ -2292,30 +2305,42 @@ DECOR_IDS = [UPGRADE_MENU, UPGRADE_BED, UPGRADE_BOOK, UPGRADE_TIME, UPGRADE_HEAL
 # 열·행 차이는 장식 자리(DECOR_SLOTS)의 왼쪽 위 칸에서 잰다. 목록 순서대로 그린다.
 # 레벨이 오를수록 조각이 늘어난다: 대개 Lv1 기본, Lv3·Lv5에 하나씩 더(책장 책·부적은 레벨마다 하나)
 DECOR_PIECES = {
-    UPGRADE_MENU: [(1, "decor_lunchbox", 0, 4), (3, "decor_lunchbox2", 0, 0),
-                   (5, "decor_riceball", 9, 4)],                         # 14 x 9칸
-    UPGRADE_BED: [(1, "decor_cushion_sky", 0, 6), (3, "decor_cushion_pink", 0, 3),
+    UPGRADE_MENU: [(1, "decor_lunchbox", 0, 4), (2, "decor_cup", 9, 1), (3, "decor_lunchbox2", 0, 0),
+                   (4, "decor_apple", 12, 0), (5, "decor_riceball", 9, 4)],   # 14 x 9칸
+    UPGRADE_BED: [(1, "decor_cushion_sky", 0, 6), (2, "decor_patch", 2, 7),
+                  (3, "decor_cushion_pink", 0, 3), (4, "decor_patch", 2, 4),
                   (5, "decor_cushion_yellow", 0, 0)],                    # 7 x 10칸
     UPGRADE_BOOK: [(1, "decor_shelf", 0, 0), (1, "decor_book_pink", 2, 2),
                    (2, "decor_book_mint", 4, 2), (3, "decor_book_sky", 6, 2),
                    (4, "decor_book_yellow", 8, 2), (5, "decor_book_apricot", 10, 2)],  # 14 x 9칸
-    UPGRADE_TIME: [(1, "decor_clock", 0, 2), (3, "decor_pendulum", 2, 11),
-                   (5, "decor_clock_bells", 0, 0)],                      # 7 x 15칸
-    UPGRADE_HEALTH_CARE: [(1, "decor_vitamin_orange", 0, 0), (3, "decor_vitamin_green", 3, 0),
+    UPGRADE_TIME: [(1, "decor_clock", 0, 2), (2, "decor_hand", 3, 4), (3, "decor_pendulum", 2, 11),
+                   (4, "decor_plate", 2, 9), (5, "decor_clock_bells", 0, 0)],   # 7 x 15칸
+    UPGRADE_HEALTH_CARE: [(1, "decor_vitamin_orange", 0, 0), (2, "decor_label", 1, 3),
+                          (3, "decor_vitamin_green", 3, 0), (4, "decor_label", 4, 3),
                           (5, "decor_vitamin_pink", 6, 0)],              # 10 x 6칸
     UPGRADE_CHARM: [(1, "decor_charm_rack", 0, 0), (1, "decor_charm_red", 1, 3),
                     (2, "decor_charm_sky", 4, 3), (3, "decor_charm_red", 7, 3)],  # 11 x 10칸
     UPGRADE_SCHOLARSHIP: [(1, "decor_trophy", 0, 0)],                    # 6 x 7칸
-    UPGRADE_HEALTH_MAX: [(1, "decor_dumbbell", 0, 4), (3, "decor_dumbbell", 0, 0),
+    UPGRADE_HEALTH_MAX: [(1, "decor_dumbbell", 0, 4), (2, "decor_towel", 10, 0),
+                         (3, "decor_dumbbell", 0, 0), (4, "decor_shaker", 13, 0),
                          (5, "decor_kettlebell", 10, 3)],                # 15 x 8칸
-    UPGRADE_MENTAL_MAX: [(1, "decor_pot", 0, 9), (1, "decor_sprout", 0, 6),
-                         (3, "decor_leaves", 0, 3), (5, "decor_bloom", 1, 0)],  # 6 x 13칸
-    UPGRADE_SELF_CARE: [(1, "decor_mat", 0, 4), (3, "decor_mat_roll", 1, 0),
-                        (5, "decor_water", 10, 0)],                      # 14 x 7칸
+    UPGRADE_MENTAL_MAX: [(1, "decor_pot", 0, 9), (1, "decor_sprout", 0, 6), (2, "decor_twig", 0, 8),
+                         (3, "decor_leaves", 0, 3), (4, "decor_twig", 4, 8),
+                         (5, "decor_bloom", 1, 0)],                      # 6 x 13칸
+    UPGRADE_SELF_CARE: [(1, "decor_mat", 0, 4), (2, "decor_towel", 6, 2), (3, "decor_mat_roll", 1, 0),
+                        (4, "decor_block", 6, 0), (5, "decor_water", 10, 0)],   # 14 x 7칸
     UPGRADE_RESEARCH: [(1, "decor_papers", 0, 3), (2, "decor_papers", 6, 3),
                        (3, "decor_papers_top", 0, 0), (4, "decor_papers_top", 6, 0),
                        (5, "decor_seal", 4, 0)],                         # 11 x 9칸 (레벨마다 하나씩)
 }
+# 최고 레벨이면 장식 상자 오른쪽 위 구석(3 x 3칸)에 반짝이를 얹는다(트로피처럼 최대 1레벨이면 사자마자)
+DECOR_SPARKLE = "decor_sparkle"
+DECOR_SPARKLE_SIZE = 3              # 반짝이 한 변 칸 수
+for _upgrade_id, _pieces in DECOR_PIECES.items():
+    _width = max(col + len(SCENE_SPRITES[name][FIRST_ROW][FIRST_ROW])
+                 for _, name, col, _ in _pieces)
+    _pieces.append((UPGRADES_BY_ID[_upgrade_id][UPGRADE_MAX_LEVEL], DECOR_SPARKLE,
+                    _width - DECOR_SPARKLE_SIZE, FIRST_ROW))
 # 장식 자리: 장소 -> {업그레이드 id: (왼쪽 열, 위 행)} (무대 안쪽 칸 좌표, 가로 124 x 세로 84칸).
 # (2026-11-24 배치 재설계) 장소마다 따로, 뜻이 맞는 것끼리 모은다(소풍·간식·독서·운동·무대 옆).
 # 지키는 것: 바깥은 땅(행 45) 위, 제자(4학년 + 외형 + 점프 열 34~95 행 11~71)·행동 소품(열 86~109 행 62~74)·

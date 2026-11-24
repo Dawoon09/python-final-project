@@ -133,4 +133,4 @@ def test_long_money_popup_stays_in_stage(g):
 
 def test_research_decor_every_level(g):
     counts = [len(g.get_decor_pieces(R, lv)) for lv in range(6)]
-    assert counts == [0, 1, 2, 3, 4, 5]
+    assert counts == [0, 1, 2, 3, 4, 6]   # Lv5: 금색 인장 + 최고 레벨 반짝이
