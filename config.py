@@ -1321,6 +1321,27 @@ UPGRADE_COST_RIGHT = 248            # 가격 글자 오른쪽 끝 x
 UPGRADE_FOOTER_X = 28               # 바닥 줄(고른 항목 효과) 글자 왼쪽 x
 UPGRADE_FOOTER_Y = 454              # 바닥 줄 가운데 y (글자 445~464: 마지막 줄 아래 끝 438 아래, 꼬리까지 외곽선 안)
 UPGRADE_FOOTER_TEXT = "효과: {}"     # 바닥 줄 글자 틀: 고른 줄(↑↓)의 레벨당 효과
+
+# 이벤트 로그 패널 (L키, 게임 화면): 업그레이드 패널과 같은 자리에 이번 판 이벤트를 새것부터 보인다
+EVENT_LOG_PANEL_RECT = UPGRADE_PANEL_RECT   # 패널 자리 (12, 116, 256, 352)
+EVENT_LOG_TITLE = "이벤트 로그"
+EVENT_LOG_CLOSE_TEXT = "L 닫기"         # 머리 줄 오른쪽 안내
+EVENT_LOG_EMPTY_TEXT = "아직 이벤트가 없어요"
+EVENT_LOG_LINE_TEXT = "{time} · {title}"   # 첫 줄: 일어난 게임 시간 · 이벤트 이름
+EVENT_LOG_CHOICE_TEXT = "{option} → {result}"  # 선택지형 둘째 줄: 고른 선택지 → 결과
+EVENT_LOG_MAX = 30                     # 이번 판에 기억하는 항목 수 (넘으면 오래된 것부터 지움)
+EVENT_LOG_ROWS = 7                     # 패널에 보이는 항목 수 (새것부터)
+EVENT_LOG_X = 24                       # 항목 상자 왼쪽 x
+EVENT_LOG_WIDTH = 232                  # 항목 상자 가로 길이 -> 오른쪽 끝 256
+EVENT_LOG_TOP = 156                    # 첫 항목 상자 위쪽 y (머리 줄 아래)
+EVENT_LOG_HEIGHT = 40                  # 항목 상자 세로 길이 (글자 2줄)
+EVENT_LOG_STEP = 42                    # 항목 사이 거리 (7개 -> 마지막 아래 끝 156 + 6 x 42 + 40 = 448)
+EVENT_LOG_PAD_X = 8                    # 상자 왼쪽 끝에서 글자까지 여백
+EVENT_LOG_LINE1_DY = 12                # 상자 위 끝에서 첫 줄 가운데까지
+EVENT_LOG_LINE2_DY = 28                # 상자 위 끝에서 둘째 줄 가운데까지
+EVENT_LOG_ELLIPSIS = "…"               # 상자보다 긴 글자는 잘라서 끝에 붙인다
+EVENT_LOG_HINT_TEXT = "L: 이벤트 로그"  # 게임 화면 오른쪽 아래(경과 시간 밑) 안내
+EVENT_LOG_HINT_Y = 577                 # 안내 가운데 y (경과 시간 548 아래, 화면 600 안)
 UPGRADE_LEVEL_TEXT = "Lv {}/{}"
 UPGRADE_COST_TEXT = "{}"                # 가격 글자(숫자만, 단위 연구비는 머리 줄에 보인다)
 UPGRADE_MAX_TEXT = "MAX"

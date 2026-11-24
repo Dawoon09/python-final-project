@@ -33,6 +33,8 @@ PANEL_MOVE_KEYS = {
 PANEL_BUY_KEYS = (pygame.K_RETURN, pygame.K_KP_ENTER)
 # 타이틀의 새 게임 키(N)와 확인 상자 키 (ESC는 어디서나 종료라 취소에 쓰지 않는다)
 NEW_GAME_KEY = pygame.K_n
+# 게임 화면에서 이벤트 로그 패널을 여닫는 키
+EVENT_LOG_KEY = pygame.K_l
 NEW_GAME_YES_KEYS = (pygame.K_y,)
 NEW_GAME_NO_KEYS = (pygame.K_n, pygame.K_BACKSPACE)
 
@@ -88,6 +90,7 @@ class Game:
         self.upgrade_panel_open = False    # 업그레이드 패널이 열려 있으면 True
         self.upgrade_cursor = config.UPGRADE_CURSOR_START  # 패널에서 고른 줄 번호(↑↓)
         self.new_game_confirm = False      # 타이틀에서 새 게임(N) 확인 상자가 떠 있으면 True
+        self.event_log_open = False        # 게임 화면에서 이벤트 로그 패널(L)이 열려 있으면 True
         self.buttons = self.make_buttons()
         self.choice_buttons = self.make_choice_buttons()  # 대화창 선택 버튼 2개
         # [업그레이드 U] 버튼: 게임 화면용, 엔딩 화면용(가운데 패널 아래)
@@ -121,6 +124,7 @@ class Game:
         self.last_action = None             # 마지막으로 실행된 행동 이름. 아직 없으면 None
         self.ending = None                # 엔딩 이름. 엔딩 전에는 None
         self.current_event = None         # 대화창에 떠 있는 선택지형 이벤트. 없으면 None
+        self.event_log = []               # 이번 판 이벤트 기록 [{"time", "title", "result"}, ...] (오래된 것부터)
         self.clear_effects()
 
     def start_new_game(self):
@@ -467,7 +471,38 @@ class Game:
         if self.state not in (config.STATE_PLAYING, config.STATE_ENDING):
             return False
         self.upgrade_panel_open = not self.upgrade_panel_open
+        if self.upgrade_panel_open:
+            self.event_log_open = False   # 같은 자리라 하나만 연다
         return True
+
+    def toggle_event_log(self):
+        """이벤트 로그 패널을 열거나 닫는다. 게임 화면에서만 되고, 열면 업그레이드 패널은 닫는다."""
+        if self.state != config.STATE_PLAYING:
+            return False
+        self.event_log_open = not self.event_log_open
+        if self.event_log_open:
+            self.upgrade_panel_open = False
+        return True
+
+    def add_event_log(self, title, result):
+        """이벤트 로그에 지금 게임 시간·이벤트 이름·결과 글자를 한 항목 더한다(최대 EVENT_LOG_MAX개)."""
+        self.event_log.append({"time": self.student.elapsed, "title": title, "result": result})
+        del self.event_log[:-config.EVENT_LOG_MAX]
+
+    def get_event_log_rows(self):
+        """패널에 보일 로그 항목들(새것부터, 최대 EVENT_LOG_ROWS개)을 돌려준다."""
+        return list(reversed(self.event_log))[:config.EVENT_LOG_ROWS]
+
+    def get_log_result_text(self, effects, trait=None, look=None, money=config.MONEY_START):
+        """이벤트 결과(게이지 변화·특성·외형·연구비)를 "멘탈 +15 · 특성: 명상" 같은 한 줄로 돌려준다."""
+        option = {config.OPTION_EFFECTS: effects, config.OPTION_TRAIT: trait,
+                  config.OPTION_LOOK: look}
+        parts = [text for text, _ in self.get_option_preview(option)]
+        if money > config.MONEY_START:
+            if parts == [config.PREVIEW_NONE_TEXT]:
+                parts = []
+            parts.append(config.POPUP_TEXT.format(config.MONEY_LABEL, money))
+        return config.PREVIEW_SEPARATOR.join(parts)
 
     def get_upgrade_row_rect(self, index):
         """업그레이드 패널의 index번째 항목 줄 사각형(클릭 판정·그리기용)을 돌려준다."""
@@ -558,6 +593,8 @@ class Game:
             self.start_gauge_effects(before, for_event=True)
             if scholarship > config.MONEY_START:
                 self.spawn_event_popups([(config.MONEY_LABEL, scholarship)])
+            self.add_event_log(event[config.EVENT_TITLE],
+                               self.get_log_result_text(effects, money=scholarship))
             self.check_promotion()
             self.check_ending()
             return
@@ -583,6 +620,11 @@ class Game:
         option = self.current_event[config.EVENT_OPTIONS][index]
         before = self.get_gauge_values()
         self.student.apply_option(option)
+        result = self.get_log_result_text(option[config.OPTION_EFFECTS],
+                                          option[config.OPTION_TRAIT], option[config.OPTION_LOOK])
+        self.add_event_log(self.current_event[config.EVENT_TITLE],
+                           config.EVENT_LOG_CHOICE_TEXT.format(option=option[config.OPTION_TEXT],
+                                                               result=result))
         self.earn_knowledge_money(before[config.GAUGE_KNOWLEDGE])
         self.current_event = None
         self.state = config.STATE_PLAYING
@@ -616,6 +658,9 @@ class Game:
                 if self.is_graduation_ending():
                     self.enter_grad_school()
         elif self.state == config.STATE_PLAYING:
+            if event.type == pygame.KEYDOWN and event.key == EVENT_LOG_KEY:
+                self.toggle_event_log()
+                return
             if self.handle_upgrade_input(event):
                 return
             if event.type == pygame.KEYDOWN and event.key in POLICY_KEYS:
@@ -836,6 +881,8 @@ class Game:
             if self.upgrade_panel_open:
                 self.draw_upgrade_panel()
                 self.draw_upgrade_tooltip()
+            elif self.event_log_open:
+                self.draw_event_log_panel()
             else:
                 self.draw_status_tooltip()
                 self.draw_trait_tooltip()
@@ -1277,7 +1324,7 @@ class Game:
     def get_hovered_status(self):
         """마우스가 올라간 상태 배지의 (번호, 이름)을 돌려준다. 없으면 None."""
         if (self.mouse_pos is None or self.state != config.STATE_PLAYING
-                or self.upgrade_panel_open):
+                or self.upgrade_panel_open or self.event_log_open):
             return None
         for index, name in enumerate(self.get_status_names()):
             if self.student.get_badge_rect(index, config.STATUS_BADGE_Y).collidepoint(
@@ -1305,7 +1352,7 @@ class Game:
     def get_hovered_trait(self):
         """마우스가 올라간 특성 배지의 (번호, 이름)을 돌려준다. 없으면 None."""
         if (self.mouse_pos is None or self.state != config.STATE_PLAYING
-                or self.upgrade_panel_open):
+                or self.upgrade_panel_open or self.event_log_open):
             return None
         for index, name in enumerate(self.student.traits):
             if self.student.get_badge_rect(index, config.TRAIT_BADGE_Y).collidepoint(
@@ -1637,6 +1684,7 @@ class Game:
             self.draw_promotion_notice()
         self.draw_buttons()
         self.draw_elapsed_time()
+        self.draw_event_log_hint()
 
     def draw_stage_effects(self):
         """제자 무대 안에 파티클(E2)과 수치 팝업(E3)을 그린다."""
@@ -1794,6 +1842,62 @@ class Game:
         rect = text.get_rect()
         rect.center = (config.ELAPSED_CENTER_X, config.ELAPSED_CENTER_Y)
         self.screen.blit(text, rect)
+
+    def draw_event_log_hint(self):
+        """경과 시간 밑에 작은 글씨로 "L: 이벤트 로그" 안내를 쓴다."""
+        hint = render_text(self.small_font, config.EVENT_LOG_HINT_TEXT, config.COLOR_TEXT_SOFT)
+        hint_rect = hint.get_rect()
+        hint_rect.center = (config.ELAPSED_CENTER_X, config.EVENT_LOG_HINT_Y)
+        self.screen.blit(hint, hint_rect)
+
+    def fit_text(self, font, text, max_width):
+        """text가 max_width보다 넓으면 뒤를 잘라 "…"를 붙여 들어가게 만든 글자를 돌려준다."""
+        if font.size(text)[config.FIRST_ROW] <= max_width:
+            return text
+        while text and font.size(text + config.EVENT_LOG_ELLIPSIS)[config.FIRST_ROW] > max_width:
+            text = text[:-config.LEVEL_STEP]
+        return text + config.EVENT_LOG_ELLIPSIS
+
+    def get_event_log_row_rect(self, index):
+        """이벤트 로그 패널의 index번째(새것부터) 항목 상자 사각형을 돌려준다."""
+        return pygame.Rect(config.EVENT_LOG_X, config.EVENT_LOG_TOP + index * config.EVENT_LOG_STEP,
+                           config.EVENT_LOG_WIDTH, config.EVENT_LOG_HEIGHT)
+
+    def draw_event_log_panel(self):
+        """이벤트 로그 패널(상태 패널 자리, 반투명 없음)에 이번 판 이벤트를 새것부터 그린다."""
+        panel = pygame.Rect(config.EVENT_LOG_PANEL_RECT)
+        draw_pixel_box(self.screen, panel, config.COLOR_BG, config.COLOR_PANEL_LIGHT,
+                       config.COLOR_PANEL_SHADOW, drop=config.COLOR_DROP)
+        title = render_text(self.event_font, config.EVENT_LOG_TITLE)
+        title_rect = title.get_rect()
+        title_rect.midleft = (config.UPGRADE_HEADER_LEFT, config.UPGRADE_HEADER_Y)
+        self.screen.blit(title, title_rect)
+        close = render_text(self.small_font, config.EVENT_LOG_CLOSE_TEXT, config.COLOR_TEXT_SOFT)
+        close_rect = close.get_rect()
+        close_rect.midright = (config.UPGRADE_HEADER_RIGHT, config.UPGRADE_HEADER_Y)
+        self.screen.blit(close, close_rect)
+        rows = self.get_event_log_rows()
+        if not rows:
+            empty = render_text(self.small_font, config.EVENT_LOG_EMPTY_TEXT, config.COLOR_TEXT_SOFT)
+            empty_rect = empty.get_rect()
+            empty_rect.midleft = (config.EVENT_LOG_X + config.EVENT_LOG_PAD_X,
+                                  config.EVENT_LOG_TOP + config.EVENT_LOG_LINE1_DY)
+            self.screen.blit(empty, empty_rect)
+            return
+        width = config.EVENT_LOG_WIDTH - config.EVENT_LOG_PAD_X * config.HALF
+        for index, row in enumerate(rows):
+            box = self.get_event_log_row_rect(index)
+            draw_pixel_box(self.screen, box, config.COLOR_PANEL_LIGHT)
+            line1 = config.EVENT_LOG_LINE_TEXT.format(time=format_time(row["time"]),
+                                                      title=row["title"])
+            for text, dy, color in ((line1, config.EVENT_LOG_LINE1_DY, config.COLOR_TEXT),
+                                    (row["result"], config.EVENT_LOG_LINE2_DY,
+                                     config.COLOR_TEXT_SOFT)):
+                surface = render_text(self.small_font, self.fit_text(self.small_font, text, width),
+                                      color)
+                rect = surface.get_rect()
+                rect.midleft = (box.left + config.EVENT_LOG_PAD_X, box.top + dy)
+                self.screen.blit(surface, rect)
 
     def draw_info_bar(self):
         """상단 정보바를 그린다."""
