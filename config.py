@@ -557,6 +557,19 @@ START_HINT_TEXT = "Enter를 눌러 시작"
 START_HINT_Y = 408          # 시작 안내 가운데 y
 HINT_ARROW_GAP = 12         # 안내 글자와 앞 화살표 사이 간격
 
+# 새 게임(N): 타이틀 시작 안내 아래 둘째 줄 안내, 진행이 있으면 확인 상자(기획서 5·6절)
+NEW_GAME_HINT_TEXT = "Enter 이어하기 · N 새 게임 (처음부터)"
+NEW_GAME_HINT_Y = 448       # 둘째 줄 가운데 y (시작 안내 408 아래, 패널 아래 끝 496 안)
+NEW_GAME_CONFIRM_RECT = (148, 382, 504, 104)  # 확인 상자 (x, y, 가로, 세로): 시작 안내 자리를 덮음
+NEW_GAME_CONFIRM_TITLE = "새 게임을 시작할까요?"
+NEW_GAME_CONFIRM_TITLE_Y = 406      # 확인 상자 첫 줄 가운데 y
+NEW_GAME_CONFIRM_WARNING = "업그레이드·연구비·명성이 모두 사라져요"  # 최고 기록은 남는다(기획서 3절)
+NEW_GAME_CONFIRM_WARNING_Y = 436    # 둘째 줄(경고) 가운데 y, 대화창 글자 크기
+NEW_GAME_CONFIRM_KEYS = "Y: 시작 · N 또는 Backspace: 취소"
+NEW_GAME_CONFIRM_KEYS_Y = 462       # 셋째 줄(키 안내) 가운데 y
+NEW_GAME_CONFIRM_BOX = (COLOR_PINK_LIGHT, COLOR_WHITE, COLOR_PINK)  # 확인 상자 (몸통, 위 하이라이트, 아래 그림자)
+COLOR_NEW_GAME_WARNING = COLOR_RED_DARK  # 경고 글자 색
+
 # 장식 별: (x, y, 색). 별 하나는 7 x 7칸 x PIXEL_SIZE = 28 x 28 픽셀
 TITLE_STARS = [
     (140, 104, COLOR_PINK), (628, 116, COLOR_SKY),
@@ -1126,6 +1139,7 @@ LOOKS_FRONT = [LOOK_HEADBAND, LOOK_HEART_PIN, LOOK_SUNGLASSES, LOOK_COFFEE]
 # ---------------------------------------------------------------
 MONEY_START = 0             # 연구비 기본값 (record.json 에 없으면 0)
 LEVEL_START = 0             # 업그레이드 레벨 기본값 (사지 않았으면 0)
+FAME_START = 0              # 명성 기본값 (새 게임 N으로 처음부터 시작할 때)
 LEVEL_STEP = 1              # 업그레이드를 한 번 사면 오르는 레벨
 FAME_MONEY_BONUS = 0.1      # 명성 1당 연구비 획득 배수 +0.1: 배수 = 1 + 0.1 x 명성
 MONEY_EPSILON = 1e-9        # 내림(int) 전에 더하는 아주 작은 값 (1.6 x 80 = 127.999… 처럼 곱셈 결과가 정수 바로 아래로 나오는 소수 오차 방지)
