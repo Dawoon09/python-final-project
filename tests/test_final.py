@@ -347,43 +347,106 @@ def _readme():
     return (ROOT / "README.md").read_text(encoding="utf-8")
 
 
+# (토큰 정리) README는 사용자용 소개(규칙 요약 8줄 + 기획서 절 링크)가 되어 행동 효과·진급·등급·
+# 방침·업그레이드 표가 빠졌다. 표 대조는 기획서 쪽 검사(아래 test_spec_*, test_idle_final.py)가 맡는다.
 @pytest.mark.parametrize("text", [
     "python main.py",
     "py -3.12 main.py",
+    "py -3.12 -m pip install -r requirements.txt",
     "py -3.12 -m pytest",
     "py -3.12 -m PyInstaller --onefile --noconsole main.py",
     "dist/main.exe",
     # 방치형 README 3절 조작표(화면 열 추가)
+    "| 조작 | 마우스 | 키보드 | 화면 |",
     "| 게임 시작 | - | Enter | 타이틀 |",
     "| 환생 (졸업·대학원 수료) / 다시 하기 (휴학) | - | R | 엔딩 |",
-    # (M단위) 학식은 버프 든든함만, 휴식이 체력·멘탈을 회복한다
-    "| 학식 먹이기 | - (버프 든든함 {:g}초) | - | - |".format(config.FULL_DURATION),
-    "| 쉬게 하기 | +{} | +{} | {} |".format(config.REST_HEALTH, config.REST_MENTAL, config.REST_KNOWLEDGE),
-    "| 공부시키기 | -5 | -8 | +10 (시험 기간 +20) |",
-    # (L단위) 지식 기준 졸업 문구("수석 졸업(1000 이상)…", "엔딩 경계값(749/750/999/1000)")는
-    # 기획서 11절로 규칙이 없어져 뺐다. 새 규칙 문구는 test_readme_describes_no_time_limit에서 본다.
-    "제자는 2초마다(첫 행동은 시작 2초 뒤)",   # G단위: 쿨타임 1초 대신 자동 행동 간격 2초
-    "마지막 15초",
+    "| 대학원 진학 | - | C | 졸업 엔딩 |",
+    "| 게임 종료 | 창 닫기 버튼 | ESC | 모든 화면 |",
 ])
 def test_readme_mentions(text):
-    """README 의 실행·빌드 명령, 조작키, 수치가 코드·기획서와 같다."""
+    """README 에 실행·테스트·빌드 명령과 조작표가 있다."""
     assert text in _readme(), text
 
 
-@pytest.mark.parametrize("old, new", [
-    ("240초(1~4학년, 학년당 60초)", "누적 지식"),
-    ("60초마다 학년이 오르고", "| 2학년 | {} |".format(config.GRADE_GOALS[0])),
-    ("수석 졸업(1000 이상)", "{}초".format(config.TOP_GRADUATE_SECONDS)),
+@pytest.mark.parametrize("number, heading", [
+    (2, "게임 규칙"), (3, "연구비·업그레이드·환생·대학원"), (4, "랜덤 이벤트"), (6, "화면 구성"),
+    (7, "기능 목록"), (8, "개발 과정"), (10, "밸런스"),
 ])
-def test_readme_describes_no_time_limit(old, new):
-    """(L단위) README가 예전 시간 제한 규칙을 말하지 않고 새 규칙(지식 진급·걸린 시간 등급)을 설명한다.
-
-    수석 기준은 config.TOP_GRADUATE_SECONDS(B안 330초)를 따른다. 팀장 결정으로 README에는 "240초"가 어디에도 남지 않는다.
-    """
+def test_readme_links_spec_sections(number, heading):
+    """README 가 기획서로 링크하고, 가리키는 절 번호가 기획서 실제 제목과 맞다."""
     text = _readme()
-    assert old not in text and new in text
-    assert "240초" not in text
+    assert "](docs/기획서.md)" in text
+    assert "{}절".format(number) in text
+    spec_headings = [line for line in (ROOT / "docs" / "기획서.md").read_text(encoding="utf-8")
+                     .splitlines() if line.startswith("## ")]
+    assert any(line.startswith("## {}. ".format(number)) and heading in line
+               for line in spec_headings), (number, heading)
+    assert any("변경 이력" in line for line in spec_headings) and "변경 이력" in text
 
+
+def test_readme_summary_matches_config():
+    """README 규칙 요약에 적힌 수치가 config와 같다(진급·졸업 지식, 등급 시간, 주기, 게이지)."""
+    text = _readme()
+    goals = " / ".join(str(g) for g in config.GRADE_GOALS)
+    assert "누적 지식 {}".format(goals) in text
+    assert "{}이면 졸업".format(config.GRADUATION_KNOWLEDGE) in text
+    assert "{}초 이하면 수석".format(config.TOP_GRADUATE_SECONDS) in text
+    assert "{}초 이하면 무사".format(config.NORMAL_GRADUATE_SECONDS) in text
+    assert "마지막 {}초".format(config.EXAM_SECONDS) in text
+    assert "{:g}초마다".format(_source_interval()) in text
+    assert config.HEALTH_START == config.MENTAL_START
+    assert "시작 {}".format(config.HEALTH_START) in text and "최대 {}".format(config.GAUGE_MAX) in text
+    assert "업그레이드 {}종".format(len(config.UPGRADES)) in text
+    for word in (config.BUFF_FULL, config.DEBUFF_TIRED, config.DEBUFF_DEPRESSED, config.CONDITION_GOOD):
+        assert word in text, word
+
+
+@pytest.mark.parametrize("old", [
+    "240초", "60초마다 학년이 오르고", "수석 졸업(1000 이상)", "1000/750", "1000 이상", "750 이상",
+    "200초", "| 2학년 | 200 |", "| 학식 먹이기 | +20 |", "×1.8^", "0.25n", "61,590", "업그레이드 10종",
+])
+def test_readme_has_no_stale_values(old):
+    """(L·M·B안) README 에 예전 규칙 수치가 남아 있지 않다."""
+    assert old not in _readme(), old
+
+
+# ---------- README 에서 빠진 표의 기획서 대조 ----------
+
+def _source_interval():
+    """config.py 에 적힌 자동 행동 간격(conftest no_auto 가 테스트 중 값을 바꾸므로 소스에서 읽는다)."""
+    tree = ast.parse((ROOT / "config.py").read_text(encoding="utf-8"))
+    return next(n.value.value for n in tree.body if isinstance(n, ast.Assign)
+                and getattr(n.targets[0], "id", "") == "AUTO_ACTION_INTERVAL")
+
+
+def _spec():
+    return (ROOT / "docs" / "기획서.md").read_text(encoding="utf-8")
+
+
+def test_spec_action_effect_table_matches_config():
+    """기획서 2절 '행동 효과' 표의 기본값이 config와 같다(README 행동 표 검사를 옮김)."""
+    spec = _spec()
+    rows = [
+        "| 학식 든든함 지속 | {:g}초 |".format(config.FULL_DURATION),
+        "| 휴식 체력 | +{} |".format(config.REST_HEALTH),
+        "| 휴식 멘탈 | +{} |".format(config.REST_MENTAL),
+        "| 휴식 지식 | {} |".format(config.REST_KNOWLEDGE),
+        "| 공부 지식 | +{} (시험 기간 +{}) |".format(config.STUDY_KNOWLEDGE, config.STUDY_KNOWLEDGE_EXAM),
+        "| 공부 체력 | {} |".format(config.STUDY_HEALTH),
+        "| 공부 멘탈 | {} |".format(config.STUDY_MENTAL),
+    ]
+    for row in rows:
+        assert row in spec, row
+
+
+def test_spec_promotion_table_and_cycle_match_config():
+    """기획서 2절 진급표·자동 행동 간격·시험 기간이 config와 같다(README 진급표 검사를 옮김)."""
+    spec = _spec()
+    for grade, goal in zip((2, 3, 4), config.GRADE_GOALS):
+        assert "| {}학년 | {} |".format(grade, goal) in spec
+    assert "| 졸업 | {} |".format(config.GRADUATION_KNOWLEDGE) in spec
+    assert "**{:g}초마다**".format(_source_interval()) in spec
+    assert config.EXAM_SECONDS == 15 and "45초 겨울(시험 기간)" in spec
 
 
 @pytest.mark.parametrize("name", ["main.py", "config.py", "student.py", "button.py",

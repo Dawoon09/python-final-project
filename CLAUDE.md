@@ -1,45 +1,32 @@
 # 제자 키우기
 
-교수가 되어 신입생 제자 한 명을 돌보며 졸업시키는 pygame 방치형 육성 게임. 시간 제한 없이 누적 지식(학점)으로 1~4학년을 진급하고, 졸업까지 걸린 시간으로 등급이 정해진다. 제자는 스스로 행동하고, 플레이어는 일과표 방침과 업그레이드를 정한다. 졸업 뒤에는 환생하거나 대학원으로 이어 간다.
+pygame 방치형 육성 게임(대학교 1학년 과제). 교수가 제자를 누적 지식으로 진급·졸업시키고, 졸업 뒤 환생하거나 대학원에 간다.
 
-- 기준 문서: `docs/기획서.md` (유일한 기준, 최종 게임 한 문서). 요약 기준표는 스킬 `jeja-spec`(절 번호가 기획서와 같다). 바뀐 과정은 기획서 부록 "변경 이력".
-- 기획서와 다르게 구현해야 할 이유가 생기면, 바꾸기 전에 사용자에게 먼저 물어본다.
+## 기준
 
-## 실행 방법
+- 규칙·수치의 유일한 기준: `docs/기획서.md`. 빠른 기준표·테스트 계약 이름: 스킬 `jeja-spec`. 변경 기록: 기획서 부록 "변경 이력".
+- 기획서와 다르게 구현할 이유가 생기면 바꾸기 전에 사용자에게 묻는다. 기획서에 없는 기능은 추가하지 않는다.
 
-```
-python main.py
-```
+## 실행
 
-이 PC에는 Python 3.14도 설치되어 있으므로 3.12로 실행하려면 `py -3.12 main.py`를 쓴다.
-
-테스트: `py -3.12 -m pytest` (검수팀 테스트는 `tests/`, `SDL_VIDEODRIVER=dummy`)
+- 게임: `py -3.12 main.py` (이 PC에는 3.14도 있으니 3.12를 지정)
+- 테스트: `py -3.12 -m pytest -q` (`tests/`, `SDL_VIDEODRIVER=dummy`, 약 3분)
+- 빌드: 스킬 `build-exe`
 
 ## 제약
 
-- Python 3.12, pygame 2.6, 표준 라이브러리(json, sys, os, random)만 사용한다. 다른 외부 라이브러리는 쓰지 않는다.
-  - random은 랜덤 이벤트(기획서 4절) 전용. 게임 객체마다 `random.Random(시드)` 인스턴스를 두고 그것만 쓴다(테스트에서 시드 고정).
-  - 예외: 테스트 도구 pytest(개발용, 게임 실행에는 쓰지 않음), 빌드 도구 PyInstaller.
-- 이미지·사운드 파일은 쓰지 않는다. 모든 그래픽은 `pygame.draw`의 도형으로만 그린다.
-  - 예외: `docs/images/`의 README 실행 화면 스크린샷(PNG). 게임이 읽지 않는 문서 자료다.
-- 한글 폰트는 `pygame.font.SysFont("malgungothic", 크기)`를 쓴다. 기본 폰트(`Font(None)`)는 한글이 깨진다.
-- 기획서 구조대로 클래스는 Student, Button, Game 3개로 한다. 파일 구성:
-  - `main.py`: 실행 진입점
-  - `student.py`: Student 클래스
-  - `button.py`: Button 클래스
-  - `game.py`: Game 클래스
-  - `config.py`: 게이지 시작값, 증감량, 시간, 엔딩 기준 같은 모든 수치 상수
-- 기획서에 없는 기능은 추가하지 않는다.
-- 대학교 1학년 과제다. 코드는 읽기 쉽게 쓰고, 클래스와 함수마다 한국어 docstring을 단다.
-- Git: 루프 단위 하나가 검수를 통과할 때마다 한국어 메시지로 커밋한다. push는 사용자가 확인한 뒤에 한다.
-  - 지난 작업 브랜치(`feat/jeja-game`, `feat/pixel-ui`, `feat/random-events`, `feat/idle-mode`)는 모두 main에 합쳐졌다(PR #1~#4).
-  - 지금 작업 브랜치: `docs/final-spec` (기획서 최종 정리, README 실행 화면).
-
-## 저장소에 원래 있던 것
-
-`src/final_project/`, `tests/test_core.py`, `pyproject.toml`은 과제 템플릿 예제다. 지우지 않고 그대로 둔다.
+- Python 3.12, pygame 2.6, 표준 라이브러리 json·sys·os·random만. 예외: 개발 도구 pytest, PyInstaller.
+- random은 랜덤 이벤트 전용, Game의 `random.Random(시드)` 인스턴스만 쓴다.
+- 이미지·사운드 파일 금지, 그림은 `pygame.draw`만(예외: README 스크린샷 `docs/images/`).
+- 폰트 `pygame.font.SysFont("malgungothic", 크기)` (`Font(None)`은 한글이 깨짐).
+- 클래스는 Student(`student.py`), Button(`button.py`), Game(`game.py`) 3개. 진입점 `main.py`. 모든 수치·문구는 `config.py` 상수(다른 파일에 매직 넘버 금지).
+- 모든 클래스·함수에 한국어 docstring(한두 줄). 읽기 쉬운 코드.
+- `.py` 파일은 CRLF 줄바꿈을 유지한다.
+- `src/final_project/`, `tests/test_core.py`, `pyproject.toml`은 과제 템플릿 예제다. 지우지 않는다.
 
 ## 작업 방식
 
-- 개발: 에이전트 `dev-team` / 검수: 에이전트 `qa-team` (게임 코드는 고치지 않음)
-- 루프 단위: 지난 단위(1~7일차, 연출 A·B, 이벤트 C~E, 방치형 G~K, L, 밸런스 확정)는 기획서 "8. 개발 과정"에 있다. 새 작업도 단위 하나씩 개발 → 검수 → (불통과면 수정 → 재검수), 같은 단위 3회 불통과면 멈춘다.
+- 개발: 에이전트 `dev-team` / 검수: 에이전트 `qa-team`(`tests/`만 수정).
+- 단위 하나씩 개발 → 검수 → (불통과면 수정 → 재검수). 같은 단위 3회 불통과면 멈춘다.
+- 커밋: 검수 통과한 단위마다 한국어 메시지로, 리드가 한다. push는 사용자 확인 뒤.
+- 작업 브랜치: `feat/idle-depth` (지난 브랜치는 PR #1~#4로 main에 합쳐짐).

@@ -1,10 +1,10 @@
-"""방치형 최종 검수(K단위 2차): 실제 메인 루프 한 바퀴 + 기획서 10절·README 핵심 수치 대조.
+"""방치형 최종 검수(K단위 2차): 실제 메인 루프 한 바퀴 + 기획서 핵심 수치 대조(README는 요약 문구만).
 
 - 실제 Game.run() 루프에 이벤트를 넣어(pygame.event.get 대체, 시계는 0.1초 고정):
   타이틀 Enter -> 방치 플레이(방침 1·2 변경, 연구비로 업그레이드 구매) -> 지식 1100 졸업
   -> C 대학원 -> 2년차(누적 1500) -> 휴학(수료) -> R 환생 -> ESC, 새 Game 이 명성·업그레이드를 읽는다.
   (L단위, 기획서 11절: 졸업은 지식 목표, 등급은 걸린 시간, 대학원 년차는 지식 목표)
-- 기획서 10절·README 의 업그레이드 표(최대 레벨·기본 가격·레벨별 가격·총합), 방침 표,
+- 기획서의 업그레이드 표(최대 레벨·기본 가격·레벨별 가격·총합), 방침 표,
   졸업 기준, 대학원 배수, 가격 증가율이 config·Game 계산과 같다.
 """
 
@@ -192,12 +192,13 @@ def game_costs(uid):
 NAME_TO_ID = {u[config.UPGRADE_NAME]: u[config.UPGRADE_ID] for u in config.UPGRADES}
 
 
-# (M단위) README 갱신 대기 xfail 표시는 README 최신화(밸런스 B안, 2026-11-24)로 뺐다.
+# (토큰 정리) README는 사용자용 소개가 되어 업그레이드·방침·등급 표가 빠졌다.
+# 표-config 대조는 기획서만 하고, README는 요약 문구가 config와 맞는지만 본다.
 
 
-@pytest.mark.parametrize("source", ["spec", "readme"])
-def test_upgrade_tables_match_config(source):
-    text = spec_part("업그레이드") if source == "spec" else readme()
+def test_upgrade_tables_match_config():
+    """기획서 3절 업그레이드 표(분류·최대 레벨·기본 가격·레벨별 가격)가 config·Game 계산과 같다."""
+    text = spec_part("업그레이드")
     rows = table_rows(text, "분류 | 항목")
     assert [NAME_TO_ID[r[1]] for r in rows] == config.UPGRADE_IDS
     for row in rows:
@@ -205,7 +206,7 @@ def test_upgrade_tables_match_config(source):
         assert row[0] == u[config.UPGRADE_CATEGORY]
         assert int(row[3]) == u[config.UPGRADE_MAX_LEVEL], row
         assert int(row[4]) == u[config.UPGRADE_BASE_COST], row
-        # (11절 A안) README 표에도 레벨별 가격 칸이 생겨 둘 다 Game 계산(×2.0)과 대조한다
+        # (11절 A안) 레벨별 가격 칸을 Game 계산(×2.0)과 대조한다
         listed = [int(x) for x in row[5].split("/")]
         assert listed == game_costs(u[config.UPGRADE_ID]), row
     pygame.quit()
@@ -223,14 +224,9 @@ def test_total_cost_92590_matches_game():
     pygame.quit()
 
 
-def test_total_cost_in_readme():
-    """(M단위) README 의 업그레이드 총합도 13종 기준 92,590 이어야 한다."""
-    assert "92,590" in readme()
-
-
-@pytest.mark.parametrize("source", ["spec", "readme"])
-def test_policy_tables_match_config(source):
-    text = spec_part("게임 규칙", "자동 행동과 일과표 방침") if source == "spec" else readme()
+def test_policy_tables_match_config():
+    """기획서 2절 방침 표(키·회복 기준·지식·소모 배수)가 config와 같다."""
+    text = spec_part("게임 규칙", "자동 행동과 일과표 방침")
     rows = table_rows(text, "방침 | 키")
     expected = {"공부 위주": (config.POLICY_STUDY_FOCUS, "1"), "균형": (config.POLICY_BALANCED, "2"),
                 "휴식 위주": (config.POLICY_REST_FOCUS, "3")}
@@ -261,7 +257,7 @@ def test_key_numbers_in_spec():
     """(문서 정리) 최종 수치가 기획서 규칙 절(제목으로 찾음)에 있고 config와 같다.
 
     (M단위) 졸업 지식 2200. (B안) 시간 기준 330/720초, 대학원 감소 1 + 1.0n + 1.5c. 표 줄은 config 값으로 만든다.
-    README 쪽은 test_key_numbers_in_readme(README 갱신 대기).
+    README 쪽은 요약 문구만 본다(test_key_numbers_in_readme).
     """
     s = spec10()
     grade_rules = spec_part("게임 규칙", "졸업 등급과 졸업 보너스") + spec_part("게임 규칙", "진급과 졸업")
@@ -302,28 +298,26 @@ def test_key_numbers_in_spec():
 
 
 def test_key_numbers_in_readme():
-    """(M단위) README 의 졸업 기준·졸업 지식·가격식·대학원 배수·보너스 문구가 config와 같다."""
+    """README 규칙 요약의 진급·졸업 지식, 등급 시간 기준이 config와 같다(표는 기획서에만 있다)."""
     r = readme()
-    for line in grade_rows(config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS):
-        assert line in r, line
-    assert "| 졸업 | {} |".format(config.GRADUATION_KNOWLEDGE) in r
-    assert "기본 가격 × 2.0^(현재 레벨)" in r
-    assert grad_decay_text() in r and "×(1 + 1.0n)" in r
-    for text in ("수석 +200, 무사 +100, 아슬아슬 +50", "1 + 0.1 × 명성", "25% → 최대 40%",
-                 "2.0 → 1.0"):
-        assert text in r, text
+    assert "누적 지식 {}".format(" / ".join(str(g) for g in config.GRADE_GOALS)) in r
+    assert "{}이면 졸업".format(config.GRADUATION_KNOWLEDGE) in r
+    assert "{}초 이하면 수석".format(config.TOP_GRADUATE_SECONDS) in r
+    assert "{}초 이하면 무사".format(config.NORMAL_GRADUATE_SECONDS) in r
+    assert "](docs/기획서.md)" in r
 
 
 def test_readme_describes_m_rules():
-    """(M단위) README 가 M단위 규칙을 설명한다: 진급표 2배, 든든함·디버프, 컨디션 3종, 휴식 체력 +15."""
+    """(M단위) README 요약이 M단위 규칙(회복은 휴식, 학식 든든함, 디버프·버프, 업그레이드 13종)을 말한다."""
     r = readme()
-    for row in ("| 2학년 | 400 |", "| 3학년 | 900 |", "| 4학년 | 1500 |", "| 졸업 | 2200 |"):
-        assert row in r, row
     for word in (config.BUFF_FULL, config.DEBUFF_TIRED, config.DEBUFF_DEPRESSED,
-                 config.CONDITION_GOOD, "체력 증진", "멘탈 관리", "자기 관리"):
+                 config.CONDITION_GOOD, "회복은 휴식에서만"):
         assert word in r, word
+    assert "업그레이드 {}종".format(len(config.UPGRADE_IDS)) in r and len(config.UPGRADE_IDS) == 13
     assert "| 학식 먹이기 | +20 |" not in r
-    assert "test_idle_m.py" in r
+    # 컨디션 업그레이드 3종 이름은 기획서 업그레이드 표에 있다
+    for word in ("체력 증진", "멘탈 관리", "자기 관리"):
+        assert word in spec_part("업그레이드"), word
 
 
 def test_readme_controls_match_game():

@@ -34,19 +34,13 @@ PANEL_BUY_KEYS = (pygame.K_RETURN, pygame.K_KP_ENTER)
 
 
 def format_time(seconds):
-    """게임 시간 seconds(초)를 "3분 12초" 같은 글자로 바꿔 돌려준다(소수는 버린다).
-
-    1분이 안 되면 "0분 45초"처럼 0분도 쓴다. 경과 시간과 졸업까지 걸린 시간에 쓴다.
-    """
+    """게임 시간 seconds(초)를 "3분 12초" 같은 글자로 바꿔 돌려준다(소수는 버린다)."""
     minutes, rest = divmod(int(seconds + config.TIME_EPSILON), config.SECONDS_PER_MINUTE)
     return config.TIME_TEXT.format(minutes, rest)
 
 
 def to_count(value):
-    """record.json에서 읽은 값 value가 0 이상의 정수면 그대로, 아니면 0을 돌려준다.
-
-    bool(True/False)도 int의 한 종류라서 따로 뺀다. 소수·문자열·음수·None은 모두 0이다.
-    """
+    """record.json에서 읽은 값 value가 0 이상의 정수면 그대로, 아니면 0을 돌려준다."""
     if not isinstance(value, int) or isinstance(value, bool):
         return config.BEST_RECORD_START
     if value < config.BEST_RECORD_START:
@@ -59,14 +53,7 @@ class Game:
     일과표 방침, 기록 저장을 맡는 클래스."""
 
     def __init__(self, record_path=None, seed=None):
-        """pygame을 켜고 800x600 창과 시계, 글꼴, 방침 버튼 3개, 첫 화면(타이틀)을 준비한다.
-
-        record_path는 최고 기록 파일 경로다. 주지 않으면 config.RECORD_PATH
-        (exe 옆 또는 main.py 옆의 record.json)를 쓴다. 테스트에서는 임시 폴더 경로를 넘긴다.
-        시작할 때 이 파일에서 최고 기록을 불러온다.
-        seed는 랜덤 이벤트용 난수 생성기의 시드다. 같은 시드면 같은 이벤트가 나온다
-        (테스트에서 고정). None이면 매번 다르게 나온다.
-        """
+        """pygame을 켜고 800x600 창과 시계, 글꼴, 방침 버튼 3개, 첫 화면(타이틀)을 준비한다."""
         if record_path is None:
             record_path = config.RECORD_PATH
         self.record_path = record_path   # 최고 기록 파일(record.json) 경로
@@ -105,7 +92,7 @@ class Game:
         self.ending_upgrade_button = Button(config.UPGRADE_BUTTON_X, config.UPGRADE_BUTTON_ENDING_Y,
                                             config.BUTTON_WIDTH, config.BUTTON_HEIGHT,
                                             config.UPGRADE_BUTTON_TEXT)
-        # 무대 배경(J단위): 장소·계절·시설·그늘 단계가 바뀔 때만 다시 그리는 배경 그림과 그 열쇠
+        # 무대 배경: 장소·계절·시설·그늘 단계가 바뀔 때만 다시 그리는 배경 그림과 그 열쇠
         self.scenery = None
         self.scenery_key = None
         # 해·달·행동 소품은 모양이 바뀌지 않으므로 처음에 한 번만 그려 둔다
@@ -121,13 +108,7 @@ class Game:
         self.state = config.START_STATE  # 처음 보여 줄 화면(타이틀)
 
     def reset_round(self):
-        """한 판에 쓰는 값을 모두 처음으로 되돌린다: 새 제자, 엔딩 없음, 연출 비움.
-
-        일과표 방침은 시작값(균형)으로, 자동 행동 시계는 2초(첫 행동은 시작 2초 뒤)로,
-        마지막 행동(last_action)은 None으로 돌린다.
-        제자를 새로 만들므로 특성·외형·연계 플래그·이벤트 기록도 함께 초기화된다.
-        떠 있던 대화창(current_event)과 자동형 알림도 비운다.
-        """
+        """한 판에 쓰는 값을 모두 처음으로 되돌린다: 새 제자, 엔딩 없음, 연출 비움."""
         self.student = Student(self.upgrades)  # 업그레이드 사전을 함께 쓴다(산 효과가 바로 적용)
         self.policy = config.POLICY_START   # 일과표 방침 이름. 시작값은 균형
         self.auto_timer = self.get_auto_interval()  # 다음 자동 행동까지 남은 시간(초)
@@ -138,23 +119,16 @@ class Game:
         self.clear_effects()
 
     def start_new_game(self):
-        """새 판을 시작한다: 모든 값을 초기화하고 바로 게임 화면으로 간다.
-
-        타이틀에서 Enter, 엔딩에서 R을 누르면 이 메서드가 불린다.
-        """
+        """새 판을 시작한다: 모든 값을 초기화하고 바로 게임 화면으로 간다."""
         self.reset_round()
         self.state = config.STATE_PLAYING
 
     # ------------------------------------------------------------
-    # 졸업 후: 환생과 대학원 (기획서 3절, I단위)
+    # 졸업 후: 환생과 대학원 (기획서 3절)
     # ------------------------------------------------------------
     @property
     def grad_year(self):
-        """대학원 년차(0이면 학부, n이면 대학원 n년차). 값은 제자(Student)가 가지고 있다.
-
-        제자 한 명이 학부 -> 대학원으로 이어지므로 년차도 제자에게 두고,
-        Game에서는 game.grad_year로 읽고 쓸 수 있게 이어 준다.
-        """
+        """대학원 년차(0이면 학부, n이면 대학원 n년차). 값은 제자(Student)가 가지고 있다."""
         return self.student.grad_year
 
     @grad_year.setter
@@ -172,30 +146,17 @@ class Game:
         return self.state == config.STATE_ENDING and self.grad_year > config.GRAD_YEAR_UNDERGRAD
 
     def can_reincarnate(self):
-        """지금 엔딩에서 환생(명성 +1)할 수 있으면 True: 학부 졸업 또는 대학원 수료 엔딩.
-
-        휴학 엔딩은 졸업하지 않았으므로 False(R은 그냥 다시 하기).
-        """
+        """지금 엔딩에서 환생(명성 +1)할 수 있으면 True: 학부 졸업 또는 대학원 수료 엔딩."""
         return self.is_graduation_ending() or self.is_grad_school_ending()
 
     def reincarnate(self):
-        """환생: 명성 +1 하고 record.json에 저장한 뒤, 새 신입생으로 처음부터 시작한다.
-
-        업그레이드 레벨과 연구비는 그대로 남는다(새 판에도 효과 유지).
-        엔딩 화면에서 R을 눌렀을 때 졸업·대학원 수료 엔딩이면 이 메서드가 불린다.
-        """
+        """환생: 명성 +1 하고 record.json에 저장한 뒤, 새 신입생으로 처음부터 시작한다."""
         self.fame += config.FAME_STEP
         self.save_record()
         self.start_new_game()
 
     def enter_grad_school(self):
-        """대학원 진학: 졸업한 같은 제자로 "대학원 1년차"를 이어서 시작한다.
-
-        게이지·특성·외형·지식·연계 플래그는 그대로 두고, 게임 화면으로 돌아간다.
-        60초 주기 시계(경과 시간)는 졸업한 시각에서 이어서 흐른다(기획서 3절).
-        자동 행동 시계는 2초(간격)부터 다시 잰다. 학부 졸업 엔딩이 아니면 아무것도 하지 않는다.
-        들어갔으면 True, 아니면 False를 돌려준다.
-        """
+        """대학원 진학: 졸업한 같은 제자로 "대학원 1년차"를 이어서 시작한다."""
         if not self.student.enter_grad_school():
             return False
         self.ending = None
@@ -208,14 +169,7 @@ class Game:
         return True
 
     def end_game(self, ending):
-        """엔딩 이름 ending을 저장하고 엔딩 화면으로 바꾼다.
-
-        휴학·졸업·대학원 수료 모두 여기를 지나간다. 졸업이면 졸업 보너스(수석 200 / 무사 100 /
-        아슬아슬 50 x 명성 배수, 내림)를 연구비에 더한다. 휴학·대학원 수료면 보너스는 없다.
-        이번 판 누적 지식이 최고 기록보다 크면 최고 기록을 바꾸고, 판이 끝났으므로
-        연구비·명성·업그레이드와 함께 record.json에 저장한다.
-        게임 화면에 남아 있던 파티클·팝업·눌림·점프 연출과 이벤트 알림·대화창은 비운다.
-        """
+        """엔딩 이름 ending을 저장하고 엔딩 화면으로 바꾼다."""
         self.ending = ending
         self.state = config.STATE_ENDING
         self.current_event = None
@@ -232,14 +186,7 @@ class Game:
     # 기록 (record.json): 최고 기록·연구비·명성·업그레이드 레벨
     # ------------------------------------------------------------
     def read_record_file(self):
-        """record.json을 읽어 {"best_knowledge", "money", "fame", "upgrades"} 사전으로 돌려준다.
-
-        값마다 따로 검사해서 0 이상의 정수가 아니면 0으로 본다. 업그레이드 레벨은
-        모든 id를 채우고, 0~최대 레벨 밖이거나 정수가 아니면 0으로 본다.
-        예전 형식({"best_knowledge": n})은 연구비·명성·업그레이드를 0으로 본다.
-        파일이 없거나, 읽을 수 없거나, JSON이 깨졌거나, 사전이 아니면 모두 0이다.
-        어떤 경우에도 멈추지 않는다. 화면 속 값(self.money 등)은 바꾸지 않는다.
-        """
+        """record.json을 읽어 {"best_knowledge", "money", "fame", "upgrades"} 사전으로 돌려준다."""
         try:
             with open(self.record_path, encoding=config.RECORD_ENCODING) as file:
                 data = json.load(file)
@@ -265,27 +212,18 @@ class Game:
         }
 
     def load_record(self):
-        """record.json에서 최고 기록·연구비·명성·업그레이드 레벨을 읽어 Game에 넣는다.
-
-        읽은 사전(read_record_file 결과)을 돌려준다. 이미 제자가 있으면
-        제자도 새 업그레이드 사전을 함께 쓰도록 바꿔 준다.
-        """
+        """record.json에서 최고 기록·연구비·명성·업그레이드 레벨을 읽어 Game에 넣는다."""
         data = self.read_record_file()
         self.best_record = data[config.RECORD_KEY]     # 최고 기록(지식). 타이틀에 표시
         self.money = data[config.RECORD_MONEY_KEY]     # 연구비
-        self.fame = data[config.RECORD_FAME_KEY]       # 명성 (I단위에서 환생으로 오른다)
+        self.fame = data[config.RECORD_FAME_KEY]       # 명성 (환생으로 오른다)
         self.upgrades = data[config.RECORD_UPGRADES_KEY]  # {업그레이드 id: 레벨}
         if hasattr(self, "student"):
             self.student.upgrades = self.upgrades
         return data
 
     def save_record(self):
-        """최고 기록·연구비·명성·업그레이드 레벨을 record.json에 저장한다.
-
-        형식: {"best_knowledge": n, "money": n, "fame": n, "upgrades": {id: 레벨, ...}}.
-        저장에 실패하면(폴더 권한 없음 등) False를 돌려주고 게임은 그대로 계속한다.
-        성공하면 True를 돌려준다.
-        """
+        """최고 기록·연구비·명성·업그레이드 레벨을 record.json에 저장한다."""
         data = {
             config.RECORD_KEY: self.best_record,
             config.RECORD_MONEY_KEY: self.money,
@@ -308,10 +246,7 @@ class Game:
         return self.save_record()
 
     def update_best_record(self, knowledge):
-        """knowledge가 최고 기록보다 크면 최고 기록을 바꾸고 파일에 저장한다.
-
-        바뀌었으면 True, 같거나 작아서 그대로면 False를 돌려준다.
-        """
+        """knowledge가 최고 기록보다 크면 최고 기록을 바꾸고 파일에 저장한다."""
         if knowledge <= self.best_record:
             return False
         self.best_record = knowledge
@@ -319,14 +254,7 @@ class Game:
         return True
 
     def check_promotion(self):
-        """누적 지식으로 진급·졸업·대학원 년차 오름을 판정하고, 오른 횟수(진급 수)를 돌려준다.
-
-        지식이 바뀔 때마다(자동 행동·자동형 이벤트·선택지 직후) 부른다(기획서 2절).
-        판정은 Student.promote가 한다. 학년은 내려가지 않고, 한 번에 여러 목표를 넘으면
-        그만큼 오른다. 졸업(4학년에서 2200 이상)은 졸업 시각만 적고 진급 수에는 넣지 않는다.
-        엔딩 화면으로 바꾸는 일은 check_ending이 한다(그래서 휴학이 졸업보다 먼저다).
-        올랐으면 진급 알림("3학년 진급!" / "대학원 2년차!")을 2초 띄운다.
-        """
+        """누적 지식으로 진급·졸업·대학원 년차 오름을 판정하고, 오른 횟수(진급 수)를 돌려준다."""
         count = self.student.promote()
         if count > config.PROMOTION_COUNT_START:
             if self.student.is_in_grad_school():
@@ -338,11 +266,7 @@ class Game:
         return count
 
     def check_ending(self):
-        """제자 상태를 보고 엔딩이 났으면 엔딩 화면으로 바꾼다.
-
-        휴학(체력·멘탈 0)이 졸업(4학년에서 누적 지식 2200 이상)보다 먼저다.
-        판정은 Student.get_ending이 한다. 엔딩이 났으면 True, 아니면 False를 돌려준다.
-        """
+        """제자 상태를 보고 엔딩이 났으면 엔딩 화면으로 바꾼다."""
         ending = self.student.get_ending()
         if ending is None:
             return False
@@ -350,10 +274,7 @@ class Game:
         return True
 
     def make_buttons(self):
-        """화면 아래쪽 왼편에 가로로 놓인 일과표 방침 버튼 3개를 {방침 이름: Button} 사전으로 만든다.
-
-        순서는 공부 위주 [1], 균형 [2], 휴식 위주 [3]. 오른편은 업그레이드 버튼 자리로 비워 둔다.
-        """
+        """화면 아래쪽 왼편에 가로로 놓인 일과표 방침 버튼 3개를 {방침 이름: Button} 사전으로 만든다."""
         buttons = {}
         for index, name in enumerate(config.POLICY_ORDER):
             x = config.BUTTON_START_X + index * (config.BUTTON_WIDTH + config.BUTTON_GAP)
@@ -368,14 +289,10 @@ class Game:
                 for y in config.CHOICE_BUTTON_YS]
 
     # ------------------------------------------------------------
-    # 일과표 방침과 자동 행동 (기획서 2절, G단위)
+    # 일과표 방침과 자동 행동 (기획서 2절)
     # ------------------------------------------------------------
     def set_policy(self, name):
-        """일과표 방침을 name(study_focus/balanced/rest_focus)으로 바꾼다.
-
-        모르는 이름이면 바꾸지 않는다. 바꿨으면 True, 아니면 False를 돌려준다.
-        고른 버튼은 잠깐 눌린 모양(E1)이 된다. 다음 자동 행동부터 새 방침을 따른다.
-        """
+        """일과표 방침을 name(study_focus/balanced/rest_focus)으로 바꾼다."""
         if name not in config.POLICIES:
             return False
         self.policy = name
@@ -383,12 +300,7 @@ class Game:
         return True
 
     def choose_auto_action(self):
-        """지금 방침으로 제자가 스스로 고를 행동 이름(feed/rest/study)을 돌려준다(기획서 2절).
-
-        1) 체력이나 멘탈이 방침의 회복 기준 미만이면 휴식(rest). 회복은 휴식에서만 된다.
-        2) 아니고 버프 '든든함'이 없으면 학식(feed)으로 든든함을 붙인다.
-        3) 둘 다 아니면 공부(study)한다.
-        """
+        """지금 방침으로 제자가 스스로 고를 행동 이름(feed/rest/study)을 돌려준다(기획서 2절)."""
         threshold = config.POLICIES[self.policy][config.POLICY_THRESHOLD]
         if self.student.health < threshold or self.student.mental < threshold:
             return config.ACTION_REST
@@ -397,20 +309,7 @@ class Game:
         return config.ACTION_STUDY
 
     def do_action(self, name):
-        """행동 name(feed/rest/study)을 바로 실행한다(쿨타임 없음).
-
-        게임 화면(STATE_PLAYING)이 아니거나 모르는 행동 이름이면 아무것도 하지 않는다.
-        실행했으면 True, 무시했으면 False를 돌려준다. 실행하면 last_action에 이름을 남긴다.
-        공부는 지금 방침의 지식 배수·소모 배수를, 휴식은 방침의 회복 배수를 적용한다
-        (학식은 방침과 상관없다).
-        행동 뒤 진급·졸업을 판정하고(check_promotion), 체력이나 멘탈이 0이 되면
-        그 즉시 휴학 엔딩, 졸업 목표를 넘었으면 졸업 엔딩으로 바꾼다(휴학이 먼저).
-        실제로 실행됐을 때만 연출(파티클·팝업·점프·게이지 애니메이션)을 시작한다.
-        엔딩으로 끝나면 end_game이 연출을 다시 비운다.
-        엔딩이 아니면 랜덤 이벤트를 판정한다(roll_event). 대화창이 떠 있는 동안에는
-        상태가 게임 화면이 아니므로 행동이 무시된다.
-        보통은 update의 자동 행동 시계가 2초마다 부른다.
-        """
+        """행동 name(feed/rest/study)을 바로 실행한다(쿨타임 없음)."""
         if self.state != config.STATE_PLAYING:
             return False
         before = self.get_gauge_values()
@@ -443,7 +342,7 @@ class Game:
         return round(config.EVENT_CHANCE + bonus, config.GAUGE_DECIMALS)
 
     # ------------------------------------------------------------
-    # 연구비와 업그레이드 (기획서 3절, H단위)
+    # 연구비와 업그레이드 (기획서 3절)
     # ------------------------------------------------------------
     def floor_money(self, value):
         """연구비 계산 결과 value를 내림해 정수로 돌려준다(소수 오차를 MONEY_EPSILON 만큼 봐준다)."""
@@ -465,10 +364,7 @@ class Game:
                 and self.student.mental >= config.CONDITION_GOOD_MIN)
 
     def get_condition_money_ratio(self):
-        """컨디션에 따른 연구비 배수를 돌려준다: 우울 0.7, 컨디션 좋음 1.5, 그 밖에는 1.0.
-
-        우울(멘탈 30 미만)과 컨디션 좋음(멘탈 70 이상)은 동시에 될 수 없다.
-        """
+        """컨디션에 따른 연구비 배수를 돌려준다: 우울 0.7, 컨디션 좋음 1.5, 그 밖에는 1.0."""
         if self.student.is_depressed():
             return config.DEPRESSED_MONEY_RATIO
         if self.is_good_condition():
@@ -476,11 +372,7 @@ class Game:
         return config.NO_RATIO
 
     def get_money_multiplier(self):
-        """지식으로 버는 연구비 배수 = 명성 배수 x 대학원 배수 x 컨디션 배수 를 돌려준다.
-
-        컨디션 배수(우울 0.7 / 컨디션 좋음 1.5)는 연구비를 쌓는 순간의 게이지로 정한다
-        (행동·이벤트 효과가 적용된 뒤).
-        """
+        """지식으로 버는 연구비 배수 = 명성 배수 x 대학원 배수 x 컨디션 배수 를 돌려준다."""
         return (self.get_fame_multiplier() * self.get_grad_money_multiplier()
                 * self.get_condition_money_ratio())
 
@@ -492,11 +384,7 @@ class Game:
         return names
 
     def earn_knowledge_money(self, knowledge_before):
-        """지식이 knowledge_before에서 지금 값으로 오른 만큼 연구비를 쌓고, 쌓은 양을 돌려준다.
-
-        연구비 += 내림(오른 양 x 연구비 배수). 지식이 그대로거나 줄었으면 0이다
-        (지식이 줄어도 연구비는 줄지 않는다). 자동 행동·자동형 이벤트·선택지가 함께 쓴다.
-        """
+        """지식이 knowledge_before에서 지금 값으로 오른 만큼 연구비를 쌓고, 쌓은 양을 돌려준다."""
         gain = self.student.knowledge - knowledge_before
         if gain <= config.NO_CHANGE:
             return config.MONEY_START
@@ -505,10 +393,7 @@ class Game:
         return earned
 
     def get_upgrade_cost(self, upgrade_id):
-        """업그레이드 upgrade_id의 다음 레벨 가격 = 내림(기본 가격 x 2.0 ^ 지금 레벨)을 돌려준다.
-
-        최고 레벨이어도 같은 식으로 계산한 값을 돌려준다(살 수 있는지는 can_buy_upgrade가 본다).
-        """
+        """업그레이드 upgrade_id의 다음 레벨 가격 = 내림(기본 가격 x 2.0 ^ 지금 레벨)을 돌려준다."""
         upgrade = config.UPGRADES_BY_ID[upgrade_id]
         level = self.upgrades[upgrade_id]
         return self.floor_money(upgrade[config.UPGRADE_BASE_COST]
@@ -520,10 +405,7 @@ class Game:
         return self.upgrades[upgrade_id] >= max_level
 
     def can_buy_upgrade(self, upgrade_id):
-        """업그레이드 upgrade_id를 지금 살 수 있으면 True.
-
-        모르는 id, 최고 레벨, 연구비가 가격보다 적으면 False다.
-        """
+        """업그레이드 upgrade_id를 지금 살 수 있으면 True."""
         if upgrade_id not in config.UPGRADES_BY_ID:
             return False
         if self.is_upgrade_maxed(upgrade_id):
@@ -531,12 +413,7 @@ class Game:
         return self.money >= self.get_upgrade_cost(upgrade_id)
 
     def buy_upgrade(self, upgrade_id):
-        """업그레이드 upgrade_id를 한 레벨 산다. 샀으면 True, 살 수 없으면 False.
-
-        연구비에서 가격을 빼고 레벨을 1 올린다. 업그레이드 사전은 제자와 함께 쓰므로
-        효과는 바로 적용된다. 시간 관리를 사면 남은 자동 행동 시간이 새 간격보다 길지 않게 줄인다.
-        산 뒤 record.json에 저장한다.
-        """
+        """업그레이드 upgrade_id를 한 레벨 산다. 샀으면 True, 살 수 없으면 False."""
         if not self.can_buy_upgrade(upgrade_id):
             return False
         self.money -= self.get_upgrade_cost(upgrade_id)
@@ -546,10 +423,7 @@ class Game:
         return True
 
     def toggle_upgrade_panel(self):
-        """업그레이드 패널을 열거나 닫는다. 게임 화면·엔딩 화면에서만 된다.
-
-        타이틀과 선택지형 대화창이 떠 있을 때는 바꾸지 않는다. 바꿨으면 True를 돌려준다.
-        """
+        """업그레이드 패널을 열거나 닫는다. 게임 화면·엔딩 화면에서만 된다."""
         if self.state not in (config.STATE_PLAYING, config.STATE_ENDING):
             return False
         self.upgrade_panel_open = not self.upgrade_panel_open
@@ -568,12 +442,7 @@ class Game:
         return self.upgrade_button
 
     def handle_upgrade_input(self, event):
-        """게임·엔딩 화면에서 업그레이드 관련 입력을 처리한다. 처리했으면 True를 돌려준다.
-
-        - U 키 또는 [업그레이드 U] 버튼 클릭: 패널 열기/닫기
-        - 패널이 열려 있을 때: ↑/↓로 줄 고르기, Enter로 고른 항목 사기,
-          항목 줄 클릭으로 그 항목 고르고 사기
-        """
+        """게임·엔딩 화면에서 업그레이드 관련 입력을 처리한다. 처리했으면 True를 돌려준다."""
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_u:
                 return self.toggle_upgrade_panel()
@@ -603,12 +472,7 @@ class Game:
     # 랜덤 이벤트 (기획서·jeja-spec 4절)
     # ------------------------------------------------------------
     def roll_event(self):
-        """자동 행동 직후 이벤트가 뜰지 정하고, 뜨면 시작한다. 뜬 이벤트(dict) 또는 None을 돌려준다.
-
-        그 학년 이벤트 수가 최대(5)면 뜨지 않는다. 최소 보장 조건이면 반드시 뜬다(간격 예외).
-        아니면 직전 이벤트 이후 게임 시간이 최소 간격(8초) 이상 지났고
-        rng.random() < EVENT_CHANCE(25%)일 때 뜬다. 간격이 안 찼으면 난수를 뽑지 않는다.
-        """
+        """자동 행동 직후 이벤트가 뜰지 정하고, 뜨면 시작한다. 뜬 이벤트(dict) 또는 None을 돌려준다."""
         if not self.student.can_have_event():
             return None
         if not self.student.needs_guaranteed_event():
@@ -621,11 +485,7 @@ class Game:
         return event
 
     def get_event_candidates(self):
-        """지금 나올 수 있는 (선택지형 후보 목록, 자동형 후보 목록)을 돌려준다.
-
-        학년 조건·연계 조건을 만족하고, 선택지형은 이번 판에 아직 안 나온 것만 모은다.
-        장학금 제도 업그레이드를 샀으면 자동형 후보에 "장학금을 받았다"가 더해진다.
-        """
+        """지금 나올 수 있는 (선택지형 후보 목록, 자동형 후보 목록)을 돌려준다."""
         auto_table = list(config.AUTO_EVENTS)
         if self.upgrades[config.UPGRADE_SCHOLARSHIP] > config.LEVEL_START:
             auto_table.append(config.SCHOLARSHIP_EVENT)
@@ -634,24 +494,14 @@ class Game:
         return choices, autos
 
     def pick_event(self):
-        """후보 중 이벤트 하나를 골라 돌려준다.
-
-        선택지형 후보가 있으면 EVENT_CHOICE_RATIO(50%) 확률로 선택지형, 아니면 자동형에서 고른다.
-        같은 종류 안에서는 rng.choice로 하나를 고른다.
-        """
+        """후보 중 이벤트 하나를 골라 돌려준다."""
         choices, autos = self.get_event_candidates()
         if choices and self.rng.random() < config.EVENT_CHOICE_RATIO:
             return self.rng.choice(choices)
         return self.rng.choice(autos)
 
     def start_event(self, event):
-        """이벤트 event를 시작하고 그 학년 이벤트 수를 하나 늘린다.
-
-        - 자동형: 효과를 바로 적용하고 알림(2초)과 수치 팝업을 띄운 뒤 진급·졸업과 휴학을 판정한다.
-          알림 색은 효과 합의 부호로 정한다(0 이상이면 좋은 일, 음수면 나쁜 일).
-        - 선택지형: 한 판 1회로 기록하고, 선택 버튼 글자를 채운 뒤 대화 상태로 바꾼다(게임 정지).
-          대화창 시계(dialog_time)를 0부터 다시 잰다(입력 대기·등장 연출용).
-        """
+        """이벤트 event를 시작하고 그 학년 이벤트 수를 하나 늘린다."""
         self.student.count_event()
         if event[config.EVENT_KIND] == config.EVENT_KIND_AUTO:
             before = self.get_gauge_values()
@@ -681,21 +531,11 @@ class Game:
         self.state = config.STATE_EVENT
 
     def is_dialog_ready(self):
-        """대화창이 뜬 뒤 입력 대기 시간(EVENT_INPUT_DELAY, 0.3초)이 지났으면 True.
-
-        그 전에는 선택 입력(키·클릭)을 무시한다. 행동 키를 연타하다가
-        같은 키가 그대로 선택으로 들어가는 것을 막기 위해서다.
-        """
+        """대화창이 뜬 뒤 입력 대기 시간(EVENT_INPUT_DELAY, 0.3초)이 지났으면 True."""
         return self.dialog_time + config.TIME_EPSILON >= config.EVENT_INPUT_DELAY
 
     def choose_option(self, index):
-        """대화창에서 index번째(0 또는 1) 선택지를 고른다.
-
-        효과·특성·외형·연계 플래그를 적용하고 수치 팝업을 띄운 뒤 게임을 다시 흐르게 한다.
-        그 결과로 진급·졸업을 판정하고, 체력·멘탈이 0이면 바로 휴학 엔딩이다(휴학이 졸업보다 먼저).
-        대화창이 떠 있지 않거나, 뜬 지 아직 입력 대기 시간(0.3초)이 안 지났으면
-        아무것도 하지 않는다. 골랐으면 True, 아니면 False를 돌려준다.
-        """
+        """대화창에서 index번째(0 또는 1) 선택지를 고른다."""
         if self.state != config.STATE_EVENT or self.current_event is None:
             return False
         if not self.is_dialog_ready():
@@ -712,24 +552,7 @@ class Game:
         return True
 
     def handle_event(self, event):
-        """이벤트 하나를 받아 처리한다.
-
-        - 창 닫기(QUIT) 또는 ESC: 모든 화면에서 running을 False로 바꾼다.
-        - 타이틀 화면에서 Enter: 새 판 시작.
-        - 엔딩 화면에서 R: 졸업·대학원 수료 엔딩이면 환생(reincarnate, 명성 +1),
-          휴학 엔딩이면 그냥 새 판 시작(명성 그대로).
-        - 졸업 엔딩 화면에서 C: 대학원 진학(enter_grad_school).
-        - 게임 화면에서 1/2/3 키 또는 방침 버튼 클릭: 일과표 방침을 바꾼다
-          (1 공부 위주, 2 균형, 3 휴식 위주). 행동은 제자가 스스로 한다.
-        - 마우스 이동(MOUSEMOTION): 버튼 호버 표시에 쓸 마우스 위치를 기억한다.
-        - 마우스가 창 밖으로 나감(WINDOWLEAVE): 마우스 위치를 잊어 호버 표시를 끈다.
-        - 대화창(선택지형 이벤트)이 떠 있으면 키 1/2 또는 선택 버튼 클릭으로 선택지를 고른다.
-          이때 방침 키(3 포함)·방침 버튼·업그레이드 입력은 무시한다.
-        - 게임·엔딩 화면에서 U 키 또는 [업그레이드 U] 버튼: 업그레이드 패널 열기/닫기.
-          패널이 열려 있으면 ↑/↓·Enter·항목 클릭으로 업그레이드를 산다(handle_upgrade_input).
-          게임 화면에서는 패널이 열려 있어도 1/2/3 방침 키와 방침 버튼이 그대로 동작한다.
-        다른 화면의 Enter/R, 다른 키는 무시한다.
-        """
+        """이벤트 하나를 받아 처리한다."""
         if event.type == pygame.QUIT:
             self.running = False
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -774,22 +597,7 @@ class Game:
                         break
 
     def update(self, dt):
-        """dt초만큼 게임 상태를 진행한다.
-
-        게임 화면일 때만 제자의 시간을 흘려 게이지를 자연 감소시키고,
-        자동 행동 시계(auto_timer)도 dt만큼 줄인다. 시계가 0이 되면 지금 방침으로
-        행동을 골라(choose_auto_action) 실행하고(do_action) 시계를 다시 2초로 채운다.
-        dt가 커서 자동 행동 시각을 여러 번 지나가면, 행동 시각마다 끊어서 차례대로 처리한다
-        (행동 시각까지 시간을 흘림 -> 엔딩 확인 -> 행동 -> 남은 시간 계속).
-        엔딩 확인: 자연 감소로 체력·멘탈이 0이 되었으면 휴학(대학원이면 "대학원 n년차 수료")이다.
-        판에 시간 제한이 없으므로(기획서 2절) 시간이 지났다고 졸업하지는 않는다. 졸업은
-        지식이 바뀔 때 check_promotion이 판정한다(여기서도 한 번 더 확인해 둔다).
-        엔딩이 나면 그 시각의 자동 행동은 하지 않는다.
-        타이틀·엔딩 화면과 대화창(선택지형 이벤트)이 떠 있는 동안에는
-        시간·게이지·자동 행동 시계가 흐르지 않는다(게임 정지). 자동 행동 직후
-        대화창이 뜨면 이번 dt의 남은 시간도 흘리지 않는다.
-        마지막으로 화면 연출 시계를 진행한다(update_effects, 게임 결과에는 영향 없음).
-        """
+        """dt초만큼 게임 상태를 진행한다."""
         remaining = dt
         while self.state == config.STATE_PLAYING:
             step = min(remaining, self.auto_timer)
@@ -809,10 +617,7 @@ class Game:
     # 화면 연출 E1~E6 (보기만 바꾸며 게이지·자동 행동 시계·학년·엔딩에는 영향이 없다)
     # ------------------------------------------------------------
     def clear_effects(self):
-        """파티클·팝업·버튼 눌림·점프·숨쉬기·게이지 애니메이션·이벤트 알림을 모두 처음 상태로 비운다.
-
-        새 판 시작(reset_round)과 엔딩 진입(end_game)에서 부른다.
-        """
+        """파티클·팝업·버튼 눌림·점프·숨쉬기·게이지 애니메이션·이벤트 알림을 모두 처음 상태로 비운다."""
         # 자동형 이벤트 알림 {"text": 글자, "timer": 남은 시간, "good": 좋은 일이면 True}. 없으면 None
         self.notice = None
         # 진급 알림 {"text": "2학년 진급!", "timer": 남은 시간, "good": True}. 없으면 None
@@ -833,31 +638,18 @@ class Game:
         return {name: getattr(self.student, name) for name, _ in config.POPUP_GAUGES}
 
     def get_shown_gauge(self, name):
-        """게이지 name(health/mental)의 막대 표시값(E4)을 돌려준다: 실제 값 + 남은 차이.
-
-        값을 직접 바꿔도(테스트 등) 남은 차이가 0이면 표시값은 곧바로 실제 값이다.
-        """
+        """게이지 name(health/mental)의 막대 표시값(E4)을 돌려준다: 실제 값 + 남은 차이."""
         return getattr(self.student, name) + self.gauge_lag[name]
 
     def start_action_effects(self, name, before):
-        """행동 name이 실제로 실행된 직후 연출을 시작한다.
-
-        before는 행동 전 게이지 값 사전이다. 버튼 눌림, 제자 점프, 파티클을 시작하고,
-        실제로 바뀐 양(clamp 반영)으로 수치 팝업과 게이지 애니메이션을 만든다.
-        """
+        """행동 name이 실제로 실행된 직후 연출을 시작한다."""
         self.press_timers[name] = config.BUTTON_PRESS_TIME
         self.jump_timer = config.JUMP_TIME
         self.spawn_particles(name)
         self.start_gauge_effects(before)
 
     def start_gauge_effects(self, before, for_event=False):
-        """게이지가 before에서 지금 값으로 바뀐 만큼 수치 팝업(E3)과 게이지 애니메이션(E4)을 시작한다.
-
-        행동과 이벤트(자동형 효과, 선택지 결과)가 함께 쓴다. 변화가 0인 게이지는 팝업을 띄우지 않는다.
-        for_event가 True(이벤트)면 팝업을 머리 위가 아니라 무대 왼쪽 위 칸에 쌓는다
-        (spawn_event_popups). 그래서 4학년(얼굴이 큼)에 행동 팝업 3줄과 이벤트 팝업이
-        함께 떠도 무대 밖으로 잘리거나 서로 겹치지 않는다.
-        """
+        """게이지가 before에서 지금 값으로 바뀐 만큼 수치 팝업(E3)과 게이지 애니메이션(E4)을 시작한다."""
         after = self.get_gauge_values()
         # 체력·멘탈이 소수(건강 관리 업그레이드)일 수 있으므로 변화량은 반올림한 정수로 보인다
         changes = [(label, round(after[key] - before[key])) for key, label in config.POPUP_GAUGES
@@ -872,11 +664,7 @@ class Game:
             self.gauge_lag_speed[key] = abs(self.gauge_lag[key]) / config.GAUGE_ANIM_TIME
 
     def spawn_particles(self, name):
-        """행동 name의 도트 파티클 PARTICLE_COUNT개를 제자 얼굴 가장자리 근처에 만든다.
-
-        random 대신 config의 방향·속도·수명·모양 표를 번호 순서대로 돌려 써서
-        같은 입력이면 언제나 같은 자리에 같은 파티클이 나온다.
-        """
+        """행동 name의 도트 파티클 PARTICLE_COUNT개를 제자 얼굴 가장자리 근처에 만든다."""
         radius = self.student.get_radius()
         kinds = config.PARTICLE_KINDS[name]
         for index in range(config.PARTICLE_COUNT):
@@ -896,12 +684,7 @@ class Game:
             })
 
     def spawn_popups(self, changes, skip_rows=config.NO_OFFSET):
-        """(라벨, 변화량) 목록으로 수치 팝업을 만든다. 변화가 0인 게이지는 이미 빠져 있다.
-
-        팝업은 제자 머리 위(점프·숨쉬기 최고점보다 위)에 세로로 겹치지 않게 쌓는다.
-        목록 순서(체력, 멘탈, 지식)대로 위에서 아래로 놓인다.
-        skip_rows는 머리 위에서 비워 둘 줄 수다(이미 떠 있는 팝업 위에 쌓을 때 쓴다).
-        """
+        """(라벨, 변화량) 목록으로 수치 팝업을 만든다. 변화가 0인 게이지는 이미 빠져 있다."""
         head_top = (config.STUDENT_CENTER_Y - self.student.get_radius()
                     - config.JUMP_HEIGHT - config.BREATH_HEIGHT)
         lowest_y = head_top - config.POPUP_HEAD_GAP - config.POPUP_LINE_HEIGHT // config.HALF
@@ -911,12 +694,7 @@ class Game:
                            lowest_y - (rows_below + skip_rows) * config.POPUP_LINE_HEIGHT)
 
     def spawn_event_popups(self, changes):
-        """이벤트 결과 (라벨, 변화량) 목록으로 수치 팝업을 무대 왼쪽 위 칸에 위에서 아래로 쌓는다.
-
-        머리 위 가운데는 행동 팝업 자리, 얼굴 양옆은 파티클 자리라서 비어 있는 왼쪽 위를 쓴다.
-        자동형 알림이 떠 있으면 알림 상자 바로 아래부터, 없으면 무대 위쪽부터 쌓는다.
-        목록 순서(체력, 멘탈, 지식)대로 위에서 아래로 놓인다.
-        """
+        """이벤트 결과 (라벨, 변화량) 목록으로 수치 팝업을 무대 왼쪽 위 칸에 위에서 아래로 쌓는다."""
         top = config.PANEL_Y
         if self.notice is not None:
             top = config.EVENT_NOTICE_Y + config.EVENT_NOTICE_HEIGHT
@@ -940,13 +718,7 @@ class Game:
         })
 
     def update_effects(self, dt):
-        """연출용 시계를 dt초만큼 진행한다.
-
-        깜빡임 시계는 모든 화면에서 흐른다. 나머지(눌림·점프·숨쉬기·파티클·팝업·
-        게이지 애니메이션·자동형 알림·진급 알림)는 게임 화면과 대화창 화면에서만 흐른다.
-        (대화창 중에도 연출만 마저 흐르고, 게임 시간·게이지·자동 행동 시계는 update에서 멈춘다.)
-        게임 결과 값은 건드리지 않는다.
-        """
+        """연출용 시계를 dt초만큼 진행한다."""
         self.blink_time += dt
         if self.state not in (config.STATE_PLAYING, config.STATE_EVENT):
             return
@@ -980,11 +752,7 @@ class Game:
                 self.gauge_lag[name] += step
 
     def get_student_lift(self):
-        """제자가 지금 위로 뜬 높이(픽셀) = 점프 높이 + 숨쉬기 높이. PIXEL_SIZE 단위로 끊는다.
-
-        - 점프: 남은 시간으로 진행률 p(0~1)를 구해 포물선 4 x p x (1-p) (가운데에서 최고 8px).
-        - 숨쉬기: 1.5초 주기 삼각파(0 -> 1 -> 0) x 4px. math(sin) 대신 삼각파를 쓴다.
-        """
+        """제자가 지금 위로 뜬 높이(픽셀) = 점프 높이 + 숨쉬기 높이. PIXEL_SIZE 단위로 끊는다."""
         jump = config.ZERO_TIME
         if self.jump_timer > config.TIME_EPSILON:
             progress = config.FULL_RATIO - self.jump_timer / config.JUMP_TIME
@@ -1007,11 +775,7 @@ class Game:
     # 그리기 (도트 스타일)
     # ------------------------------------------------------------
     def make_backdrop(self):
-        """창 전체 배경을 한 번만 그려 둔 Surface를 만들어 돌려준다.
-
-        크림색 바탕에 일정 간격으로 아주 연한 도트를 찍어 은은한 무늬를 만든다.
-        매 프레임 도트를 다시 찍지 않고 이 Surface를 통째로 붙인다.
-        """
+        """창 전체 배경을 한 번만 그려 둔 Surface를 만들어 돌려준다."""
         backdrop = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
         backdrop.fill(config.COLOR_BACKDROP)
         for x in range(config.BACKDROP_DOT_START, config.SCREEN_WIDTH,
@@ -1048,16 +812,12 @@ class Game:
         pygame.display.flip()
 
     # ------------------------------------------------------------
-    # 무대 배경 4겹 (기획서 6절 "무대 배경 4겹", J단위)
+    # 무대 배경 4겹 (기획서 6절 "무대 배경 4겹")
     #   1) 장소(학년) 2) 하늘(계절·시간대) 3) 행동 소품 4) 시설
     #   계산 메서드(get_season 등)는 화면 없이도 부를 수 있다.
     # ------------------------------------------------------------
     def get_season_time(self):
-        """(계절 번호 0~3, 그 계절 안에서 흐른 시간(초) 0~15)를 돌려준다.
-
-        60초 주기 안 시간으로 정한다(기획서 2절): 0~15초 봄, 15~30초 여름,
-        30~45초 가을, 45~60초 겨울(시험 기간). 학년·대학원 년차와는 상관없다.
-        """
+        """(계절 번호 0~3, 그 계절 안에서 흐른 시간(초) 0~15)를 돌려준다."""
         time_in_term = self.student.get_cycle_time()
         index = int((time_in_term + config.TIME_EPSILON) // config.SEASON_SECONDS)
         index = min(index, len(config.SEASONS) - config.INDEX_STEP)
@@ -1070,10 +830,7 @@ class Game:
         return config.SEASONS[index]
 
     def get_time_of_day(self):
-        """지금 시간대("day"/"evening"/"night")를 돌려준다.
-
-        계절 15초 안에서 0~9초 낮, 9~12초 저녁, 12~15초 밤이다.
-        """
+        """지금 시간대("day"/"evening"/"night")를 돌려준다."""
         _, time_in_season = self.get_season_time()
         if time_in_season + config.TIME_EPSILON < config.DAY_END:
             return config.TIME_DAY
@@ -1082,11 +839,7 @@ class Game:
         return config.TIME_NIGHT
 
     def get_sky_color(self):
-        """지금 하늘색 (R, G, B) 정수 튜플을 돌려준다.
-
-        config.SKY_KEYFRAMES의 기준점 두 개 사이에서 시간 비율만큼 두 색을 섞는다(선형 보간).
-        마지막 기준점(15초)은 다음 계절의 낮색이라 밤에서 다음 날 아침으로 자연스럽게 넘어간다.
-        """
+        """지금 하늘색 (R, G, B) 정수 튜플을 돌려준다."""
         index, time_in_season = self.get_season_time()
         frames = config.SKY_KEYFRAMES
         for start, end in zip(frames, frames[config.INDEX_STEP:]):
@@ -1118,11 +871,7 @@ class Game:
                      if self.upgrades[upgrade_id] >= config.FACILITY_OWNED_LEVEL)
 
     def make_sprite_surface(self, grid, colors, cell=config.SCENE_CELL):
-        """스프라이트 grid를 한 번만 찍어 둔 Surface를 만들어 돌려준다.
-
-        빈 칸은 COLOR_KEY(자홍색)로 칠하고 set_colorkey로 그 색을 빼고 붙인다(반투명 아님).
-        매 프레임 칸을 하나씩 찍지 않고 이 Surface를 통째로 붙이면 빠르다.
-        """
+        """스프라이트 grid를 한 번만 찍어 둔 Surface를 만들어 돌려준다."""
         surface = pygame.Surface(sprite_size(grid, cell))
         surface.fill(config.COLOR_KEY)
         surface.set_colorkey(config.COLOR_KEY)
@@ -1130,12 +879,7 @@ class Game:
         return surface
 
     def get_scene_color(self, name, season, shade=config.SCENE_SHADE_NONE):
-        """배경 색 이름 name의 색을 돌려준다. 계절 색(땅·잎·눈)이 먼저, 없으면 고정 색.
-
-        겨울이 아닐 때의 "snow"처럼 그 계절에 없는 것은 None(그리지 않음)이다.
-        shade(그늘 단계, 0이면 없음)가 있으면 밤 남색을 그 단계 비율만큼 섞은 색을 돌려준다.
-        하늘 자리 색(COLOR_KEY)은 섞지 않는다(colorkey로 빠져야 하므로).
-        """
+        """배경 색 이름 name의 색을 돌려준다. 계절 색(땅·잎·눈)이 먼저, 없으면 고정 색."""
         season_colors = config.SEASON_COLORS[season]
         if name in season_colors:
             color = season_colors[name]
@@ -1147,11 +891,7 @@ class Game:
         return tuple(round(a + (b - a) * ratio) for a, b in zip(color, config.SCENE_SHADE_COLOR))
 
     def get_scene_shade(self):
-        """지금 배경 그늘 단계(0 = 낮, 클수록 어둡다)를 돌려준다.
-
-        계절 안 시각으로 SCENE_SHADE_STEPS 표에서 찾는다(낮 0 -> 저녁 1 -> 밤 2 -> 새벽 1).
-        실내(연구실)는 언제나 0이다. 단계가 몇 개뿐이라 배경을 다시 그리는 일이 적다.
-        """
+        """지금 배경 그늘 단계(0 = 낮, 클수록 어둡다)를 돌려준다."""
         if self.get_place() not in config.SCENE_SHADE_PLACES:
             return config.SCENE_SHADE_NONE
         _, time_in_season = self.get_season_time()
@@ -1197,28 +937,18 @@ class Game:
                                                   width * cell, height * cell))
 
     def get_decor_levels(self):
-        """무대 장식이 있는 업그레이드 10종(config.DECOR_IDS 순서)의 지금 레벨을 튜플로 돌려준다.
-
-        배경 그림 캐시 열쇠에 들어간다. 업그레이드를 사서 레벨이 바뀔 때만 배경을 다시 그린다.
-        """
+        """무대 장식이 있는 업그레이드 10종(config.DECOR_IDS 순서)의 지금 레벨을 튜플로 돌려준다."""
         return tuple(self.upgrades[upgrade_id] for upgrade_id in config.DECOR_IDS)
 
     def get_decor_pieces(self, upgrade_id, level):
-        """업그레이드 upgrade_id가 level일 때 보이는 장식 조각 [(스프라이트 이름, 열 차이, 행 차이)].
-
-        config.DECOR_PIECES에서 "이 레벨 이상이면 보임" 값이 level 이하인 조각만 고른다.
-        0레벨이면 빈 목록이다(장식 없음).
-        """
+        """업그레이드 upgrade_id가 level일 때 보이는 장식 조각 [(스프라이트 이름, 열 차이, 행 차이)]."""
         return [(sprite_name, col, row)
                 for min_level, sprite_name, col, row in config.DECOR_PIECES[upgrade_id]
                 if level >= min_level]
 
     def get_decor_rects(self, place, decor_levels):
         """장소 place에서 장식 레벨 decor_levels(get_decor_levels 모양)일 때 장식마다 차지하는
-        사각형을 {업그레이드 id: pygame.Rect(무대 안쪽 픽셀 좌표)}로 돌려준다(조각들을 모두 감싼 상자).
-
-        장식이 없는(0레벨) 업그레이드는 빠진다. 장식끼리·제자·소품과 겹치는지 확인할 때 쓴다.
-        """
+        사각형을 {업그레이드 id: pygame.Rect(무대 안쪽 픽셀 좌표)}로 돌려준다(조각들을 모두 감싼 상자)."""
         cell = config.SCENE_CELL
         rects = {}
         for upgrade_id, level in zip(config.DECOR_IDS, decor_levels):
@@ -1236,11 +966,7 @@ class Game:
 
     def draw_decorations(self, surface, place, decor_levels, season,
                          shade=config.SCENE_SHADE_NONE):
-        """배경 그림 surface 위에 업그레이드 장식(도시락·쿠션·책장 …)을 레벨만큼 그린다.
-
-        장식마다 장소별 자리(DECOR_SLOTS)에서 조각(DECOR_PIECES)을 차례로 찍는다.
-        배경과 같은 색 규칙(get_scene_color)을 쓰므로 바깥 장소의 저녁·밤 그늘도 똑같이 받는다.
-        """
+        """배경 그림 surface 위에 업그레이드 장식(도시락·쿠션·책장 …)을 레벨만큼 그린다."""
         cell = config.SCENE_CELL
         for upgrade_id, level in zip(config.DECOR_IDS, decor_levels):
             slot_col, slot_row = config.DECOR_SLOTS[place][upgrade_id]
@@ -1250,15 +976,7 @@ class Game:
 
     def make_scenery(self, place, season, facilities, shade=config.SCENE_SHADE_NONE,
                      decor_levels=None):
-        """장소·계절·시설·그늘 단계·장식 레벨로 배경 그림(무대 안쪽 크기 Surface)을 새로 그려 돌려준다.
-
-        순서: 장소 뒤쪽(땅·건물·나무) -> 산 시설 건물 -> 장소 앞쪽(벤치·꽃·의자 등)
-        -> 업그레이드 장식(N단위, draw_decorations).
-        decor_levels를 주지 않으면 장식 없이 그린다(모든 레벨 0과 같다).
-        하늘 자리는 COLOR_KEY로 비워 두어(set_colorkey) 매 프레임 그린 하늘이 비쳐 보인다.
-        연구실은 창유리만 비어 있어서 창밖으로 하늘(계절·시간대)이 보인다.
-        shade가 0보다 크면(저녁·밤) 모든 색을 밤 남색 쪽으로 조금 섞어 어둡게 그린다.
-        """
+        """장소·계절·시설·그늘 단계·장식 레벨로 배경 그림(무대 안쪽 크기 Surface)을 새로 그려 돌려준다."""
         inner = self.get_stage_inner()
         surface = pygame.Surface(inner.size)
         surface.fill(config.COLOR_KEY)
@@ -1277,13 +995,7 @@ class Game:
         return surface
 
     def get_scenery(self):
-        """지금 장소·계절·시설·그늘 단계·장식 레벨에 맞는 배경 그림을 돌려준다.
-
-        다섯 중 하나라도 바뀌었을 때만 새로 그리고(make_scenery), 아니면 그려 둔 것을 다시 쓴다.
-        그늘 단계는 계절마다 몇 번만 바뀌므로(낮 -> 저녁 -> 밤 -> 새벽) 다시 그리는 일이 적고,
-        장식 레벨은 업그레이드를 살 때만 바뀐다.
-        그래서 매 프레임에는 하늘색 채우기와 그림 붙이기만 한다(60 FPS 유지).
-        """
+        """지금 장소·계절·시설·그늘 단계·장식 레벨에 맞는 배경 그림을 돌려준다."""
         key = (self.get_place(), self.get_season(), self.get_owned_facilities(),
                self.get_scene_shade(), self.get_decor_levels())
         if key != self.scenery_key:
@@ -1292,10 +1004,7 @@ class Game:
         return self.scenery
 
     def draw_background(self):
-        """제자 무대 안쪽에 배경 4겹을 그린다(제자·파티클·팝업·알림보다 먼저).
-
-        하늘색 채우기 -> 해(낮)·노을 해(저녁)·달과 별(밤) -> 장소·시설 그림 -> 행동 소품.
-        """
+        """제자 무대 안쪽에 배경 4겹을 그린다(제자·파티클·팝업·알림보다 먼저)."""
         inner = self.get_stage_inner()
         self.screen.fill(self.get_sky_color(), inner)
         self.screen.set_clip(inner)
@@ -1312,10 +1021,7 @@ class Game:
         self.screen.set_clip(None)
 
     def draw_action_prop(self, inner):
-        """마지막 자동 행동의 소품(공부: 책상과 책, 휴식: 이불, 학식: 식판)을 제자 오른쪽에 그린다.
-
-        아직 행동이 없으면(last_action이 None) 아무것도 그리지 않는다.
-        """
+        """마지막 자동 행동의 소품(공부: 책상과 책, 휴식: 이불, 학식: 식판)을 제자 오른쪽에 그린다."""
         prop = self.prop_surfaces.get(self.last_action)
         if prop is None:
             return
@@ -1323,7 +1029,7 @@ class Game:
                                 inner.top + config.PROP_BOTTOM - prop.get_height()))
 
     # ------------------------------------------------------------
-    # 업그레이드 화면 (H단위): [업그레이드 U] 버튼과 패널
+    # 업그레이드 화면: [업그레이드 U] 버튼과 패널
     # ------------------------------------------------------------
     def draw_upgrade_button(self, button):
         """[업그레이드 U] 버튼을 그린다. 패널이 열려 있으면 노랑으로 강조, 마우스를 올리면 밝게."""
@@ -1332,17 +1038,7 @@ class Game:
                     selected=self.upgrade_panel_open)
 
     def draw_upgrade_panel(self):
-        """업그레이드 패널을 왼쪽 상태 패널 자리에 그린다(반투명 없이 도트 상자).
-
-        오른쪽 제자 무대는 가리지 않으므로 패널을 열어도 제자와 배경이 보인다.
-        머리 줄: 왼쪽 "업그레이드", 오른쪽 "연구비 N".
-        그 아래 미니 게이지 줄: 패널이 가린 체력·멘탈 막대를 작게 보여 준다(draw_panel_gauges).
-        아래로 항목 13줄(얇은 띠): 이름, "Lv 지금/최대", 가격(최고 레벨이면 "MAX").
-        살 수 있는 항목은 민트, 연구비가 모자라거나 최고 레벨이면 회색이다.
-        고른 줄(↑↓)에는 왼쪽에 화살표를 붙이고, 마우스를 올린 줄(살 수 있을 때)은 밝게 칠한다.
-        바닥 줄에는 고른 줄 항목의 효과 설명("효과: 든든함 +6초")을 쓴다.
-        자세한 설명(지금·다음 효과, 무대 장식, 가격)은 패널 밖 툴팁(draw_upgrade_tooltip)이 맡는다.
-        """
+        """업그레이드 패널을 왼쪽 상태 패널 자리에 그린다(반투명 없이 도트 상자)."""
         panel = pygame.Rect(config.UPGRADE_PANEL_RECT)
         draw_pixel_box(self.screen, panel, config.COLOR_BG, config.COLOR_PANEL_LIGHT,
                        config.COLOR_PANEL_SHADOW, drop=config.COLOR_DROP)
@@ -1367,13 +1063,7 @@ class Game:
         self.screen.blit(footer, footer_rect)
 
     def draw_panel_gauges(self):
-        """업그레이드 패널 머리 줄 아래에 체력·멘탈 미니 게이지 2개를 한 줄에 나란히 그린다.
-
-        패널이 열려 있어도 게임은 흐르므로(방치형) 가려진 게이지를 여기서 볼 수 있게 한다.
-        각 칸: 작은 라벨 글자 + 남색 도트 테두리 막대. 막대 길이는 표시값(E4 부드러운 변화),
-        채움 색은 실제 값이 30 미만이면 빨강, 아니면 초록(기능 6과 같은 규칙).
-        막대 전체 길이는 지금 최댓값(max_health / max_mental)이다.
-        """
+        """업그레이드 패널 머리 줄 아래에 체력·멘탈 미니 게이지 2개를 한 줄에 나란히 그린다."""
         for name, label, label_x in config.UPGRADE_GAUGES:
             text = render_text(self.small_font, label)
             text_rect = text.get_rect()
@@ -1398,11 +1088,7 @@ class Game:
                                                   config.PIXEL_SIZE))
 
     def draw_upgrade_row(self, index, upgrade_id):
-        """업그레이드 패널의 index번째 항목 줄 하나를 그린다(draw_upgrade_panel이 부른다).
-
-        줄 안에는 이름, "Lv 지금/최대", 가격 세 가지만 작은 글자로 쓴다(효과는 바닥 줄).
-        항목이 13개라 줄은 외곽선 없는 계단형 모서리 띠(높이 20)로 얇게 그린다.
-        """
+        """업그레이드 패널의 index번째 항목 줄 하나를 그린다(draw_upgrade_panel이 부른다)."""
         upgrade = config.UPGRADES_BY_ID[upgrade_id]
         row = self.get_upgrade_row_rect(index)
         buyable = self.can_buy_upgrade(upgrade_id)
@@ -1446,26 +1132,16 @@ class Game:
         self.screen.blit(cost, cost_rect)
 
     # ------------------------------------------------------------
-    # 툴팁 (N단위): 업그레이드 항목·상태 배지 설명 상자
+    # 툴팁: 업그레이드 항목·상태 배지 설명 상자
     # ------------------------------------------------------------
     def get_upgrade_effect_text(self, upgrade_id, level):
-        """업그레이드 upgrade_id가 level일 때의 효과 글자를 config 값으로 계산해 돌려준다.
-
-        효과 크기 = 레벨 x 레벨당 효과(UPGRADE_PER_LEVEL)를 UPGRADE_LEVEL_EFFECTS 틀에 넣는다.
-        예: 참고서 2레벨 -> "공부 지식 +4", 건강 관리 3레벨 -> "자연 감소 -30%".
-        방침 배수는 곱하지 않은 기본 효과다.
-        """
+        """업그레이드 upgrade_id가 level일 때의 효과 글자를 config 값으로 계산해 돌려준다."""
         per_level = config.UPGRADES_BY_ID[upgrade_id][config.UPGRADE_PER_LEVEL]
         amount = round(level * per_level, config.GAUGE_DECIMALS)
         return config.UPGRADE_LEVEL_EFFECTS[upgrade_id].format(amount)
 
     def get_upgrade_tooltip_rows(self, upgrade_id):
-        """업그레이드 툴팁에 쓸 줄 목록 [(글자, 색)]을 돌려준다.
-
-        1) "이름  Lv 지금/최대" 2) "지금: 효과"(0레벨이면 "지금: 아직 없음")
-        3) "다음: 효과" 또는 "다음: 최고 레벨" 4) "무대: …" 장식 설명
-        5) "가격: 연구비 N" 또는 "가격: MAX" 6) 살 수 없을 만큼 연구비가 적으면 "연구비가 모자라요"(빨강)
-        """
+        """업그레이드 툴팁에 쓸 줄 목록 [(글자, 색)]을 돌려준다."""
         upgrade = config.UPGRADES_BY_ID[upgrade_id]
         level = self.upgrades[upgrade_id]
         max_level = upgrade[config.UPGRADE_MAX_LEVEL]
@@ -1502,13 +1178,7 @@ class Game:
         return None
 
     def get_tooltip_rect(self, lines, anchor_top):
-        """줄 목록 lines를 담을 툴팁 상자 사각형을 돌려준다(그리지는 않는다).
-
-        왼쪽 x는 TOOLTIP_X(패널 오른쪽 끝 + 간격, 276)라서 왼쪽 패널과 겹치지 않는다.
-        위쪽 y는 anchor_top(항목 줄·배지 위쪽)에 맞추되, 무대 위 끝(116)보다 위로,
-        무대 아래 끝(460, 그림자 포함)보다 아래로 나가지 않게 옮긴다(정보바·버튼을 가리지 않음).
-        가로는 가장 긴 줄 + 양옆 여백(최소 TOOLTIP_MIN_WIDTH), 오른쪽은 화면 안에 들어오게 한다.
-        """
+        """줄 목록 lines를 담을 툴팁 상자 사각형을 돌려준다(그리지는 않는다)."""
         width = max(self.small_font.size(text)[config.FIRST_ROW] for text, _ in lines)
         width = max(config.TOOLTIP_MIN_WIDTH, width + config.TOOLTIP_PAD_X * config.HALF)
         height = len(lines) * config.TOOLTIP_LINE_HEIGHT + config.TOOLTIP_PAD_Y * config.HALF
@@ -1538,11 +1208,7 @@ class Game:
 
     def draw_upgrade_tooltip(self):
         """업그레이드 패널이 열려 있고 마우스가 항목 줄 위에 있으면, 그 줄의 툴팁을
-        패널 오른쪽(무대 위)에 그 줄 높이에 맞춰 그린다. 그린 상자 사각형(없으면 None)을 돌려준다.
-
-        마우스를 올렸을 때만 보여 준다(게임·엔딩 화면 모두). 그래서 패널만 열어 두면
-        무대와 엔딩 글자를 가리지 않는다. 키보드(↑↓)로 고른 줄은 패널 바닥 줄 "효과: …"가 알려 준다.
-        """
+        패널 오른쪽(무대 위)에 그 줄 높이에 맞춰 그린다. 그린 상자 사각형(없으면 None)을 돌려준다."""
         if not self.upgrade_panel_open:
             return None
         index = self.get_hovered_upgrade_index()
@@ -1552,11 +1218,7 @@ class Game:
         return self.draw_tooltip(rows, self.get_upgrade_row_rect(index).top)
 
     def get_status_tip_text(self, name):
-        """상태 배지 name의 툴팁 글자(조건 — 효과)를 config 값과 지금 상태로 채워 돌려준다.
-
-        예: "피곤: 체력 30 미만 — 공부 지식 ×0.7", "든든함: 남은 시간 12초 — 체력 감소 ×0.5".
-        든든함 남은 시간은 올림한 정수 초다.
-        """
+        """상태 배지 name의 툴팁 글자(조건 — 효과)를 config 값과 지금 상태로 채워 돌려준다."""
         template = config.STATUS_TIP_TEXTS[name]
         if name == config.DEBUFF_TIRED:
             return template.format(name=name, limit=config.LOW_GAUGE_LIMIT,
@@ -1572,10 +1234,7 @@ class Game:
                                ratio=round(config.NO_RATIO + bonus, config.GAUGE_DECIMALS))
 
     def get_hovered_status(self):
-        """마우스가 올라간 상태 배지의 (번호, 이름)을 돌려준다. 없으면 None.
-
-        게임 화면이고 업그레이드 패널이 닫혀 있을 때만 배지가 보이므로 그때만 찾는다.
-        """
+        """마우스가 올라간 상태 배지의 (번호, 이름)을 돌려준다. 없으면 None."""
         if (self.mouse_pos is None or self.state != config.STATE_PLAYING
                 or self.upgrade_panel_open):
             return None
@@ -1597,43 +1256,24 @@ class Game:
                                  self.student.get_badge_rect(index, config.STATUS_BADGE_Y).top)
 
     # ------------------------------------------------------------
-    # 랜덤 이벤트 화면 (D단위): 자동형 알림, 대화창, 멈춤 점무늬
+    # 랜덤 이벤트 화면: 자동형 알림, 대화창, 멈춤 점무늬
     # ------------------------------------------------------------
     def get_slide_offset(self, age, duration, distance):
-        """등장 연출로 원래 자리보다 위에 있을 거리(픽셀)를 돌려준다.
-
-        age(나타난 뒤 흐른 시간)가 0이면 distance만큼 위, duration이 지나면 0(제자리)이다.
-        PIXEL_SIZE 단위로 끊어서 한 칸씩 계단처럼 내려온다.
-        """
+        """등장 연출로 원래 자리보다 위에 있을 거리(픽셀)를 돌려준다."""
         if age >= duration:
             return config.NO_OFFSET
         return self.snap_to_pixel(distance * (config.FULL_RATIO - age / duration))
 
     def draw_event_notice(self):
-        """자동형 이벤트 알림(도트 상자: 아이콘 + 제목)을 무대 왼쪽 위 구석에 그린다.
-
-        좋은 일(효과 합 0 이상)은 민트 바탕 + 하트, 나쁜 일은 연분홍 바탕 + 느낌표.
-        나타날 때 EVENT_NOTICE_SLIDE_TIME 동안 위에서 한 칸씩 내려온다(무대 안쪽으로 잘라 그림).
-        가운데 머리 위(행동 팝업 자리)와 겹치지 않도록 왼쪽 구석에 두고, 제목이 길면
-        EVENT_NOTICE_TEXT_MAX_WIDTH에서 2줄로 나눠 상자가 오른쪽으로 너무 길어지지 않게 한다.
-        상자 높이는 2줄 자리로 늘 같고, 글자 줄들은 상자 세로 가운데에 놓는다.
-        """
+        """자동형 이벤트 알림(도트 상자: 아이콘 + 제목)을 무대 왼쪽 위 구석에 그린다."""
         self.draw_notice(self.notice)
 
     def draw_promotion_notice(self):
-        """진급 알림("2학년 진급!", "대학원 2년차!")을 무대 오른쪽 위 구석에 그린다.
-
-        자동형 알림과 같은 모양(민트 도트 상자 + 하트, 위에서 내려오는 등장)이고,
-        자동형 알림(왼쪽 위)과 같은 때 떠도 겹치지 않도록 오른쪽 끝을 PROMOTION_NOTICE_RIGHT에 맞춘다.
-        """
+        """진급 알림("2학년 진급!", "대학원 2년차!")을 무대 오른쪽 위 구석에 그린다."""
         self.draw_notice(self.promotion_notice, right=config.PROMOTION_NOTICE_RIGHT)
 
     def draw_notice(self, notice, right=None):
-        """알림 notice({"text", "timer", "good"})를 도트 상자로 그린다(자동형 알림·진급 알림 공통).
-
-        right가 None이면 상자 왼쪽 끝을 EVENT_NOTICE_X(무대 왼쪽 위)에 맞추고,
-        숫자면 상자 오른쪽 끝을 그 x에 맞춘다(무대 오른쪽 위).
-        """
+        """알림 notice({"text", "timer", "good"})를 도트 상자로 그린다(자동형 알림·진급 알림 공통)."""
         if notice["good"]:
             icon, icon_colors = config.NOTICE_GOOD_ICON, config.NOTICE_GOOD_COLORS
             fill, light, shadow = config.NOTICE_GOOD_BOX
@@ -1672,11 +1312,7 @@ class Game:
         self.screen.set_clip(None)
 
     def draw_pause_dots(self):
-        """대화창 뒤 화면 전체에 3칸(PAUSE_DOT_STEP) 간격 남색 점무늬를 덮어 "게임이 멈췄다"는 느낌을 준다.
-
-        Surface 알파(반투명)로 어둡게 하지 않고 도트를 찍는다. 점을 듬성듬성 찍어
-        뒤 화면 글자가 읽히도록 한다. 대화창은 이 위에 그려지므로 점이 덮이지 않는다.
-        """
+        """대화창 뒤 화면 전체에 3칸(PAUSE_DOT_STEP) 간격 남색 점무늬를 덮어 "게임이 멈췄다"는 느낌을 준다."""
         rows = range(config.FIRST_ROW, config.SCREEN_HEIGHT, config.PAUSE_DOT_STEP)
         for row, y in enumerate(rows):
             shift = (row % config.HALF) * config.PAUSE_DOT_SHIFT
@@ -1685,10 +1321,7 @@ class Game:
                                  (x, y, config.PIXEL_SIZE, config.PIXEL_SIZE))
 
     def wrap_text(self, font, text, max_width):
-        """글자 text를 띄어쓰기 자리에서 끊어 한 줄이 max_width를 넘지 않는 줄 목록으로 돌려준다.
-
-        EVENT_TEXT_MAX_LINES(2)줄을 넘으면 마지막 줄 끝에 줄임표를 붙여 자른다.
-        """
+        """글자 text를 띄어쓰기 자리에서 끊어 한 줄이 max_width를 넘지 않는 줄 목록으로 돌려준다."""
         lines = []
         current = ""
         for word in text.split(config.TEXT_SEPARATOR):
@@ -1706,13 +1339,7 @@ class Game:
         return lines
 
     def draw_event_dialog(self):
-        """선택지형 이벤트 대화창을 무대 위 가운데에 그린다.
-
-        도트 상자 -> 제목 띠(연분홍, 양끝 별) -> 상황 글자(2줄까지) -> 선택 버튼 2개와
-        각 버튼 아래 효과 미리보기 한 줄. 뜬 직후 EVENT_DIALOG_SLIDE_TIME 동안 위에서
-        한 칸씩 내려온다. 입력 대기(0.3초) 동안은 선택 버튼이 회색이고 진행 막대가 차오르며(E1 진행 막대),
-        그 뒤에는 마우스를 올린 버튼이 밝아진다(E1 호버).
-        """
+        """선택지형 이벤트 대화창을 무대 위 가운데에 그린다."""
         if self.current_event is None:
             return
         slide = self.get_slide_offset(self.dialog_time, config.EVENT_DIALOG_SLIDE_TIME,
@@ -1771,12 +1398,7 @@ class Game:
                     star_y, config.PIXEL_SIZE, ink)
 
     def get_option_preview(self, option):
-        """선택지 option의 효과 미리보기 항목 [(글자, 색), ...]을 돌려준다.
-
-        게이지 효과는 "멘탈 +15"(늘면 초록, 줄면 빨강), 특성·외형은 "특성: 음악 힐링",
-        "외형: 기타"(옅은 남색). 연계 플래그는 숨긴다(나중에 생기는 이벤트의 깜짝 요소).
-        보일 것이 하나도 없으면 "변화 없음".
-        """
+        """선택지 option의 효과 미리보기 항목 [(글자, 색), ...]을 돌려준다."""
         labels = dict(config.POPUP_GAUGES)
         parts = []
         for key, amount in option[config.OPTION_EFFECTS].items():
@@ -1795,10 +1417,7 @@ class Game:
         return parts
 
     def draw_choice_preview(self, option, center_x, center_y):
-        """선택 버튼 아래에 효과 미리보기 한 줄을 (center_x, center_y) 가운데에 작은 글씨로 그린다.
-
-        항목마다 색이 달라서 글자를 따로 그린 뒤 " · "로 이어 붙여 가운데 정렬한다.
-        """
+        """선택 버튼 아래에 효과 미리보기 한 줄을 (center_x, center_y) 가운데에 작은 글씨로 그린다."""
         surfaces = []
         for text, color in self.get_option_preview(option):
             if surfaces:   # 두 번째 항목부터 앞에 구분 글자를 붙인다
@@ -1837,11 +1456,7 @@ class Game:
 
     def draw_big_text(self, text, center_y, center_x=config.SCREEN_CENTER_X,
                       max_width=config.ENDING_NAME_MAX_WIDTH):
-        """큰 제목 글자를 살구색 그림자 글자와 겹쳐 가운데 x = center_x 에 그린다(레트로 느낌).
-
-        글자가 길어 큰 글씨로 max_width를 넘으면(예: "대학원 12년차 수료")
-        조금 작은 글씨(ending_font)로 그려서 가운데 패널 밖으로 나가지 않게 한다.
-        """
+        """큰 제목 글자를 살구색 그림자 글자와 겹쳐 가운데 x = center_x 에 그린다(레트로 느낌)."""
         font = self.title_font
         shadow = render_text(font, text, config.COLOR_TITLE_SHADOW)
         if shadow.get_width() > max_width:
@@ -1865,12 +1480,7 @@ class Game:
         self.screen.blit(surface, rect)
 
     def draw_key_hint(self, text, center_y, center_x=config.SCREEN_CENTER_X):
-        """키 안내 문구(예: "Enter를 눌러 시작") 앞에 작은 도트 화살표를 붙여 그린다.
-
-        글자 가운데 x는 center_x(기본: 화면 가운데)다.
-        E6 깜빡임: 0.5초마다 화살표가 보였다 숨었다 하고, 숨은 차례에는 글자 색이
-        살짝 옅어진다. 글자 자체는 늘 보여서 읽기 불편하지 않다.
-        """
+        """키 안내 문구(예: "Enter를 눌러 시작") 앞에 작은 도트 화살표를 붙여 그린다."""
         if not self.is_blink_on():
             self.draw_text_center(self.font, text, center_y, config.COLOR_HINT_DIM, center_x)
             return
@@ -1909,9 +1519,7 @@ class Game:
                              (start_x + index * step, y, config.PIXEL_SIZE, config.PIXEL_SIZE))
 
     def draw_playing(self):
-        """게임 화면: 상단 정보바, 목표 진행 막대, (시험 기간이면) 노란 배너, 상태 패널(게이지),
-        제자 무대(배경 4겹 -> 제자 -> 파티클·팝업 -> 알림·진급 알림),
-        방침 버튼과 자동 행동 진행 막대, 경과 시간."""
+        """게임 화면(정보바·목표 막대·시험 배너·패널·무대·버튼)을 그린다."""
         self.draw_info_bar()
         self.draw_goal_bar()
         if self.student.is_exam_period():
@@ -1936,11 +1544,7 @@ class Game:
         self.draw_elapsed_time()
 
     def draw_stage_effects(self):
-        """제자 무대 안에 파티클(E2)과 수치 팝업(E3)을 그린다.
-
-        무대 패널 안쪽으로 그리기 영역을 잘라(set_clip) 두어서 파티클·팝업이
-        패널 밖(버튼·상태 패널 쪽)으로 넘쳐 보이지 않게 한다.
-        """
+        """제자 무대 안에 파티클(E2)과 수치 팝업(E3)을 그린다."""
         self.screen.set_clip(self.get_stage_inner())
         for particle in self.particles:
             self.draw_particle(particle)
@@ -1949,11 +1553,7 @@ class Game:
         self.screen.set_clip(None)
 
     def draw_particle(self, particle):
-        """파티클 하나를 지금 나이(age)에 맞는 자리에 도트 스프라이트로 찍는다.
-
-        자리 = 시작 자리 + 속도 x 나이 (위로 떠오르는 속도 포함). 도트 칸에 맞춰 끊는다.
-        수명의 PARTICLE_SHRINK_RATIO가 지나면 칸 크기를 반으로 줄여 작아지며 사라진다.
-        """
+        """파티클 하나를 지금 나이(age)에 맞는 자리에 도트 스프라이트로 찍는다."""
         age = particle["age"]
         cell = config.PIXEL_SIZE
         if age >= particle["life"] * config.PARTICLE_SHRINK_RATIO:
@@ -1966,15 +1566,7 @@ class Game:
         draw_sprite(self.screen, particle["sprite"], left, top, cell, particle["colors"])
 
     def draw_popup(self, popup):
-        """수치 팝업 하나("체력 +20")를 떠오른 높이에 굵은 글씨로 그린다.
-
-        순서: 남색 그림자(오른쪽 아래 2px) -> 크림색 테두리(사방 1px) -> 색 글자.
-        크림 테두리 덕분에 남색 밤하늘에서도, 남색 그림자 덕분에 밝은 낮 하늘에서도 읽힌다
-        (반투명 없이 글자를 여러 번 찍는다).
-        POPUP_BLINK_START가 지나면 POPUP_BLINK_STEP마다 보였다 숨었다 하며 사라진다.
-        글자 가운데 x는 popup["x"](행동 팝업 = 무대 가운데, 이벤트 팝업 = 왼쪽 위 칸)이고,
-        x가 없는 팝업은 무대 가운데에 그린다.
-        """
+        """수치 팝업 하나("체력 +20")를 떠오른 높이에 굵은 글씨로 그린다."""
         age = popup["age"]
         if age >= config.POPUP_BLINK_START:
             step = int((age - config.POPUP_BLINK_START) / config.POPUP_BLINK_STEP)
@@ -1993,15 +1585,7 @@ class Game:
         self.screen.blit(render_text(self.popup_font, popup["text"], popup["color"]), rect)
 
     def draw_ending(self):
-        """엔딩 화면: 패널, 엔딩 이름, (졸업·수료) 학사모와 별 / (휴학) 비구름, 누적 지식 배지, 키 안내.
-
-        - 학부 졸업: 등급(수석/무사/아슬아슬 졸업), 걸린 시간("졸업까지 3분 52초"), 졸업 보너스,
-          "R: 환생 (명성 +1)" / "C: 대학원 진학"
-        - 대학원 수료: "대학원 n년차 수료", "R: 환생 (명성 +1)" (졸업 보너스 없음)
-        - 휴학: "R을 눌러 다시 하기"
-        업그레이드 패널(왼쪽)이 열려 있으면 가운데 패널과 글자·그림을 오른쪽으로 옮겨
-        그려서 패널이 엔딩 이름·안내를 가리지 않게 한다(get_ending_layout).
-        """
+        """엔딩 화면: 패널, 엔딩 이름, (졸업·수료) 학사모와 별 / (휴학) 비구름, 누적 지식 배지, 키 안내."""
         panel_rect, center_x, name_max_width = self.get_ending_layout()
         self.draw_panel(panel_rect)
         self.draw_big_text(self.ending, config.ENDING_NAME_Y, center_x, name_max_width)
@@ -2033,11 +1617,7 @@ class Game:
             self.draw_key_hint(config.RESTART_HINT_TEXT, config.RESTART_HINT_Y, center_x)
 
     def get_ending_layout(self):
-        """엔딩 화면 배치 (가운데 패널 사각형, 글자 가운데 x, 엔딩 이름 최대 가로 길이)를 돌려준다.
-
-        업그레이드 패널이 닫혀 있으면 화면 가운데 패널(MENU_PANEL_RECT, 가운데 400),
-        열려 있으면 패널과 겹치지 않는 오른쪽 자리(ENDING_PANEL_OPEN_RECT, 가운데 536)다.
-        """
+        """엔딩 화면 배치 (가운데 패널 사각형, 글자 가운데 x, 엔딩 이름 최대 가로 길이)를 돌려준다."""
         if self.upgrade_panel_open:
             return (config.ENDING_PANEL_OPEN_RECT, config.ENDING_OPEN_CENTER_X,
                     config.ENDING_NAME_MAX_WIDTH_OPEN)
@@ -2076,11 +1656,7 @@ class Game:
                     config.PIXEL_SIZE, ink)
 
     def get_goal_text(self):
-        """정보바의 목표 글자를 돌려준다(기획서 6절).
-
-        1~3학년 "다음 학년까지 지식 n", 4학년 "졸업까지 지식 n", 대학원 "다음 년차까지 지식 n".
-        n은 다음 목표까지 더 모아야 하는 지식이다(0 아래로 내려가지 않음).
-        """
+        """정보바의 목표 글자를 돌려준다(기획서 6절)."""
         left = self.student.get_knowledge_to_goal()
         if self.student.is_in_grad_school():
             return config.NEXT_GRAD_YEAR_TEXT.format(left)
@@ -2089,13 +1665,7 @@ class Game:
         return config.NEXT_GRADE_TEXT.format(left)
 
     def draw_goal_bar(self):
-        """정보바 바로 아래 왼쪽(상태 패널 위)에 목표 진행 막대를 도트 상자로 그린다.
-
-        상자 안 왼쪽에 "목표" 글자, 그 오른쪽에 막대. 막대는 지금 목표 구간
-        (앞 목표 -> 다음 목표)에서 지식이 얼마나 찼는지(Student.get_goal_progress)를
-        PIXEL_SIZE 단위로 끊어 채운다(도트 방식, 반투명 없음).
-        시험 기간 배너는 오른쪽(무대 위)에 뜨므로 서로 겹치지 않는다.
-        """
+        """정보바 바로 아래 왼쪽(상태 패널 위)에 목표 진행 막대를 도트 상자로 그린다."""
         box = pygame.Rect(config.GOAL_BOX_X, config.GOAL_BOX_Y,
                           config.GOAL_BOX_WIDTH, config.GOAL_BOX_HEIGHT)
         inner = draw_pixel_box(self.screen, box, config.COLOR_INFO_BAR,
@@ -2131,12 +1701,7 @@ class Game:
         self.screen.blit(text, rect)
 
     def draw_info_bar(self):
-        """상단 정보바를 그린다.
-
-        민트색 도트 상자 위에 왼쪽 "N학년"(대학원이면 "대학원 n년차"),
-        그 오른쪽(INFO_GOAL_X부터) 목표 글자("다음 학년까지 지식 n" 등, get_goal_text),
-        오른쪽 "연구비 N  지식 N"을 쓴다. 목표 진행 막대는 정보바 바로 아래(draw_goal_bar)다.
-        """
+        """상단 정보바를 그린다."""
         box = pygame.Rect(config.INFO_BOX_X, config.INFO_BOX_Y,
                           config.INFO_BOX_WIDTH, config.INFO_BOX_HEIGHT)
         draw_pixel_box(self.screen, box, config.COLOR_INFO_BAR,
@@ -2173,19 +1738,11 @@ class Game:
         self.screen.blit(money, money_rect)
 
     def get_auto_progress(self):
-        """다음 자동 행동까지의 진행률(0~1)을 돌려준다. 방금 행동했으면 0, 곧 행동하면 1에 가깝다.
-
-        자동 행동 간격은 시간 관리 업그레이드에 따라 2.0초보다 짧을 수 있다.
-        """
+        """다음 자동 행동까지의 진행률(0~1)을 돌려준다. 방금 행동했으면 0, 곧 행동하면 1에 가깝다."""
         return config.FULL_RATIO - self.auto_timer / self.get_auto_interval()
 
     def draw_buttons(self):
-        """방침 버튼 3개, 그 아래 자동 행동 진행 막대와 "다음 자동 행동까지" 안내 문구를 그린다.
-
-        지금 고른 방침 버튼은 노랑 계열로 밝게 강조하고(반투명 없음),
-        마우스가 올라간 버튼은 밝은 하늘색, 방금 고른 버튼은 잠깐 눌린 자리(4px 아래)에 그린다.
-        진행 막대는 방침 버튼 3개 너비의 도트 상자 안에 2초에 걸쳐 차오른다(draw_progress_bar).
-        """
+        """방침 버튼 3개, 그 아래 자동 행동 진행 막대와 "다음 자동 행동까지" 안내 문구를 그린다."""
         for name, button in self.buttons.items():
             hovered = self.mouse_pos is not None and button.is_clicked(self.mouse_pos)
             offset = config.NO_OFFSET
