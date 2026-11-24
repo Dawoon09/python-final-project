@@ -40,6 +40,8 @@ SPEC_TABLE = {
     "lucky_charm": (3, 600), "scholarship": (1, 750),
     # (M단위) 컨디션 3종 추가: 체력 증진·멘탈 관리·자기 관리
     "health_max": (5, 300), "mental_max": (5, 300), "self_care": (5, 400),
+    # (연구비) 연구 과제 수주
+    "research_grant": (5, 500),
 }
 
 
@@ -81,7 +83,7 @@ def g(no_events, no_auto):
 
 
 # (L단위) 예전 지식 기준(1000/750)을 같은 등급이 나오는 졸업 시각으로 바꾼다: 수석 200초, 무사 300초, 아슬아슬 400초
-# (M단위) 시간 기준이 임시 값(400/720)이라 config 상수로: 수석 = 기준 초, 무사 = 두 기준 가운데, 아슬아슬 = 무사 기준 + 40
+# (M단위) 시간 기준을 config 상수로 잡으므로 config 상수로: 수석 = 기준 초, 무사 = 두 기준 가운데, 아슬아슬 = 무사 기준 + 40
 OLD_TOP_KNOWLEDGE, OLD_NORMAL_KNOWLEDGE = 1000, 750
 
 
@@ -137,7 +139,8 @@ def test_upgrade_table_matches_spec():
     assert per == {"menu": 6, "bed": 4, "reference_book": 2, "time_management": 0.2,
                    "health_care": 0.1, "library": 3, "cafe": 5, "gym": 2,
                    "lucky_charm": 0.05, "scholarship": 30,
-                   "health_max": 10, "mental_max": 10, "self_care": 0.2}
+                   "health_max": 10, "mental_max": 10, "self_care": 0.2,
+                   "research_grant": 0.1}   # (연구비) 버는 연구비 +10%/Lv
 
 
 def test_money_constants():
@@ -752,7 +755,7 @@ def test_title_shows_fame_and_money(isolated_record_path):
         game.draw()
     finally:
         game_module.render_text = real
-    assert config.TITLE_WALLET_TEXT.format(2, 340) in texts
+    assert config.TITLE_WALLET_TEXT.format("조교수", 2, 340) in texts   # (명성 칭호) 명성 2 = 조교수
     assert "최고 기록: 지식 5" in texts
     pygame.quit()
 

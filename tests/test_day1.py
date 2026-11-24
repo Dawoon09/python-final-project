@@ -118,10 +118,10 @@ def test_student_start_values():
         ("STUDY_KNOWLEDGE", 10), ("STUDY_KNOWLEDGE_EXAM", 20),
         # G단위: ACTION_COOLDOWN(1초)은 기획서 10절로 삭제. AUTO_ACTION_INTERVAL 2.0은 test_idle_g.py에서 확인
         ("MENTAL_SMILE_MIN", 60), ("MENTAL_FLAT_MIN", 30),
-        ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
+        ("BASE_RADIUS", 60), ("RADIUS_PER_GRADE", 0), ("GLASSES_GRADE", 3),
         ("MAX_GRADE", 4),
         # 졸업 기준: E단위 500/300 -> 700/450 -> K단위 1000/750 -> L단위(기획서 11절) 걸린 시간 240/360초
-        # -> 11절 A안 밸런스(2026-11-23) 200/360초 -> M단위 400/720초(임시 값, 밸런스 단위에서 다시 정함)
+        # -> 11절 A안 밸런스(2026-11-23) 200/360초 -> M단위 400/720초(밸런스 B안에서 확정)
         # 시간 기준은 임시라 값을 고정하지 않는다(test_time_thresholds_ordered에서 순서만 확인).
         # M단위: 진급·졸업 기준 2배 (200/450/750/1100 -> 400/900/1500/2200)
         ("GRADUATION_KNOWLEDGE", 2200), ("GRADE_GOALS", [400, 900, 1500]),
@@ -133,13 +133,13 @@ def test_config_constant(name, expected):
 
 
 def test_time_thresholds_ordered():
-    """(M단위) 졸업 등급 시간 기준은 임시 값이라 순서만 확인한다: 0 < 수석 기준 < 무사 기준."""
+    """(M단위) 졸업 등급 시간 기준은 config 상수라 순서만 확인한다: 0 < 수석 기준 < 무사 기준."""
     assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
 
 
 def test_radius_per_grade_formula():
     radii = [config.BASE_RADIUS + (g - 1) * config.RADIUS_PER_GRADE for g in range(1, 5)]
-    assert radii == [40, 50, 60, 70]
+    assert radii == [60, 60, 60, 60]   # 크기 고정
 
 
 def test_ending_names():

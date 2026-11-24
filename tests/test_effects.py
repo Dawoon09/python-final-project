@@ -148,7 +148,7 @@ def test_apricot_light_removed_and_cool_text_darker():
 
 def test_gauge_rows_moved():
     assert (config.HEALTH_LABEL_Y, config.HEALTH_BAR_Y,
-            config.MENTAL_LABEL_Y, config.MENTAL_BAR_Y) == (200, 232, 320, 352)
+            config.MENTAL_LABEL_Y, config.MENTAL_BAR_Y) == (200, 232, 280, 312)  # (특성 8종) 멘탈 줄 40 위로
 
 
 # ======================= E1 버튼 호버·눌림·쿨타임 =======================

@@ -98,12 +98,12 @@ def test_m_constants():
     assert config.GAUGE_MAX == 100
     assert config.GRADE_GOALS == [400, 900, 1500] and config.GRADUATION_KNOWLEDGE == 2200
     assert (config.GRAD_GOAL_FIRST_STEP, config.GRAD_GOAL_STEP_GROWTH) == (800, 200)
-    # 시간 기준은 B안으로 확정(예전 임시 400/720)
-    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (330, 720)
+    # 시간 기준은 B안으로 확정(수석 330 -> 290초, 2026-11-24)(예전 임시 400/720초)
+    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (290, 720)
     assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
     assert config.STATUS_BADGE_Y == 128 and config.GAUGE_VALUE_TEXT.format(80, 100) == "80/100"
     assert (config.UPGRADE_ROW_TOP, config.UPGRADE_ROW_HEIGHT, config.UPGRADE_ROW_STEP) == \
-        (166, 20, 21)
+        (165, 19, 20)   # (연구비) 14줄 (M단위 166/20/21)
 
 
 @pytest.mark.parametrize("policy, threshold, k_ratio, c_ratio, rest_ratio, bonus", [
@@ -121,7 +121,7 @@ def test_policy_table_m(policy, threshold, k_ratio, c_ratio, rest_ratio, bonus):
 
 
 def test_upgrade_table_13_kinds():
-    assert config.UPGRADE_IDS == OLD_IDS + list(NEW_IDS)
+    assert config.UPGRADE_IDS == OLD_IDS + list(NEW_IDS) + [config.UPGRADE_RESEARCH]   # (연구비) 14번째
     table = {uid: (u[config.UPGRADE_MAX_LEVEL], u[config.UPGRADE_BASE_COST],
                    u[config.UPGRADE_PER_LEVEL], u[config.UPGRADE_CATEGORY])
              for uid, u in config.UPGRADES_BY_ID.items() if uid in NEW_IDS}
@@ -143,7 +143,8 @@ def test_upgrade_prices_and_total(g):
     assert costs[HMAX] == costs[MMAX] == [300, 600, 1200, 2400, 4800]
     assert costs[SELF] == [400, 800, 1600, 3200, 6400]
     assert sum(sum(costs[u]) for u in NEW_IDS) == 31000
-    assert sum(sum(c) for c in costs.values()) == 92590
+    assert costs[config.UPGRADE_RESEARCH] == [500, 1000, 2000, 4000, 8000]
+    assert sum(sum(c) for c in costs.values()) == 108090   # (연구비) 92,590 + 15,500
 
 
 # ======================= 1. 회복은 휴식에서만 =======================
@@ -686,17 +687,17 @@ def test_panel_13_rows_geometry(g):
     panel = pygame.Rect(config.UPGRADE_PANEL_RECT)
     inner = panel.inflate(-2 * P, -2 * P)
     rows = [g.get_upgrade_row_rect(i) for i in range(len(config.UPGRADE_IDS))]
-    assert len(rows) == 13
+    assert len(rows) == 14   # (연구비) 13 -> 14
     for i, row in enumerate(rows):
-        assert (row.top, row.height) == (166 + 21 * i, 20)
+        assert (row.top, row.height) == (165 + 20 * i, 19)
         assert inner.contains(row)
         assert row.right <= config.STATUS_PANEL_X + config.STATUS_PANEL_WIDTH   # 왼쪽 열
     for a, b in zip(rows, rows[1:]):
         assert a.bottom < b.top
-    assert rows[-1].bottom == 438
+    assert rows[-1].bottom == 444
 
 
-@pytest.mark.parametrize("index", range(13))
+@pytest.mark.parametrize("index", range(14))
 def test_panel_every_row_clickable_buys(g, index):
     g.money = 100_000
     g.upgrade_panel_open = True
@@ -713,9 +714,9 @@ def test_panel_keys_wrap_and_enter_buys(g):
     press(g, pygame.K_u)
     assert g.upgrade_panel_open and g.upgrade_cursor == 0
     press(g, pygame.K_UP)
-    assert g.upgrade_cursor == 12 and config.UPGRADE_IDS[12] == SELF
+    assert g.upgrade_cursor == 13 and config.UPGRADE_IDS[13] == config.UPGRADE_RESEARCH
     press(g, pygame.K_RETURN)
-    assert g.upgrades[SELF] == 1
+    assert g.upgrades[config.UPGRADE_RESEARCH] == 1
     press(g, pygame.K_DOWN)
     assert g.upgrade_cursor == 0
     for _ in range(11):

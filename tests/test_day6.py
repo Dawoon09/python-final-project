@@ -23,7 +23,7 @@ from conftest import PROJECT_ROOT, press  # noqa: E402
 from game import Game  # noqa: E402
 from student import judge_ending  # noqa: E402
 
-# (M단위) 졸업 등급 시간 기준은 임시 값이라 '무사 졸업' 시각은 두 기준의 가운데로 잡는다
+# (M단위) 졸업 등급 시간 기준은 config 상수라 '무사 졸업' 시각은 두 기준의 가운데로 잡는다
 NORMAL_SECONDS = (config.TOP_GRADUATE_SECONDS + config.NORMAL_GRADUATE_SECONDS) / 2
 
 FRAME = 1 / 60

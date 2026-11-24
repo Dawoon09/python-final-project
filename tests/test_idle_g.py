@@ -475,7 +475,7 @@ def test_large_dt_graduation_stops_actions(g, monkeypatch):
     g.student.feed()                   # (M단위) 든든함이 있어야 공부를 고른다
     log = record_actions(g, monkeypatch)
     g.update(100.0)
-    # 등급은 걸린 시간(177초) 기준 (M단위: 시간 기준은 임시 값이라 judge_ending 으로)
+    # 등급은 걸린 시간(177초) 기준 (M단위: 시간 기준은 config 상수라 judge_ending 으로)
     assert g.state == config.STATE_ENDING and g.ending == judge_ending(177.0)
     assert [t for t, _ in log] == pytest.approx([177.0])
     assert g.student.elapsed == pytest.approx(177.0)

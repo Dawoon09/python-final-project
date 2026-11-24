@@ -24,7 +24,7 @@ from game import Game  # noqa: E402
 from student import Student, judge_ending  # noqa: E402
 from button import sprite_size  # noqa: E402
 
-# (M단위) 졸업 등급 시간 기준은 임시 값이라 경계 테스트는 config 상수로 쓴다
+# (M단위) 졸업 등급 시간 기준은 config 상수라 경계 테스트는 config 상수로 쓴다
 TOP = config.TOP_GRADUATE_SECONDS
 NORMAL = config.NORMAL_GRADUATE_SECONDS
 
@@ -98,7 +98,7 @@ def test_config_values():
     assert config.MENTAL_DECAY_PER_SEC_EXAM == 2 and config.MENTAL_DECAY_PER_SEC == 1
     assert config.STUDY_KNOWLEDGE_EXAM == 20 and config.STUDY_KNOWLEDGE == 10
     # (L단위) 졸업 기준: 지식 1000/750 -> 걸린 시간 200/360초(11절 A안, 수석 240 -> 200), 졸업 지식 1100
-    # (M단위) 시간 기준은 임시 값(400/720)이라 순서만 본다. 졸업 지식 2배 2200
+    # (M단위) 시간 기준은 config 상수라 순서만 본다. 졸업 지식 2배 2200
     assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
     assert config.GRADUATION_KNOWLEDGE == 2200
     assert (config.ENDING_LEAVE, config.ENDING_TOP, config.ENDING_NORMAL,
@@ -370,7 +370,7 @@ def test_student_get_ending():
     assert s.get_ending() is None
     s.elapsed = 10000.0
     assert s.get_ending() is None
-    s.elapsed = float(config.TOP_GRADUATE_SECONDS)   # 수석은 기준 초 이하(M단위 임시 400)
+    s.elapsed = float(config.TOP_GRADUATE_SECONDS)   # 수석은 기준 초 이하
     s.knowledge = config.GRADUATION_KNOWLEDGE
     s.promote()
     assert s.get_ending() == config.ENDING_TOP
@@ -382,7 +382,7 @@ def test_student_get_ending():
 
 @pytest.mark.parametrize("seconds, ending", [
     # (L단위) 졸업 등급은 걸린 시간으로: TOP 이하 수석, NORMAL 이하 무사, 초과 아슬아슬
-    # (M단위) 시간 기준은 임시 값이라 config 상수 기준으로 경계를 잡는다
+    # (M단위) 시간 기준은 config 상수라 config 상수 기준으로 경계를 잡는다
     (0, config.ENDING_TOP), (TOP / 2, config.ENDING_TOP), (TOP - 0.001, config.ENDING_TOP),
     (TOP, config.ENDING_TOP), (TOP + 0.0001, config.ENDING_NORMAL),
     (TOP + 0.001, config.ENDING_NORMAL), (TOP + 40, config.ENDING_NORMAL),

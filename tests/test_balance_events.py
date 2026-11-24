@@ -115,7 +115,7 @@ def rng_draws(monkeypatch, g, value=0.0):
 def test_e_constants():
     assert config.EVENT_MIN_GAP == 8.0
     # (L단위) 지식 1000/750 -> 걸린 시간 200/360초 (11절 A안: 수석 240 -> 200)
-    # (M단위) 임시 값 400/720초 -> 값은 고정하지 않고 순서만 본다
+    # 수석 < 무사 기준 순서만 본다(값은 config 상수)
     assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
     assert config.PAUSE_DOT_STEP == 12 == P * 3
     assert config.EVENT_NOTICE_FONT_SIZE == 16
@@ -429,7 +429,7 @@ def test_gap_reduces_chance_events():
 
 
 # ======================= 3. 엔딩 기준 (L단위: 걸린 시간 200/360초) =======================
-# (M단위) 시간 기준은 임시 값(400/720)이라 경계는 config 상수로 잡는다(이름은 예전 그대로)
+# (M단위) 시간 기준은 config 상수라 경계는 config 상수로 잡는다(이름은 예전 그대로)
 TOP = config.TOP_GRADUATE_SECONDS
 NORMAL = config.NORMAL_GRADUATE_SECONDS
 
@@ -509,7 +509,7 @@ def test_balance_with_events(interval):
 
     이 파일은 자동 행동을 끈(no_auto) 방치형 이전 수동 플레이 모형이다.
     (K·L단위, 11절 A안) 예전에는 간격별 기대 엔딩(1.0초 수석, 1.5·2.0초 무사, 2.5초 이상 아슬아슬)이
-    과반인지 봤다. (M단위) 회복 규칙·진급 기준이 바뀌고 시간 기준이 임시 값이 되어, 분포는 밸런스 단위에서
+    과반인지 봤다. (M단위) 회복 규칙·진급 기준이 바뀌고 시간 기준이 바뀌어, 분포는 밸런스 단위에서
     다시 정한다. 그래서 여기서는 불변식만 본다: 상한(30분) 안에 모두 엔딩, 졸업 판의 등급은
     judge_ending(걸린 시간)과 같다, 휴학이면 졸업 시각이 없다.
     간격이 길수록 늦게 졸업하는지는 test_balance_slower_interval_graduates_later 에서 본다.
@@ -666,7 +666,9 @@ def test_study_then_auto_event_no_overlap(quiet_game, grade, event):
     g.student.health, g.student.mental, g.student.knowledge = 60, 60, 10
     assert g.do_action(STUDY)
     g.start_event(event)
-    ev_pops = [p for p in g.popups if p["x"] == config.EVENT_POPUP_X]
+    # (연구비 이벤트) 긴 연구비 글자는 무대 안에 들어가게 x가 조금 밀린다
+    ev_pops = [p for p in g.popups
+               if config.EVENT_POPUP_X <= p["x"] <= config.EVENT_POPUP_X + 4 * config.PIXEL_SIZE]
     assert ev_pops
     assert min(p["y"] for p in ev_pops) == 212
     assert_no_overlap_frames(g, config.EVENT_NOTICE_TIME, (grade, event[config.EVENT_ID]))
@@ -845,7 +847,7 @@ def test_spec_section2_table_1000_750():
     """
     text = read_doc()
     grades = doc_section(doc_section(text, "게임 규칙"), "졸업 등급과 졸업 보너스")
-    # (M단위) 시간 기준은 임시 값이라 표 줄을 config 값으로 만든다
+    # (M단위) 시간 기준은 config 상수라 표 줄을 config 값으로 만든다
     assert "| 수석 졸업 | {}초 이하 | +200 |".format(TOP) in grades
     assert "| 무사 졸업 | {}초 초과 {}초 이하 | +100 |".format(TOP, NORMAL) in grades
     assert "| 아슬아슬 졸업 | {}초 초과 | +50 |".format(NORMAL) in grades
@@ -870,7 +872,7 @@ def test_jeja_spec_section5_1000_750():
     """
     text = read_doc(JEJA_SPEC_PATH)
     grades = doc_section(doc_section(text, "게임 규칙"), "졸업 등급")
-    # (M단위) 시간 기준은 임시 값이라 config 값으로 글자를 만든다
+    # (M단위) 시간 기준은 config 상수라 config 값으로 글자를 만든다
     assert "≤ {}초 (`TOP_GRADUATE_SECONDS`)".format(TOP) in grades
     assert "{}초 초과 ≤ {}초 (`NORMAL_GRADUATE_SECONDS`)".format(TOP, NORMAL) in grades
     assert "{}초 초과".format(NORMAL) in grades

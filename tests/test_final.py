@@ -121,7 +121,7 @@ def set_health(value):
 @pytest.mark.parametrize("seconds, knowledge, ending", [
     # E단위 700/450, K단위 1000/750 (지식) -> L단위: 걸린 시간 240/360초 (기획서 11절)
     # -> 11절 A안 200/360초. 강제 졸업 시각에 프레임 몇 개가 더해지므로 수석 사례는 150초로 둔다.
-    # (M단위) 시간 기준은 임시 값이라 config 상수 기준으로 시각을 잡는다
+    # (M단위) 시간 기준은 config 상수라 config 상수 기준으로 시각을 잡는다
     (config.TOP_GRADUATE_SECONDS - 50.0, config.GRADUATION_KNOWLEDGE + 20, config.ENDING_TOP),
     ((config.TOP_GRADUATE_SECONDS + config.NORMAL_GRADUATE_SECONDS) / 2,
      config.GRADUATION_KNOWLEDGE, config.ENDING_NORMAL),
@@ -190,9 +190,10 @@ def test_real_loop_title_play_graduation_restart_esc(monkeypatch, isolated_recor
     assert after_r["best"] == knowledge
     with open(isolated_record_path, encoding="utf-8") as f:
         data = json.load(f)
-    # (H단위) 4개 키 형식. 최고 기록은 그대로 확인한다
+    # (H단위) 4개 키 형식 + (이어하기) 판 진행 중 ESC로 끄면 하던 판("run")도 저장된다
     assert set(data) == {config.RECORD_KEY, config.RECORD_MONEY_KEY, config.RECORD_FAME_KEY,
-                         config.RECORD_UPGRADES_KEY}
+                         config.RECORD_UPGRADES_KEY, config.RECORD_RUN_KEY}
+    assert data[config.RECORD_RUN_KEY]["elapsed"] < config.DECAY_INTERVAL   # R 뒤 새 판
     assert data[config.RECORD_KEY] == knowledge
 
 
@@ -293,9 +294,9 @@ def test_no_numeric_literals_other_than_0_1(name):
     ("STUDY_HEALTH", -5), ("STUDY_MENTAL", -8),
     ("STUDY_KNOWLEDGE", 10), ("STUDY_KNOWLEDGE_EXAM", 20),  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
     ("MENTAL_SMILE_MIN", 60), ("MENTAL_FLAT_MIN", 30),
-    ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
+    ("BASE_RADIUS", 60), ("RADIUS_PER_GRADE", 0), ("GLASSES_GRADE", 3),
     # L단위(기획서 11절): 졸업 등급은 걸린 시간, 진급 목표 200/450/750, 졸업 지식 1100
-    # M단위: 진급 기준 2배 400/900/1500, 졸업 2200. 시간 기준(400/720)은 임시 값이라 고정하지 않는다
+    # M단위: 진급 기준 2배 400/900/1500, 졸업 2200. 시간 기준은 config 상수라 고정하지 않는다
     ("GRADE_GOALS", [400, 900, 1500]), ("GRADUATION_KNOWLEDGE", 2200),
     ("ENDING_LEAVE", "휴학"), ("ENDING_TOP", "수석 졸업"),
     ("ENDING_NORMAL", "무사 졸업"), ("ENDING_BARELY", "아슬아슬 졸업"),

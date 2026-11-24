@@ -62,7 +62,7 @@ def grad_student(entry=ENTRY, year=1):
 
 def test_grad_cycle_constants():
     assert config.GRAD_DECAY_BONUS == 1.0          # B안 (A안 0.5)
-    assert config.GRAD_CYCLE_DECAY_BONUS == 1.5    # B안 (A안 1.0)
+    assert config.GRAD_CYCLE_DECAY_BONUS == 2.5    # 개운함 추가로 1.5 -> 2.5 (B안 1.5, A안 1.0)
     assert config.GRAD_CYCLES_NONE == 0
     assert config.GRAD_MONEY_BONUS == 1.0
     assert config.CYCLE_SECONDS == 60
@@ -187,11 +187,11 @@ def test_grad_cycles_zero_when_entry_time_missing():
     assert s.get_grad_decay_ratio() == pytest.approx(expected_ratio(2, 0)) == pytest.approx(3.0)
 
 
-# ======================= 자연 감소 배수 1 + 1.0n + 1.5c (B안) =======================
+# ======================= 자연 감소 배수 1 + 1.0n + 2.5c (개운함 조정, B안 1.5c) =======================
 
 @pytest.mark.parametrize("year, cycles, ratio", [
-    (1, 0, 2.0), (1, 1, 3.5), (1, 2, 5.0), (2, 0, 3.0), (2, 1, 4.5), (2, 3, 7.5),
-    (3, 1, 5.5), (4, 5, 12.5), (15, 24, 52.0),
+    (1, 0, 2.0), (1, 1, 4.5), (1, 2, 7.0), (2, 0, 3.0), (2, 1, 5.5), (2, 3, 10.5),
+    (3, 1, 6.5), (4, 5, 17.5), (15, 24, 76.0),
 ])
 def test_grad_decay_ratio_n_and_c(year, cycles, ratio):
     s = grad_student(240.0, year)
@@ -208,8 +208,8 @@ def test_grad_decay_ratio_n_and_c(year, cycles, ratio):
 
 
 @pytest.mark.parametrize("year, cycles, care, ratio", [
-    (1, 0, 1, 1.8), (1, 1, 5, 1.75), (2, 2, 2, 4.8), (3, 0, 5, 2.0), (1, 3, 1, 5.85),
-    (4, 4, 3, 7.7),
+    (1, 0, 1, 1.8), (1, 1, 5, 2.25), (2, 2, 2, 6.4), (3, 0, 5, 2.0), (1, 3, 1, 8.55),
+    (4, 4, 3, 10.5),
 ])
 def test_grad_decay_ratio_times_health_care(year, cycles, care, ratio):
     """(1 - 0.1 x 건강 관리) x (1 + 1.0n + 1.5c)."""
@@ -223,7 +223,7 @@ def test_grad_decay_ratio_times_health_care(year, cycles, care, ratio):
 
 
 def test_actual_decay_switches_at_cycle_boundary():
-    """240초 진입, 1년차: 281~299초 감소는 x2.0, 300·301초 감소는 c = 1 이라 x3.5 (B안).
+    """240초 진입, 1년차: 281~299초 감소는 x2.0, 300·301초 감소는 c = 1 이라 x4.5 (개운함 조정).
 
     B안 배수로는 241초부터 61초를 흘리면 체력이 0 아래로 가므로 280초에서 시작한다.
     """
@@ -233,19 +233,19 @@ def test_actual_decay_switches_at_cycle_boundary():
     s.mental = 100
     s.update(21.0)
     assert s.elapsed == pytest.approx(301.0)
-    assert s.health == pytest.approx(100 - 19 * 2.0 - 2 * 3.5)
+    assert s.health == pytest.approx(100 - 19 * 2.0 - 2 * 4.5)
     assert s.health == pytest.approx(100 - 19 * expected_ratio(1, 0) - 2 * expected_ratio(1, 1))
 
 
 def test_decay_ratio_uses_promoted_year_and_cycles_together():
-    """1년차 진입 뒤 c = 2 일 때 지식으로 2년차가 되면 배수는 1 + 2.0 + 3.0 = 6.0 (B안)."""
+    """1년차 진입 뒤 c = 2 일 때 지식으로 2년차가 되면 배수는 1 + 2.0 + 5.0 = 8.0 (개운함 조정)."""
     s = grad_student(240.0)
     s.elapsed = 240.0 + 2 * config.CYCLE_SECONDS + 1.0
-    assert s.get_grad_decay_ratio() == pytest.approx(5.0)
+    assert s.get_grad_decay_ratio() == pytest.approx(7.0)
     s.knowledge = s.get_grad_goal(1)
     s.promote()
     assert s.grad_year == 2
-    assert s.get_grad_decay_ratio() == pytest.approx(6.0)
+    assert s.get_grad_decay_ratio() == pytest.approx(8.0)
 
 
 def test_undergrad_decay_unaffected_by_long_time():

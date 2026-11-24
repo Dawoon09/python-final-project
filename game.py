@@ -33,6 +33,8 @@ PANEL_MOVE_KEYS = {
 PANEL_BUY_KEYS = (pygame.K_RETURN, pygame.K_KP_ENTER)
 # 타이틀의 새 게임 키(N)와 확인 상자 키 (ESC는 어디서나 종료라 취소에 쓰지 않는다)
 NEW_GAME_KEY = pygame.K_n
+# 게임 화면에서 이벤트 로그 패널을 여닫는 키
+EVENT_LOG_KEY = pygame.K_l
 NEW_GAME_YES_KEYS = (pygame.K_y,)
 NEW_GAME_NO_KEYS = (pygame.K_n, pygame.K_BACKSPACE)
 
@@ -41,6 +43,12 @@ def format_time(seconds):
     """게임 시간 seconds(초)를 "3분 12초" 같은 글자로 바꿔 돌려준다(소수는 버린다)."""
     minutes, rest = divmod(int(seconds + config.TIME_EPSILON), config.SECONDS_PER_MINUTE)
     return config.TIME_TEXT.format(minutes, rest)
+
+
+def is_time_value(value):
+    """value가 0 이상의 수(정수·실수, bool 아님)면 True (하던 판 검사용)."""
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and value >= config.ZERO_TIME and value == value)
 
 
 def to_count(value):
@@ -88,6 +96,8 @@ class Game:
         self.upgrade_panel_open = False    # 업그레이드 패널이 열려 있으면 True
         self.upgrade_cursor = config.UPGRADE_CURSOR_START  # 패널에서 고른 줄 번호(↑↓)
         self.new_game_confirm = False      # 타이틀에서 새 게임(N) 확인 상자가 떠 있으면 True
+        self.event_log_open = False        # 게임 화면에서 이벤트 로그 패널(L)이 열려 있으면 True
+        self.autosave_timer = config.ZERO_TIME  # 마지막 자동 저장 뒤 흐른 게임 시간(초)
         self.buttons = self.make_buttons()
         self.choice_buttons = self.make_choice_buttons()  # 대화창 선택 버튼 2개
         # [업그레이드 U] 버튼: 게임 화면용, 엔딩 화면용(가운데 패널 아래)
@@ -121,6 +131,7 @@ class Game:
         self.last_action = None             # 마지막으로 실행된 행동 이름. 아직 없으면 None
         self.ending = None                # 엔딩 이름. 엔딩 전에는 None
         self.current_event = None         # 대화창에 떠 있는 선택지형 이벤트. 없으면 None
+        self.event_log = []               # 이번 판 이벤트 기록 [{"time", "title", "result"}, ...] (오래된 것부터)
         self.clear_effects()
 
     def start_new_game(self):
@@ -129,17 +140,20 @@ class Game:
         self.state = config.STATE_PLAYING
 
     def has_progress(self):
-        """새 게임으로 잃을 진행(업그레이드·연구비·명성)이 하나라도 있으면 True."""
+        """새 게임으로 잃을 진행(업그레이드·연구비·명성·하던 판)이 하나라도 있으면 True."""
         if self.money > config.MONEY_START or self.fame > config.FAME_START:
+            return True
+        if self.saved_run is not None:
             return True
         return any(level > config.LEVEL_START for level in self.upgrades.values())
 
     def reset_progress(self):
-        """업그레이드 레벨·연구비·명성을 0으로 되돌리고 record.json에 저장한다(최고 기록은 남김)."""
+        """업그레이드 레벨·연구비·명성을 0으로, 하던 판을 없애고 record.json에 저장한다(최고 기록은 남김)."""
         for upgrade_id in config.UPGRADE_IDS:
             self.upgrades[upgrade_id] = config.LEVEL_START  # 같은 사전을 고쳐 제자와 계속 함께 쓴다
         self.money = config.MONEY_START
         self.fame = config.FAME_START
+        self.saved_run = None
         return self.save_record()
 
     def start_fresh_game(self):
@@ -156,7 +170,8 @@ class Game:
             elif key in NEW_GAME_NO_KEYS:
                 self.new_game_confirm = False
         elif key == pygame.K_RETURN:
-            self.start_new_game()
+            if not self.resume_run():
+                self.start_new_game()
         elif key == NEW_GAME_KEY:
             if self.has_progress():
                 self.new_game_confirm = True
@@ -191,9 +206,24 @@ class Game:
 
     def reincarnate(self):
         """환생: 명성 +1 하고 record.json에 저장한 뒤, 새 신입생으로 처음부터 시작한다."""
+        before = self.get_fame_title()
         self.fame += config.FAME_STEP
         self.save_record()
         self.start_new_game()
+        after = self.get_fame_title()
+        if after != before:   # 칭호가 오르면 새 판 무대 오른쪽 위에 알림
+            self.promotion_notice = {"text": config.FAME_TITLE_PROMOTION_TEXT.format(after),
+                                     "timer": config.EVENT_NOTICE_TIME, "good": True}
+
+    def get_fame_title(self, fame=None):
+        """명성 fame(없으면 지금 명성)에 맞는 칭호(시간강사·조교수·부교수·정교수·명예교수)를 돌려준다."""
+        if fame is None:
+            fame = self.fame
+        title = config.FAME_TITLES[config.FIRST_ROW][config.LEVEL_STEP]
+        for need, name in config.FAME_TITLES:
+            if fame >= need:
+                title = name
+        return title
 
     def enter_grad_school(self):
         """대학원 진학: 졸업한 같은 제자로 "대학원 1년차"를 이어서 시작한다."""
@@ -218,6 +248,7 @@ class Game:
             self.graduation_bonus = self.floor_money(config.GRADUATION_BONUS[ending]
                                                      * self.get_fame_multiplier())
             self.money += self.graduation_bonus
+        self.saved_run = None   # 끝난 판은 이어할 수 없다
         self.update_best_record(self.student.knowledge)
         self.save_record()
         self.clear_effects()
@@ -249,6 +280,7 @@ class Game:
             config.RECORD_MONEY_KEY: to_count(data.get(config.RECORD_MONEY_KEY)),
             config.RECORD_FAME_KEY: to_count(data.get(config.RECORD_FAME_KEY)),
             config.RECORD_UPGRADES_KEY: upgrades,
+            config.RECORD_RUN_KEY: self.parse_run(data.get(config.RECORD_RUN_KEY)),
         }
 
     def load_record(self):
@@ -258,9 +290,118 @@ class Game:
         self.money = data[config.RECORD_MONEY_KEY]     # 연구비
         self.fame = data[config.RECORD_FAME_KEY]       # 명성 (환생으로 오른다)
         self.upgrades = data[config.RECORD_UPGRADES_KEY]  # {업그레이드 id: 레벨}
+        self.saved_run = data[config.RECORD_RUN_KEY]   # 하던 판(검사를 통과한 사전) 또는 None
         if hasattr(self, "student"):
             self.student.upgrades = self.upgrades
         return data
+
+    # ------------------------------------------------------------
+    # 하던 판 저장·이어하기 (2026-11-24): record.json의 "run"
+    # ------------------------------------------------------------
+    def parse_run(self, run):
+        """record.json의 하던 판 run이 올바르면 그 사전을, 아니면(없음·깨짐·이상한 값) None을 돌려준다."""
+        if not isinstance(run, dict):
+            return None
+        for name in config.RUN_NUMBERS + [config.RUN_AUTO_TIMER]:
+            if not is_time_value(run.get(name)):
+                return None
+        if run["health"] <= config.GAUGE_MIN or run["mental"] <= config.GAUGE_MIN:
+            return None
+        for name in config.RUN_TIMES:
+            if run.get(name) is not None and not is_time_value(run.get(name)):
+                return None
+        grade, grad_year = run.get(config.RUN_GRADE), run.get(config.RUN_GRAD_YEAR)
+        last_grade = len(config.GRADE_GOALS) + config.FIRST_GRADE   # 4학년
+        if type(grade) is not int or not config.FIRST_GRADE <= grade <= last_grade:
+            return None
+        if type(grad_year) is not int or grad_year < config.GRAD_YEAR_UNDERGRAD:
+            return None
+        allowed = {"traits": set(config.TRAIT_BONUSES), "looks": set(config.LOOK_IDS),
+                   "flags": set(config.FLAG_IDS),
+                   "seen_events": {e[config.EVENT_ID] for e in config.CHOICE_EVENTS}}
+        for name in config.RUN_LISTS:
+            items = run.get(name)
+            if not isinstance(items, list) or not set(items) <= allowed[name]:
+                return None
+        counts = run.get(config.RUN_EVENT_COUNTS)
+        if not isinstance(counts, dict) or not all(
+                key.isdigit() and type(value) is int and value >= config.EVENT_COUNT_START
+                for key, value in counts.items()):
+            return None
+        if run.get(config.RUN_POLICY) not in config.POLICY_ORDER:
+            return None
+        log = run.get(config.RUN_EVENT_LOG)
+        if not isinstance(log, list) or not all(
+                isinstance(row, dict) and is_time_value(row.get("time"))
+                and isinstance(row.get("title"), str) and isinstance(row.get("result"), str)
+                for row in log):
+            return None
+        event = run.get(config.RUN_EVENT)
+        if event is not None and event not in allowed["seen_events"]:
+            return None
+        return run
+
+    def capture_run(self):
+        """지금 진행 중인 판(게임·대화창 화면)을 저장용 사전으로 돌려준다. 판이 아니면 None."""
+        if self.state not in (config.STATE_PLAYING, config.STATE_EVENT):
+            return None
+        s = self.student
+        run = {name: getattr(s, name) for name in config.RUN_NUMBERS + config.RUN_TIMES}
+        run[config.RUN_GRADE] = s.grade
+        run[config.RUN_GRAD_YEAR] = s.grad_year
+        run["traits"], run["looks"] = list(s.traits), list(s.looks)
+        run["flags"], run["seen_events"] = sorted(s.flags), sorted(s.seen_events)
+        run[config.RUN_EVENT_COUNTS] = {str(cycle): count for cycle, count in s.event_counts.items()}
+        run[config.RUN_POLICY] = self.policy
+        run[config.RUN_AUTO_TIMER] = self.auto_timer
+        run[config.RUN_EVENT_LOG] = [dict(row) for row in self.event_log]
+        run[config.RUN_EVENT] = None
+        if self.state == config.STATE_EVENT and self.current_event is not None:
+            run[config.RUN_EVENT] = self.current_event[config.EVENT_ID]
+        return run
+
+    def save_run(self):
+        """판이 진행 중이면 하던 판을 record.json에 저장한다(타이틀·엔딩이면 아무것도 안 함)."""
+        run = self.capture_run()
+        if run is None:
+            return False
+        self.saved_run = run
+        self.autosave_timer = config.ZERO_TIME
+        return self.save_record()
+
+    def resume_run(self):
+        """저장된 하던 판이 있으면 그 판을 이어서 시작하고 True, 없으면 False를 돌려준다."""
+        run = self.saved_run
+        if run is None:
+            return False
+        self.reset_round()
+        s = self.student
+        for name in config.RUN_NUMBERS + config.RUN_TIMES:
+            setattr(s, name, run[name])
+        s.grade, s.grad_year = run[config.RUN_GRADE], run[config.RUN_GRAD_YEAR]
+        s.traits, s.looks = list(run["traits"]), list(run["looks"])
+        s.flags, s.seen_events = set(run["flags"]), set(run["seen_events"])
+        s.event_counts = {int(cycle): count for cycle, count in run[config.RUN_EVENT_COUNTS].items()}
+        self.policy = run[config.RUN_POLICY]
+        self.auto_timer = run[config.RUN_AUTO_TIMER]
+        self.event_log = [dict(row) for row in run[config.RUN_EVENT_LOG]]
+        self.autosave_timer = config.ZERO_TIME
+        self.state = config.STATE_PLAYING
+        if run[config.RUN_EVENT] is not None:
+            event = next(e for e in config.CHOICE_EVENTS
+                         if e[config.EVENT_ID] == run[config.RUN_EVENT])
+            self.open_choice_dialog(event)
+        return True
+
+    def get_resume_hint_text(self):
+        """저장된 판이 있으면 타이틀 안내 "Enter를 눌러 이어하기 (2학년, 3분 12초)", 없으면 None."""
+        run = self.saved_run
+        if run is None:
+            return None
+        where = config.GRADE_TEXT.format(run[config.RUN_GRADE])
+        if run[config.RUN_GRAD_YEAR] > config.GRAD_YEAR_UNDERGRAD:
+            where = config.GRAD_YEAR_TEXT.format(run[config.RUN_GRAD_YEAR])
+        return config.RESUME_HINT_TEXT.format(where, format_time(run["elapsed"]))
 
     def save_record(self):
         """최고 기록·연구비·명성·업그레이드 레벨을 record.json에 저장한다."""
@@ -270,6 +411,8 @@ class Game:
             config.RECORD_FAME_KEY: self.fame,
             config.RECORD_UPGRADES_KEY: dict(self.upgrades),
         }
+        if self.saved_run is not None:
+            data[config.RECORD_RUN_KEY] = self.saved_run
         try:
             with open(self.record_path, "w", encoding=config.RECORD_ENCODING) as file:
                 json.dump(data, file)
@@ -412,9 +555,13 @@ class Game:
         return config.NO_RATIO
 
     def get_money_multiplier(self):
-        """지식으로 버는 연구비 배수 = 명성 배수 x 대학원 배수 x 컨디션 배수 를 돌려준다."""
+        """지식으로 버는 연구비 배수 = 명성 배수 x 대학원 배수 x 컨디션 배수 x 연구 과제 배수 를 돌려준다."""
         return (self.get_fame_multiplier() * self.get_grad_money_multiplier()
-                * self.get_condition_money_ratio())
+                * self.get_condition_money_ratio() * self.get_research_money_ratio())
+
+    def get_research_money_ratio(self):
+        """연구 과제 수주 업그레이드 배수 = 1 + 0.1 x 레벨 을 돌려준다(0레벨이면 1)."""
+        return config.NO_RATIO + self.student.get_upgrade_bonus(config.UPGRADE_RESEARCH)
 
     def get_status_names(self):
         """상태 배지에 보일 이름 목록: 제자의 디버프·버프(피곤·우울·든든함) + 컨디션 좋음."""
@@ -467,7 +614,38 @@ class Game:
         if self.state not in (config.STATE_PLAYING, config.STATE_ENDING):
             return False
         self.upgrade_panel_open = not self.upgrade_panel_open
+        if self.upgrade_panel_open:
+            self.event_log_open = False   # 같은 자리라 하나만 연다
         return True
+
+    def toggle_event_log(self):
+        """이벤트 로그 패널을 열거나 닫는다. 게임 화면에서만 되고, 열면 업그레이드 패널은 닫는다."""
+        if self.state != config.STATE_PLAYING:
+            return False
+        self.event_log_open = not self.event_log_open
+        if self.event_log_open:
+            self.upgrade_panel_open = False
+        return True
+
+    def add_event_log(self, title, result):
+        """이벤트 로그에 지금 게임 시간·이벤트 이름·결과 글자를 한 항목 더한다(최대 EVENT_LOG_MAX개)."""
+        self.event_log.append({"time": self.student.elapsed, "title": title, "result": result})
+        del self.event_log[:-config.EVENT_LOG_MAX]
+
+    def get_event_log_rows(self):
+        """패널에 보일 로그 항목들(새것부터, 최대 EVENT_LOG_ROWS개)을 돌려준다."""
+        return list(reversed(self.event_log))[:config.EVENT_LOG_ROWS]
+
+    def get_log_result_text(self, effects, trait=None, look=None, money=config.MONEY_START):
+        """이벤트 결과(게이지 변화·특성·외형·연구비)를 "멘탈 +15 · 특성: 명상" 같은 한 줄로 돌려준다."""
+        option = {config.OPTION_EFFECTS: effects, config.OPTION_TRAIT: trait,
+                  config.OPTION_LOOK: look}
+        parts = [text for text, _ in self.get_option_preview(option)]
+        if money > config.MONEY_START:
+            if parts == [config.PREVIEW_NONE_TEXT]:
+                parts = []
+            parts.append(config.POPUP_TEXT.format(config.MONEY_LABEL, money))
+        return config.PREVIEW_SEPARATOR.join(parts)
 
     def get_upgrade_row_rect(self, index):
         """업그레이드 패널의 index번째 항목 줄 사각형(클릭 판정·그리기용)을 돌려준다."""
@@ -558,10 +736,16 @@ class Game:
             self.start_gauge_effects(before, for_event=True)
             if scholarship > config.MONEY_START:
                 self.spawn_event_popups([(config.MONEY_LABEL, scholarship)])
+            self.add_event_log(event[config.EVENT_TITLE],
+                               self.get_log_result_text(effects, money=scholarship))
             self.check_promotion()
             self.check_ending()
             return
         self.student.mark_event_seen(event[config.EVENT_ID])
+        self.open_choice_dialog(event)
+
+    def open_choice_dialog(self, event):
+        """선택지형 이벤트 event의 대화창을 띄운다(선택 버튼 글자를 채우고 STATE_EVENT로)."""
         self.current_event = event
         self.dialog_time = config.ZERO_TIME
         options = event[config.EVENT_OPTIONS]
@@ -583,6 +767,11 @@ class Game:
         option = self.current_event[config.EVENT_OPTIONS][index]
         before = self.get_gauge_values()
         self.student.apply_option(option)
+        result = self.get_log_result_text(option[config.OPTION_EFFECTS],
+                                          option[config.OPTION_TRAIT], option[config.OPTION_LOOK])
+        self.add_event_log(self.current_event[config.EVENT_TITLE],
+                           config.EVENT_LOG_CHOICE_TEXT.format(option=option[config.OPTION_TEXT],
+                                                               result=result))
         self.earn_knowledge_money(before[config.GAUGE_KNOWLEDGE])
         self.current_event = None
         self.state = config.STATE_PLAYING
@@ -593,9 +782,9 @@ class Game:
 
     def handle_event(self, event):
         """이벤트 하나를 받아 처리한다."""
-        if event.type == pygame.QUIT:
-            self.running = False
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+        if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN
+                                         and event.key == pygame.K_ESCAPE):
+            self.save_run()   # 판 진행 중에 끄면 하던 판을 저장한다(타이틀·엔딩이면 그대로)
             self.running = False
         elif event.type == pygame.MOUSEMOTION:
             self.mouse_pos = event.pos
@@ -616,6 +805,9 @@ class Game:
                 if self.is_graduation_ending():
                     self.enter_grad_school()
         elif self.state == config.STATE_PLAYING:
+            if event.type == pygame.KEYDOWN and event.key == EVENT_LOG_KEY:
+                self.toggle_event_log()
+                return
             if self.handle_upgrade_input(event):
                 return
             if event.type == pygame.KEYDOWN and event.key in POLICY_KEYS:
@@ -651,6 +843,10 @@ class Game:
                 break   # 이번 dt 안에는 더 할 자동 행동이 없다
             self.auto_timer = self.get_auto_interval()
             self.do_action(self.choose_auto_action())
+        if self.state == config.STATE_PLAYING:
+            self.autosave_timer += dt
+            if self.autosave_timer + config.TIME_EPSILON >= config.AUTOSAVE_SECONDS:
+                self.save_run()
         self.update_effects(dt)
 
     # ------------------------------------------------------------
@@ -739,9 +935,12 @@ class Game:
         if self.notice is not None:
             top = config.EVENT_NOTICE_Y + config.EVENT_NOTICE_HEIGHT
         first_y = top + config.EVENT_POPUP_TOP_MARGIN
+        stage_left = self.get_stage_inner().left + config.PIXEL_SIZE
         for row, (label, amount) in enumerate(changes):
-            self.add_popup(label, amount, config.EVENT_POPUP_X,
-                           first_y + row * config.POPUP_LINE_HEIGHT)
+            # 긴 글자("연구비 +160")는 무대 왼쪽 끝을 넘지 않게 가운데를 오른쪽으로 민다
+            width = self.popup_font.size(config.POPUP_TEXT.format(label, amount))[config.FIRST_ROW]
+            x = max(config.EVENT_POPUP_X, stage_left + width // config.HALF)
+            self.add_popup(label, amount, x, first_y + row * config.POPUP_LINE_HEIGHT)
 
     def add_popup(self, label, amount, x, y):
         """수치 팝업 하나("체력 +20")를 글자 가운데 (x, y)에 만든다. 늘면 초록, 줄면 빨강."""
@@ -836,8 +1035,13 @@ class Game:
             if self.upgrade_panel_open:
                 self.draw_upgrade_panel()
                 self.draw_upgrade_tooltip()
+            elif self.event_log_open:
+                self.draw_event_log_panel()
             else:
                 self.draw_status_tooltip()
+                self.draw_trait_tooltip()
+                self.draw_info_tooltip()
+                self.draw_gauge_tooltip()
         elif self.state == config.STATE_EVENT:
             # 대화창이 떠 있는 동안에는 업그레이드 패널을 숨긴다(닫힌 것은 아니다)
             self.draw_playing()
@@ -1026,8 +1230,13 @@ class Game:
         for upgrade_id in facilities:
             x, bottom, cell = config.FACILITY_SLOTS[place][upgrade_id]
             sprite_name = config.FACILITY_SPRITES[upgrade_id]
-            _, height = sprite_size(config.SCENE_SPRITES[sprite_name][config.FIRST_ROW], cell)
+            width, height = sprite_size(config.SCENE_SPRITES[sprite_name][config.FIRST_ROW], cell)
             self.draw_scene_sprite(surface, sprite_name, x, bottom - height, cell, season, shade)
+            # 시설은 최대 1레벨이라 사면 바로 오른쪽 위에 반짝이를 얹는다(장식의 최고 레벨 반짝이와 같은 모양)
+            sparkle_width, _ = sprite_size(
+                config.SCENE_SPRITES[config.DECOR_SPARKLE][config.FIRST_ROW], cell)
+            self.draw_scene_sprite(surface, config.DECOR_SPARKLE, x + width - sparkle_width,
+                                   bottom - height, cell, season, shade)
         for part in config.PLACE_FRONT[place]:
             self.draw_scene_part(surface, part, season, shade)
         if decor_levels is not None:
@@ -1200,6 +1409,8 @@ class Game:
             next_effect = self.get_upgrade_effect_text(upgrade_id, level + config.LEVEL_STEP)
             lines.append((config.UPGRADE_TIP_NEXT.format(next_effect), text_color))
         lines.append((config.UPGRADE_DECOR_TEXTS[upgrade_id], text_color))
+        if upgrade_id in config.UPGRADE_TIP_NOTES:
+            lines.append((config.UPGRADE_TIP_NOTES[upgrade_id], text_color))
         if maxed:
             lines.append((config.UPGRADE_TIP_COST_MAX, text_color))
         else:
@@ -1217,28 +1428,37 @@ class Game:
                     return index
         return None
 
-    def get_tooltip_rect(self, lines, anchor_top):
-        """줄 목록 lines를 담을 툴팁 상자 사각형을 돌려준다(그리지는 않는다)."""
-        width = max(self.small_font.size(text)[config.FIRST_ROW] for text, _ in lines)
+    def get_tooltip_rect(self, lines, anchor_top, font=None, top_min=None):
+        """줄 목록 lines를 담을 툴팁 상자 사각형을 돌려준다(그리지는 않는다).
+        font를 주지 않으면 작은 글자로 잰다."""
+        font = font or self.small_font
+        top_min = config.TOOLTIP_TOP_MIN if top_min is None else top_min
+        width = max(font.size(text)[config.FIRST_ROW] for text, _ in lines)
         width = max(config.TOOLTIP_MIN_WIDTH, width + config.TOOLTIP_PAD_X * config.HALF)
         height = len(lines) * config.TOOLTIP_LINE_HEIGHT + config.TOOLTIP_PAD_Y * config.HALF
         rect = pygame.Rect(config.TOOLTIP_X, anchor_top, width, height)
         bottom_max = config.TOOLTIP_BOTTOM_MAX - config.PIXEL_SIZE   # 아래 그림자 1칸 자리
         if rect.bottom > bottom_max:
             rect.bottom = bottom_max
-        rect.top = max(rect.top, config.TOOLTIP_TOP_MIN)
+        rect.top = max(rect.top, top_min)
         if rect.right > config.TOOLTIP_RIGHT_MAX:
             rect.right = config.TOOLTIP_RIGHT_MAX
         return rect
 
-    def draw_tooltip(self, lines, anchor_top):
-        """툴팁 상자(크림색 도트 상자, 반투명 없음)와 줄 글자들을 그리고 상자 사각형을 돌려준다."""
-        rect = self.get_tooltip_rect(lines, anchor_top)
+    def draw_tooltip(self, lines, anchor_top, font=None, left=None, right=None, top_min=None):
+        """툴팁 상자(크림색 도트 상자, 반투명 없음)와 줄 글자들을 그리고 상자 사각형을 돌려준다.
+        left를 주면 상자 왼쪽 x를, right를 주면 오른쪽 끝 x를 그 값에 맞추고, top_min은 위쪽 y의 최솟값이다."""
+        font = font or self.small_font
+        rect = self.get_tooltip_rect(lines, anchor_top, font, top_min)
+        if left is not None:
+            rect.left = left
+        if right is not None:
+            rect.right = right
         draw_pixel_box(self.screen, rect, config.COLOR_TOOLTIP, config.COLOR_TOOLTIP_LIGHT,
                        drop=config.COLOR_DROP)
         y = rect.top + config.TOOLTIP_PAD_Y
         for text, color in lines:
-            surface = render_text(self.small_font, text, color)
+            surface = render_text(font, text, color)
             text_rect = surface.get_rect()
             text_rect.midleft = (rect.left + config.TOOLTIP_PAD_X,
                                  y + config.TOOLTIP_LINE_HEIGHT // config.HALF)
@@ -1269,6 +1489,10 @@ class Game:
         if name == config.BUFF_FULL:
             left = -int(-self.student.get_full_time_left() // config.LEVEL_STEP)
             return template.format(name=name, left=left, ratio=config.FULL_HEALTH_DECAY_RATIO)
+        if name == config.BUFF_REFRESH:
+            left = -int(-self.student.get_refresh_time_left() // config.LEVEL_STEP)
+            return template.format(name=name, left=left,
+                                   ratio=config.REFRESH_MENTAL_DECAY_RATIO)
         bonus = config.POLICIES[config.POLICY_REST_FOCUS][config.POLICY_CONDITION_BONUS]
         return template.format(name=name, limit=config.CONDITION_GOOD_MIN,
                                ratio=round(config.NO_RATIO + bonus, config.GAUGE_DECIMALS))
@@ -1276,7 +1500,7 @@ class Game:
     def get_hovered_status(self):
         """마우스가 올라간 상태 배지의 (번호, 이름)을 돌려준다. 없으면 None."""
         if (self.mouse_pos is None or self.state != config.STATE_PLAYING
-                or self.upgrade_panel_open):
+                or self.upgrade_panel_open or self.event_log_open):
             return None
         for index, name in enumerate(self.get_status_names()):
             if self.student.get_badge_rect(index, config.STATUS_BADGE_Y).collidepoint(
@@ -1294,6 +1518,34 @@ class Game:
         lines = [(self.get_status_tip_text(name), config.COLOR_TOOLTIP_TITLE)]
         return self.draw_tooltip(lines,
                                  self.student.get_badge_rect(index, config.STATUS_BADGE_Y).top)
+
+    def get_trait_tip_text(self, name):
+        """특성 배지 name의 툴팁 글자(이름: 효과, 이번 판 끝까지)를 config 값으로 채워 돌려준다."""
+        effects = [config.TRAIT_TIP_EFFECTS[bonus_name].format(bonus=amount)
+                   for bonus_name, amount in config.TRAIT_BONUSES[name].items()]
+        return config.TRAIT_TIP_TEXT.format(name=name, effects=config.TRAIT_TIP_JOIN.join(effects))
+
+    def get_hovered_trait(self):
+        """마우스가 올라간 특성 배지의 (번호, 이름)을 돌려준다. 없으면 None."""
+        if (self.mouse_pos is None or self.state != config.STATE_PLAYING
+                or self.upgrade_panel_open or self.event_log_open):
+            return None
+        for index, name in enumerate(self.student.traits):
+            if self.student.get_badge_rect(index, config.TRAIT_BADGE_Y).collidepoint(
+                    self.mouse_pos):
+                return index, name
+        return None
+
+    def draw_trait_tooltip(self):
+        """마우스를 올린 특성 배지가 있으면 그 효과 툴팁을 상태 패널 오른쪽(무대 위)에 그린다.
+        그린 상자 사각형(없으면 None)을 돌려준다."""
+        hovered = self.get_hovered_trait()
+        if hovered is None:
+            return None
+        index, name = hovered
+        lines = [(self.get_trait_tip_text(name), config.COLOR_TOOLTIP_TITLE)]
+        return self.draw_tooltip(lines,
+                                 self.student.get_badge_rect(index, config.TRAIT_BADGE_Y).top)
 
     # ------------------------------------------------------------
     # 랜덤 이벤트 화면: 자동형 알림, 대화창, 멈춤 점무늬
@@ -1545,23 +1797,36 @@ class Game:
         self.draw_dot_line(config.TITLE_LINE_Y)
         self.draw_badge(config.BEST_RECORD_TEXT.format(self.best_record),
                         config.BEST_RECORD_Y, config.COLOR_PINK_LIGHT, config.COLOR_WHITE)
-        self.draw_text_center(self.font, config.TITLE_WALLET_TEXT.format(self.fame, self.money),
+        self.draw_text_center(self.font, config.TITLE_WALLET_TEXT.format(self.get_fame_title(),
+                                                                         self.fame, self.money),
                               config.TITLE_WALLET_Y, config.COLOR_TEXT_SOFT)
         if self.new_game_confirm:
             self.draw_new_game_confirm()
             return
-        self.draw_key_hint(config.START_HINT_TEXT, config.START_HINT_Y)
+        self.draw_key_hint(self.get_resume_hint_text() or config.START_HINT_TEXT, config.START_HINT_Y)
         self.draw_text_center(self.font, config.NEW_GAME_HINT_TEXT, config.NEW_GAME_HINT_Y,
                               config.COLOR_TEXT_SOFT)
 
     def get_title_stars(self):
-        """타이틀 장식 별 목록. 확인 상자가 떠 있으면 상자와 겹치는 별은 뺀다(삐져나오지 않게)."""
-        if not self.new_game_confirm:
+        """타이틀 장식 별 목록. 확인 상자나 긴 이어하기 안내와 겹치는 별은 뺀다(글자를 가리지 않게)."""
+        if self.new_game_confirm:
+            box = pygame.Rect(config.NEW_GAME_CONFIRM_RECT)
+        elif self.saved_run is not None:
+            box = self.get_key_hint_rect(self.get_resume_hint_text(), config.START_HINT_Y)
+        else:
             return config.TITLE_STARS
         star_width, star_height = sprite_size(config.STAR_SPRITE, config.PIXEL_SIZE)
-        box = pygame.Rect(config.NEW_GAME_CONFIRM_RECT)
         return [(x, y, color) for x, y, color in config.TITLE_STARS
                 if not box.colliderect((x, y, star_width, star_height))]
+
+    def get_key_hint_rect(self, text, center_y, center_x=config.SCREEN_CENTER_X):
+        """draw_key_hint가 그리는 글자 + 앞 화살표를 감싸는 사각형을 돌려준다."""
+        rect = pygame.Rect(config.ORIGIN, self.font.size(text))
+        rect.center = (center_x, center_y)
+        arrow_width, arrow_height = sprite_size(config.ARROW_SPRITE, config.PIXEL_SIZE)
+        arrow = pygame.Rect(rect.left - config.HINT_ARROW_GAP - arrow_width,
+                            center_y - arrow_height // config.HALF, arrow_width, arrow_height)
+        return rect.union(arrow)
 
     def draw_new_game_confirm(self):
         """새 게임 확인 상자(분홍 도트 상자, 알파 없음): 질문, 사라지는 것 경고, Y·N 키 안내."""
@@ -1608,6 +1873,7 @@ class Game:
             self.draw_promotion_notice()
         self.draw_buttons()
         self.draw_elapsed_time()
+        self.draw_event_log_hint()
 
     def draw_stage_effects(self):
         """제자 무대 안에 파티클(E2)과 수치 팝업(E3)을 그린다."""
@@ -1766,6 +2032,62 @@ class Game:
         rect.center = (config.ELAPSED_CENTER_X, config.ELAPSED_CENTER_Y)
         self.screen.blit(text, rect)
 
+    def draw_event_log_hint(self):
+        """경과 시간 밑에 작은 글씨로 "L: 이벤트 로그" 안내를 쓴다."""
+        hint = render_text(self.small_font, config.EVENT_LOG_HINT_TEXT, config.COLOR_TEXT_SOFT)
+        hint_rect = hint.get_rect()
+        hint_rect.center = (config.ELAPSED_CENTER_X, config.EVENT_LOG_HINT_Y)
+        self.screen.blit(hint, hint_rect)
+
+    def fit_text(self, font, text, max_width):
+        """text가 max_width보다 넓으면 뒤를 잘라 "…"를 붙여 들어가게 만든 글자를 돌려준다."""
+        if font.size(text)[config.FIRST_ROW] <= max_width:
+            return text
+        while text and font.size(text + config.EVENT_LOG_ELLIPSIS)[config.FIRST_ROW] > max_width:
+            text = text[:-config.LEVEL_STEP]
+        return text + config.EVENT_LOG_ELLIPSIS
+
+    def get_event_log_row_rect(self, index):
+        """이벤트 로그 패널의 index번째(새것부터) 항목 상자 사각형을 돌려준다."""
+        return pygame.Rect(config.EVENT_LOG_X, config.EVENT_LOG_TOP + index * config.EVENT_LOG_STEP,
+                           config.EVENT_LOG_WIDTH, config.EVENT_LOG_HEIGHT)
+
+    def draw_event_log_panel(self):
+        """이벤트 로그 패널(상태 패널 자리, 반투명 없음)에 이번 판 이벤트를 새것부터 그린다."""
+        panel = pygame.Rect(config.EVENT_LOG_PANEL_RECT)
+        draw_pixel_box(self.screen, panel, config.COLOR_BG, config.COLOR_PANEL_LIGHT,
+                       config.COLOR_PANEL_SHADOW, drop=config.COLOR_DROP)
+        title = render_text(self.event_font, config.EVENT_LOG_TITLE)
+        title_rect = title.get_rect()
+        title_rect.midleft = (config.UPGRADE_HEADER_LEFT, config.UPGRADE_HEADER_Y)
+        self.screen.blit(title, title_rect)
+        close = render_text(self.small_font, config.EVENT_LOG_CLOSE_TEXT, config.COLOR_TEXT_SOFT)
+        close_rect = close.get_rect()
+        close_rect.midright = (config.UPGRADE_HEADER_RIGHT, config.UPGRADE_HEADER_Y)
+        self.screen.blit(close, close_rect)
+        rows = self.get_event_log_rows()
+        if not rows:
+            empty = render_text(self.small_font, config.EVENT_LOG_EMPTY_TEXT, config.COLOR_TEXT_SOFT)
+            empty_rect = empty.get_rect()
+            empty_rect.midleft = (config.EVENT_LOG_X + config.EVENT_LOG_PAD_X,
+                                  config.EVENT_LOG_TOP + config.EVENT_LOG_LINE1_DY)
+            self.screen.blit(empty, empty_rect)
+            return
+        width = config.EVENT_LOG_WIDTH - config.EVENT_LOG_PAD_X * config.HALF
+        for index, row in enumerate(rows):
+            box = self.get_event_log_row_rect(index)
+            draw_pixel_box(self.screen, box, config.COLOR_PANEL_LIGHT)
+            line1 = config.EVENT_LOG_LINE_TEXT.format(time=format_time(row["time"]),
+                                                      title=row["title"])
+            for text, dy, color in ((line1, config.EVENT_LOG_LINE1_DY, config.COLOR_TEXT),
+                                    (row["result"], config.EVENT_LOG_LINE2_DY,
+                                     config.COLOR_TEXT_SOFT)):
+                surface = render_text(self.small_font, self.fit_text(self.small_font, text, width),
+                                      color)
+                rect = surface.get_rect()
+                rect.midleft = (box.left + config.EVENT_LOG_PAD_X, box.top + dy)
+                self.screen.blit(surface, rect)
+
     def draw_info_bar(self):
         """상단 정보바를 그린다."""
         box = pygame.Rect(config.INFO_BOX_X, config.INFO_BOX_Y,
@@ -1802,6 +2124,134 @@ class Game:
         money_rect.midright = (knowledge_rect.left - config.INFO_ITEM_GAP,
                                config.INFO_TEXT_CENTER_Y)
         self.screen.blit(money, money_rect)
+
+    def get_info_grade_rect(self):
+        """정보바 학년(대학원 년차) 글자가 차지하는 사각형을 돌려준다."""
+        if self.grad_year > config.GRAD_YEAR_UNDERGRAD:
+            text = config.GRAD_YEAR_TEXT.format(self.grad_year)
+        else:
+            text = config.GRADE_TEXT.format(self.student.get_grade())
+        rect = render_text(self.font, text).get_rect()
+        rect.midleft = (config.INFO_BAR_MARGIN, config.INFO_TEXT_CENTER_Y)
+        return rect
+
+    def get_info_money_rect(self):
+        """정보바 연구비 글자가 차지하는 사각형을 돌려준다(지식 글자 왼쪽)."""
+        knowledge = config.KNOWLEDGE_TEXT.format(config.KNOWLEDGE_LABEL, self.student.knowledge)
+        knowledge_left = (config.SCREEN_WIDTH - config.INFO_BAR_MARGIN
+                          - render_text(self.font, knowledge).get_width())
+        text = config.MONEY_TEXT.format(config.MONEY_LABEL, self.money)
+        rect = render_text(self.font, text).get_rect()
+        rect.midright = (knowledge_left - config.INFO_ITEM_GAP, config.INFO_TEXT_CENTER_Y)
+        return rect
+
+    # ------------------------------------------------------------
+    # 툴팁: 정보바 학년·연구비 글자, 체력·멘탈 라벨 (글자 16px)
+    # ------------------------------------------------------------
+    def can_show_hover_tooltip(self):
+        """마우스 툴팁을 보일 수 있는 화면(플레이 중, 패널·기록 창 닫힘)이면 True."""
+        return (self.mouse_pos is not None and self.state == config.STATE_PLAYING
+                and not self.upgrade_panel_open and not self.event_log_open)
+
+    def get_grade_tip_rows(self):
+        """정보바 학년 글자의 툴팁 줄 목록 [(글자, 색)]을 돌려준다."""
+        title_color = config.COLOR_TOOLTIP_TITLE
+        text_color = config.COLOR_TOOLTIP_TEXT
+        if self.grad_year <= config.GRAD_YEAR_UNDERGRAD:
+            first = config.NO_RATIO + config.GRAD_MONEY_BONUS * config.GRAD_FIRST_YEAR
+            return [(config.GRADE_TIP_UNDERGRAD.format(self.student.get_grade()), title_color),
+                    (config.GRADE_TIP_UNDERGRAD_HINT.format(first), text_color)]
+        money_now = self.get_grad_money_multiplier()
+        money_next = money_now + config.GRAD_MONEY_BONUS
+        decay = round(self.student.get_grad_decay_ratio(), config.GAUGE_TIP_DECIMALS)
+        return [(config.GRADE_TIP_GRAD.format(self.grad_year), title_color),
+                (config.GRADE_TIP_GRAD_MONEY.format(money_now, money_next), text_color),
+                (config.GRADE_TIP_GRAD_TIRED.format(decay), config.COLOR_TOOLTIP_WARN)]
+
+    def get_money_tip_rows(self):
+        """정보바 연구비 글자의 툴팁 줄 목록을 돌려준다: 합계 배수 + 1배가 아닌 요소만 한 줄씩."""
+        digits = config.MONEY_TIP_DECIMALS
+        total = round(self.get_money_multiplier(), digits)
+        lines = [(config.MONEY_TIP_TOTAL.format(total), config.COLOR_TOOLTIP_TITLE)]
+        factors = []
+        fame = round(self.get_fame_multiplier(), digits)
+        if fame != config.NO_RATIO:
+            factors.append(config.MONEY_TIP_FAME.format(self.fame, self.get_fame_title(), fame))
+        grad = round(self.get_grad_money_multiplier(), digits)
+        if grad != config.NO_RATIO:
+            factors.append(config.MONEY_TIP_GRAD.format(self.grad_year, grad))
+        research = round(self.get_research_money_ratio(), digits)
+        if research != config.NO_RATIO:
+            level = self.student.get_upgrade_level(config.UPGRADE_RESEARCH)
+            factors.append(config.MONEY_TIP_RESEARCH.format(level, research))
+        condition = round(self.get_condition_money_ratio(), digits)
+        if condition != config.NO_RATIO:
+            name = (config.DEBUFF_DEPRESSED if self.student.is_depressed()
+                    else config.CONDITION_GOOD)
+            factors.append(config.MONEY_TIP_CONDITION.format(name, condition))
+        lines.extend((text, config.COLOR_TOOLTIP_TEXT) for text in factors)
+        return lines
+
+    def draw_info_tooltip(self):
+        """마우스가 정보바 학년·연구비 글자 위에 있으면 그 툴팁을 정보바 바로 아래에 그린다.
+        학년은 왼쪽 x 16, 연구비는 오른쪽 끝 맞춤. 그린 상자 사각형(없으면 None)을 돌려준다."""
+        if not self.can_show_hover_tooltip():
+            return None
+        top = config.INFO_BOX_Y + config.INFO_BOX_HEIGHT + config.INFO_TIP_GAP
+        if self.get_info_grade_rect().collidepoint(self.mouse_pos):
+            return self.draw_tooltip(self.get_grade_tip_rows(), top, self.notice_font,
+                                     left=config.INFO_TIP_LEFT_X,
+                                     top_min=config.INFO_BAR_HEIGHT)
+        money_rect = self.get_info_money_rect()
+        if money_rect.collidepoint(self.mouse_pos):
+            return self.draw_tooltip(self.get_money_tip_rows(), top, self.notice_font,
+                                     right=money_rect.right, top_min=config.INFO_BAR_HEIGHT)
+        return None
+
+    def get_gauge_tip_rows(self, name):
+        """체력·멘탈 라벨의 툴팁 줄 목록을 돌려준다: 1초 순 변화, 휴식·공부 변화, 버프 안내."""
+        student = self.student
+        if name == config.GAUGE_HEALTH:
+            label, decay = config.HEALTH_LABEL, student.get_health_decay()
+            rest, study = student.get_rest_health(), student.get_study_health()
+            buff = student.is_full_buff_active()
+            buff_text = config.GAUGE_TIP_FULL
+        else:
+            label, decay = config.MENTAL_LABEL, student.get_mental_decay()
+            rest, study = student.get_rest_mental(), student.get_study_mental()
+            buff = student.is_refresh_buff_active()
+            buff_text = config.GAUGE_TIP_REFRESH
+        net = round(student.get_self_care_regen() - decay, config.GAUGE_TIP_DECIMALS)
+        lines = [(config.GAUGE_TIP_RATE.format(label, net + config.NO_CHANGE),
+                  config.COLOR_TOOLTIP_TITLE),
+                 (config.GAUGE_TIP_ACTIONS.format(round(rest), round(study)),
+                  config.COLOR_TOOLTIP_TEXT)]
+        if buff:
+            lines.append((buff_text, config.COLOR_TOOLTIP_TEXT))
+        return lines
+
+    def get_gauge_label_rect(self, name):
+        """체력·멘탈 아이콘+라벨 줄(마우스를 올리는 자리) 사각형을 돌려준다."""
+        if name == config.GAUGE_HEALTH:
+            label, top, icon = config.HEALTH_LABEL, config.HEALTH_LABEL_Y, config.HEART_SPRITE
+        else:
+            label, top, icon = config.MENTAL_LABEL, config.MENTAL_LABEL_Y, config.STAR_SPRITE
+        icon_width, icon_height = sprite_size(icon, config.PIXEL_SIZE)
+        text_width = render_text(self.font, label).get_width()
+        return pygame.Rect(config.GAUGE_X, top,
+                           icon_width + config.GAUGE_LABEL_GAP + text_width, icon_height)
+
+    def draw_gauge_tooltip(self):
+        """마우스가 체력·멘탈 라벨 위에 있으면 그 툴팁을 x 276에 라벨 높이로 그린다.
+        그린 상자 사각형(없으면 None)을 돌려준다."""
+        if not self.can_show_hover_tooltip():
+            return None
+        for name in (config.GAUGE_HEALTH, config.GAUGE_MENTAL):
+            rect = self.get_gauge_label_rect(name)
+            if rect.collidepoint(self.mouse_pos):
+                return self.draw_tooltip(self.get_gauge_tip_rows(name), rect.top,
+                                         self.notice_font)
+        return None
 
     def get_auto_progress(self):
         """다음 자동 행동까지의 진행률(0~1)을 돌려준다. 방금 행동했으면 0, 곧 행동하면 1에 가깝다."""

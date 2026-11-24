@@ -120,7 +120,7 @@ def test_idle_end_to_end_real_loop(monkeypatch, isolated_record_path):
     # 업그레이드: 학식 메뉴 개선 240 을 연구비로 샀다
     assert config.UPGRADE_MENU in g.upgrades and g.upgrades[config.UPGRADE_MENU] == 1
     assert log["money_before_buy"][0] >= 240
-    # 방치(자동 행동)로 졸업 지식(M단위 2200) 졸업, 등급은 걸린 시간(시간 기준은 임시 값이라 config 상수로)
+    # 방치(자동 행동)로 졸업 지식(M단위 2200) 졸업, 등급은 걸린 시간(시간 기준은 config 상수라 config 상수로)
     ending, knowledge, money, bonus, seconds = log["graduated"]
     assert ending in (config.ENDING_TOP, config.ENDING_NORMAL, config.ENDING_BARELY)
     assert knowledge >= config.GRADUATION_KNOWLEDGE
@@ -217,8 +217,8 @@ def test_total_cost_92590_matches_game():
 
     (M단위) 업그레이드 13종(컨디션 3종 31,000 추가) -> 61,590 + 31,000 = 92,590.
     """
-    assert "92,590" in spec_part("업그레이드")
-    assert sum(sum(game_costs(uid)) for uid in config.UPGRADE_IDS) == 92590
+    assert "108,090" in spec_part("업그레이드")   # (연구비) 92,590 + 연구 과제 수주 15,500
+    assert sum(sum(game_costs(uid)) for uid in config.UPGRADE_IDS) == 108090
     condition = (config.UPGRADE_HEALTH_MAX, config.UPGRADE_MENTAL_MAX, config.UPGRADE_SELF_CARE)
     assert sum(sum(game_costs(uid)) for uid in condition) == 31000
     pygame.quit()
@@ -279,7 +279,7 @@ def test_key_numbers_in_spec():
         assert old not in s, old
         assert old in history, old
     assert (config.GRAD_DECAY_BONUS, config.GRAD_CYCLE_DECAY_BONUS, config.GRAD_MONEY_BONUS) \
-        == (1.0, 1.5, 1.0)
+        == (1.0, 2.5, 1.0)   # 개운함 조정으로 c 항 1.5 -> 2.5
 
     # 졸업 보너스, 명성, 자동 행동 간격, 이벤트 확률
     assert "수석 +200, 무사 +100, 아슬아슬 +50" in s
@@ -313,7 +313,7 @@ def test_readme_describes_m_rules():
     for word in (config.BUFF_FULL, config.DEBUFF_TIRED, config.DEBUFF_DEPRESSED,
                  config.CONDITION_GOOD, "회복은 휴식에서만"):
         assert word in r, word
-    assert "업그레이드 {}종".format(len(config.UPGRADE_IDS)) in r and len(config.UPGRADE_IDS) == 13
+    assert "업그레이드 {}종".format(len(config.UPGRADE_IDS)) in r and len(config.UPGRADE_IDS) == 14   # (연구비) 13 -> 14
     assert "| 학식 먹이기 | +20 |" not in r
     # 컨디션 업그레이드 3종 이름은 기획서 업그레이드 표에 있다
     for word in ("체력 증진", "멘탈 관리", "자기 관리"):

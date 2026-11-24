@@ -183,17 +183,21 @@ def test_tooltip_rows_every_upgrade_levels(g, uid):
             assert texts[1] == "지금: 아직 없음"
         else:
             assert texts[1] == "지금: " + fmt_effect(uid, level)
+        note = config.UPGRADE_TIP_NOTES.get(uid)     # 방어형·행운 부적은 쓸모 안내 한 줄이 더 붙는다
+        cost_at = 4 + (1 if note else 0)
         if level >= mx:
             assert texts[2] == "다음: 최고 레벨"
-            assert texts[4] == "가격: MAX"
+            assert texts[cost_at] == "가격: MAX"
         else:
             assert texts[2] == "다음: " + fmt_effect(uid, level + 1)
             cost = math.floor(config.UPGRADES_BY_ID[uid][config.UPGRADE_BASE_COST]
                               * 2.0 ** level)
-            assert texts[4] == f"가격: 연구비 {cost}"
+            assert texts[cost_at] == f"가격: 연구비 {cost}"
         assert texts[3].startswith("무대: ")
         assert texts[3] == config.UPGRADE_DECOR_TEXTS[uid]
-        assert len(rows) == 5            # 돈이 넉넉하면 경고 줄 없음
+        if note:
+            assert texts[4] == note
+        assert len(rows) == cost_at + 1  # 돈이 넉넉하면 경고 줄 없음
         assert "연구비가 모자라요" not in texts
 
 
@@ -601,19 +605,19 @@ def test_status_badge_icon_pixels_and_name_fit(g, name):
 
 
 def test_badge_layout_unchanged(g):
-    """배지 자리·크기는 예전(특성 배지와 같은 2열)과 같다."""
+    """배지 크기는 예전과 같은 2열, 사이 간격은 (특성 8종) 8 -> 4."""
     r0 = g.student.get_badge_rect(0, 128)
     r1 = g.student.get_badge_rect(1, 128)
     r2 = g.student.get_badge_rect(2, 128)
     assert tuple(r0) == (24, 128, 112, 24)
-    assert tuple(r1) == (144, 128, 112, 24)
-    assert tuple(r2) == (24, 160, 112, 24)
+    assert tuple(r1) == (140, 128, 112, 24)
+    assert tuple(r2) == (24, 156, 112, 24)
 
 
 # ============================== 6. 장식 조각·레벨 ==============================
 
 def test_decor_ids_are_ten_non_facilities():
-    assert len(DECOR) == 10
+    assert len(DECOR) == 11   # (연구비) 연구 과제 수주 장식 추가
     assert set(DECOR) | set(FAC) == set(IDS)
     assert not set(DECOR) & set(FAC)
 
@@ -651,15 +655,16 @@ def test_charm_rack_charms_equal_level(g):
 
 
 @pytest.mark.parametrize("uid", [u for u in DECOR if MAXLV[u] == 5
-                                 and u != "reference_book"])
+                                 and u not in ("reference_book", "research_grant")])
 def test_more_pieces_at_lv3_and_lv5(g, uid):
+    """(장식 변화 2026-11-24) 예전 Lv1·3·5 -> 이제 레벨마다 조각이 늘어난다(Lv5는 반짝이 포함)."""
     c = piece_counts(g, uid)
     assert c[1] >= 1
-    assert c[1] == c[2] < c[3] == c[4] < c[5], (uid, c)
+    assert c[1] < c[2] < c[3] < c[4] < c[5], (uid, c)
 
 
 def test_scholarship_trophy_lv1(g):
-    assert piece_counts(g, "scholarship") == [0, 1]
+    assert piece_counts(g, "scholarship") == [0, 2]   # (장식 변화) 트로피 + 최고 레벨 반짝이
 
 
 def test_specific_level_pieces(g):
@@ -880,12 +885,12 @@ def test_decor_rects_every_level_subset_of_max(g, place, lv_kind):
 
 
 def test_lab_has_its_own_layout():
-    out = config.DECOR_SLOTS[config.PLACE_LAWN]
-    lab = config.DECOR_SLOTS[config.PLACE_LAB]
-    assert out != lab
-    for p in OUTDOOR:
-        assert config.DECOR_SLOTS[p] == out
-    assert set(lab) == set(DECOR) and set(out) == set(DECOR)
+    """(배치 재설계 2026-11-24) 바깥 4곳도 장소마다 따로 배치한다(예전: 바깥 4곳 같은 자리)."""
+    layouts = [config.DECOR_SLOTS[p] for p in PLACES]
+    for i, a in enumerate(layouts):
+        assert set(a) == set(DECOR)
+        for b in layouts[i + 1:]:
+            assert a != b
 
 
 def test_lab_wall_items_below_window_and_floor_items_on_floor(g):

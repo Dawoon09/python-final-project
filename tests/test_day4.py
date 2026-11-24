@@ -82,17 +82,17 @@ def test_config_grade_values():
     assert config.GRADUATION_KNOWLEDGE == 2200
     assert config.MAX_GRADE == 4
     assert config.CYCLE_SECONDS == 60
-    assert (config.BASE_RADIUS, config.RADIUS_PER_GRADE) == (40, 10)
+    assert (config.BASE_RADIUS, config.RADIUS_PER_GRADE) == (60, 0)   # 크기 고정
     assert config.GLASSES_GRADE == 3
     assert (config.MENTAL_SMILE_MIN, config.MENTAL_FLAT_MIN, config.LOW_GAUGE_LIMIT) == (60, 30, 30)
     assert config.ZERO_TIME == 0.0
 
 
 @pytest.mark.parametrize("knowledge, grade, radius", [
-    (0, 1, 40), (399, 1, 40),
-    (400, 2, 50), (899, 2, 50),
+    (0, 1, 60), (399, 1, 60),
+    (400, 2, 60), (899, 2, 60),
     (900, 3, 60), (1499, 3, 60),
-    (1500, 4, 70), (2199, 4, 70), (2200, 4, 70), (10000, 4, 70),
+    (1500, 4, 60), (2199, 4, 60), (2200, 4, 60), (10000, 4, 60),
 ])
 def test_grade_and_radius(knowledge, grade, radius):
     s = student_at(knowledge)
@@ -102,7 +102,7 @@ def test_grade_and_radius(knowledge, grade, radius):
 
 def test_new_student_is_grade_1():
     s = Student()
-    assert (s.elapsed, s.get_grade(), s.get_radius(), s.has_glasses()) == (0.0, 1, 40, False)
+    assert (s.elapsed, s.get_grade(), s.get_radius(), s.has_glasses()) == (0.0, 1, 60, False)
 
 
 @pytest.mark.parametrize("frames", [3599, 3600, 7200, 10800, 18000])
@@ -134,7 +134,7 @@ def test_game_update_advances_grade(game):
     game.student.knowledge = config.GRADE_GOALS[0]
     game.update(1 / 60)
     assert game.student.get_grade() == 2
-    assert game.student.get_radius() == 50
+    assert game.student.get_radius() == 60
 
 
 def test_grade_does_not_advance_outside_playing(game):
@@ -224,7 +224,7 @@ def face_height(surf):
     return y - CY
 
 
-@pytest.mark.parametrize("knowledge, radius", [(0, 40), (400, 50), (900, 60), (1500, 70)])
+@pytest.mark.parametrize("knowledge, radius", [(0, 60), (400, 60), (900, 60), (1500, 60)])
 def test_face_drawn_with_grade_size(surface, knowledge, radius):
     s = student_at(knowledge)
     draw_on(surface, s)
@@ -243,8 +243,7 @@ def test_face_grows_each_grade_pixels(surface):
     for knowledge in (0, 400, 900, 1500, 2200, 6000):
         draw_on(surface, student_at(knowledge))
         extents.append(face_extent(surface))
-    assert extents[0] < extents[1] < extents[2] < extents[3]
-    assert extents[3] == extents[4] == extents[5]
+    assert len(set(extents)) == 1   # 학년이 올라도 얼굴 크기는 그대로(반지름 60)
 
 
 def test_done_criteria_game_face_grows_every_grade(game):
@@ -271,8 +270,8 @@ def test_done_criteria_game_face_grows_every_grade(game):
         for _ in range(60):
             game.update(1 / 60)
     assert grades == [1, 2, 3, 4]
-    assert sizes[0] < sizes[1] < sizes[2] < sizes[3]
-    for size, radius in zip(sizes, (40, 50, 60, 70)):
+    assert sizes[0] == sizes[1] == sizes[2] == sizes[3]   # 크기 고정(반지름 60)
+    for size, radius in zip(sizes, (60, 60, 60, 60)):
         assert abs(size - radius) <= 1
 
 

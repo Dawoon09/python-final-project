@@ -269,7 +269,8 @@ def notice_rect(g):
 
 
 def is_event_popup(p):
-    return p.get("x", CX) == config.EVENT_POPUP_X
+    """이벤트 팝업 열: EVENT_POPUP_X (긴 연구비 글자는 무대 안에 들어가게 오른쪽으로 조금 밀림)."""
+    return config.EVENT_POPUP_X <= p.get("x", CX) <= config.EVENT_POPUP_X + 4 * P
 
 
 def check_frames(g, max_time, tag):
@@ -768,7 +769,8 @@ def test_pause_dots_cover_outside_but_not_dialog(make_game, monkeypatch):
 AUTO_IDS = [e[config.EVENT_ID] for e in config.AUTO_EVENTS]
 SPEC_GOOD = {"엄마가 반찬을 보내셨다": True, "단톡방에서 칭찬받았다": True,
              "과제 마감 알림이 울렸다": False, "감기 기운이 돈다": False,
-             "교수님께 칭찬받았다": True}
+             "교수님께 칭찬받았다": True,
+             "공모전에 입상했다": True}   # (연구비 이벤트) 게이지 변화 없음 -> 좋은 일
 
 
 @pytest.mark.parametrize("event_id", AUTO_IDS)
@@ -1036,12 +1038,12 @@ def test_look_drawn_only_when_owned(surface, look):
 
 @pytest.mark.parametrize("look", config.LOOK_IDS)
 def test_look_scales_with_grade_and_position(surface, look):
-    """학년마다 칸 크기(반지름//10 = 4/5/6/7)에 비례해 커지고, 얼굴 격자 위치에 놓인다."""
+    """학년마다 칸 크기(반지름//10 = 6, 모든 학년 같음)에 맞고, 얼굴 격자 위치에 놓인다."""
     sizes = {}
     for grade in (1, 2, 3, 4):
         s = student(grade)
         cell = s.get_radius() // 10
-        assert cell == s.get_cell_size() == 3 + grade
+        assert cell == s.get_cell_size() == 6
         d = diff_set(render_student(s), render_student(student(grade, [look])))
         left, top, right, bottom = bbox(d)
         (col, row), grid = config.LOOK_SPRITES[look]
@@ -1212,7 +1214,9 @@ def test_no_traits_no_badges(surface):
     assert pygame.image.tobytes(surf, "RGB") == pygame.image.tobytes(blank, "RGB")
 
 
-ALL_TRAITS = [config.TRAIT_FITNESS, config.TRAIT_MUSIC, config.TRAIT_CAFFEINE, config.TRAIT_LOVE]
+ALL_TRAITS = [config.TRAIT_FITNESS, config.TRAIT_MUSIC, config.TRAIT_CAFFEINE, config.TRAIT_LOVE,
+              config.TRAIT_MORNING, config.TRAIT_STUDY_GROUP, config.TRAIT_COOKING,
+              config.TRAIT_MEDITATION]  # (특성 이벤트) 8종
 
 
 @pytest.mark.parametrize("traits", [
@@ -1239,7 +1243,7 @@ def test_badges_order_color_text(surface, traits):
 def test_badge_colors_distinct_per_trait():
     assert set(config.TRAIT_COLORS) == set(ALL_TRAITS)
     fills = [config.TRAIT_COLORS[t][0] for t in ALL_TRAITS]
-    assert len(set(map(tuple, fills))) == 4
+    assert len(set(map(tuple, fills))) == len(ALL_TRAITS)
 
 
 def test_four_badges_2x2_inside_panel_without_overlap():
