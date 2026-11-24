@@ -118,7 +118,7 @@ def test_student_start_values():
         ("STUDY_KNOWLEDGE", 10), ("STUDY_KNOWLEDGE_EXAM", 20),
         # G단위: ACTION_COOLDOWN(1초)은 기획서 10절로 삭제. AUTO_ACTION_INTERVAL 2.0은 test_idle_g.py에서 확인
         ("MENTAL_SMILE_MIN", 60), ("MENTAL_FLAT_MIN", 30),
-        ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
+        ("BASE_RADIUS", 60), ("RADIUS_PER_GRADE", 0), ("GLASSES_GRADE", 3),
         ("MAX_GRADE", 4),
         # 졸업 기준: E단위 500/300 -> 700/450 -> K단위 1000/750 -> L단위(기획서 11절) 걸린 시간 240/360초
         # -> 11절 A안 밸런스(2026-11-23) 200/360초 -> M단위 400/720초(밸런스 B안에서 확정)
@@ -139,7 +139,7 @@ def test_time_thresholds_ordered():
 
 def test_radius_per_grade_formula():
     radii = [config.BASE_RADIUS + (g - 1) * config.RADIUS_PER_GRADE for g in range(1, 5)]
-    assert radii == [40, 50, 60, 70]
+    assert radii == [60, 60, 60, 60]   # 크기 고정
 
 
 def test_ending_names():

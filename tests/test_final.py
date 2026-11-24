@@ -294,7 +294,7 @@ def test_no_numeric_literals_other_than_0_1(name):
     ("STUDY_HEALTH", -5), ("STUDY_MENTAL", -8),
     ("STUDY_KNOWLEDGE", 10), ("STUDY_KNOWLEDGE_EXAM", 20),  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
     ("MENTAL_SMILE_MIN", 60), ("MENTAL_FLAT_MIN", 30),
-    ("BASE_RADIUS", 40), ("RADIUS_PER_GRADE", 10), ("GLASSES_GRADE", 3),
+    ("BASE_RADIUS", 60), ("RADIUS_PER_GRADE", 0), ("GLASSES_GRADE", 3),
     # L단위(기획서 11절): 졸업 등급은 걸린 시간, 진급 목표 200/450/750, 졸업 지식 1100
     # M단위: 진급 기준 2배 400/900/1500, 졸업 2200. 시간 기준은 config 상수라 고정하지 않는다
     ("GRADE_GOALS", [400, 900, 1500]), ("GRADUATION_KNOWLEDGE", 2200),
