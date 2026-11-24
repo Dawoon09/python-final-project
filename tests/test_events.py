@@ -169,14 +169,14 @@ SPEC_CHOICE = [
         ("도서관에 간다", {K: 15}, None, None, None)]),
     # (특성 이벤트 2026-11-24) 학년마다 하나, 새 특성 4종
     ([1], None, "1교시 시간표", [
-        ("1교시를 듣는다", {H: -5}, "아침형 인간", None, None),
-        ("다음 학기에", {M: 5}, None, None, None)]),
+        ("1교시를 듣는다", {H: -10, M: -5}, "아침형 인간", None, None),
+        ("다음 학기에", {M: 10}, None, None, None)]),
     ([2], None, "스터디 모집", [
-        ("들어간다", {K: 10, M: -5}, "스터디 그룹", None, None),
-        ("혼자 한다", {K: 5}, None, None, None)]),
+        ("들어간다", {K: 5, M: -10}, "스터디 그룹", None, None),
+        ("혼자 한다", {K: 15}, None, None, None)]),
     ([3], None, "자취 시작", [
-        ("직접 해 먹는다", {H: 5}, "자취 요리", None, None),
-        ("배달시킨다", {M: 5}, None, None, None)]),
+        ("직접 해 먹는다", {H: -5}, "자취 요리", None, None),
+        ("배달시킨다", {M: 10}, None, None, None)]),
     ([4], None, "졸업 논문 스트레스", [
         ("명상을 배운다", {M: 10}, "명상", None, None),
         ("밤새 쓴다", {K: 20, H: -10}, None, None, None)]),
@@ -244,7 +244,7 @@ def test_trait_bonus_table():
     assert (config.STUDY_HEALTH, config.STUDY_MENTAL) == (-5, -8)
     assert (config.STUDY_KNOWLEDGE, config.STUDY_KNOWLEDGE_EXAM) == (10, 20)
     # 졸업 기준: E단위 700/450, K단위 1000/750 (지식) -> L단위 걸린 시간 240/360초 -> 11절 A안 200/360초,
-    # 졸업 지식 1100 -> M단위 2200, 시간 기준은 임시 값(400/720)이라 순서만 본다
+    # 졸업 지식 1100 -> M단위 2200, 시간 기준은 config 상수라 순서만 본다
     assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
     assert config.GRADUATION_KNOWLEDGE == 2200
 
@@ -1142,7 +1142,7 @@ def test_all_three_graduation_endings_and_leave_reachable():
     """이벤트가 켜진 시뮬레이션에서 졸업 엔딩과 휴학 엔딩이 나온다.
 
     (L단위) 등급은 걸린 시간이라 행동 간격으로 나눴다(1초 수석, 1.5초 무사, 2.5초 아슬아슬 쪽).
-    (M단위) 시간 기준이 임시 값이라 어느 간격이 어느 등급인지는 고정하지 않는다.
+    (M단위) 시간 기준을 config 상수로 잡으므로 어느 간격이 어느 등급인지는 고정하지 않는다.
     대신: 규칙 위반 없음, 졸업 판의 등급 = judge_ending(걸린 시간), 간격이 길수록 평균 졸업 시각이 늦다,
     공부만 하면 휴학. 수석·무사·아슬아슬 3종의 경계는 judge_ending 경계 테스트에서 본다.
     """

@@ -98,8 +98,8 @@ def test_m_constants():
     assert config.GAUGE_MAX == 100
     assert config.GRADE_GOALS == [400, 900, 1500] and config.GRADUATION_KNOWLEDGE == 2200
     assert (config.GRAD_GOAL_FIRST_STEP, config.GRAD_GOAL_STEP_GROWTH) == (800, 200)
-    # 시간 기준은 B안으로 확정(예전 임시 400/720)
-    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (330, 720)
+    # 시간 기준은 B안으로 확정(수석 330 -> 290초, 2026-11-24)(예전 임시 400/720초)
+    assert (config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS) == (290, 720)
     assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
     assert config.STATUS_BADGE_Y == 128 and config.GAUGE_VALUE_TEXT.format(80, 100) == "80/100"
     assert (config.UPGRADE_ROW_TOP, config.UPGRADE_ROW_HEIGHT, config.UPGRADE_ROW_STEP) == \

@@ -340,28 +340,41 @@ class Student:
 
     def rest(self, recovery_ratio=config.NO_RATIO):
         """쉬게 하기: 체력 +15, 멘탈 +20, 지식 -2, 버프 '개운함'(20초)이 붙는다."""
-        bed = self.get_upgrade_bonus(config.UPGRADE_BED)
-        health = (config.REST_HEALTH + self.get_trait_bonus(config.BONUS_REST_HEALTH)
-                  + self.get_upgrade_bonus(config.UPGRADE_CAFE) + bed)
-        mental = config.REST_MENTAL + self.get_trait_bonus(config.BONUS_REST_MENTAL) + bed
-        self.change_health(round(health * recovery_ratio))
-        self.change_mental(round(mental * recovery_ratio))
+        self.change_health(round(self.get_rest_health() * recovery_ratio))
+        self.change_mental(round(self.get_rest_mental() * recovery_ratio))
         self.change_knowledge(config.REST_KNOWLEDGE)
         self.refresh_until = self.elapsed + config.REFRESH_DURATION
 
+    def get_rest_health(self):
+        """쉬게 하기 한 번에 오르는 체력(방침 배수 곱하기 전)을 돌려준다."""
+        return (config.REST_HEALTH + self.get_trait_bonus(config.BONUS_REST_HEALTH)
+                + self.get_upgrade_bonus(config.UPGRADE_CAFE)
+                + self.get_upgrade_bonus(config.UPGRADE_BED))
+
+    def get_rest_mental(self):
+        """쉬게 하기 한 번에 오르는 멘탈(방침 배수 곱하기 전)을 돌려준다."""
+        return (config.REST_MENTAL + self.get_trait_bonus(config.BONUS_REST_MENTAL)
+                + self.get_upgrade_bonus(config.UPGRADE_BED))
+
+    def get_study_health(self):
+        """공부시키기 한 번에 바뀌는 체력(방침 배수 곱하기 전, 보통 음수)을 돌려준다."""
+        return (config.STUDY_HEALTH + self.get_trait_bonus(config.BONUS_STUDY_HEALTH)
+                + self.get_upgrade_bonus(config.UPGRADE_GYM))
+
+    def get_study_mental(self):
+        """공부시키기 한 번에 바뀌는 멘탈(방침 배수 곱하기 전, 보통 음수)을 돌려준다."""
+        return config.STUDY_MENTAL + self.get_trait_bonus(config.BONUS_STUDY_MENTAL)
+
     def study(self, knowledge_ratio=config.NO_RATIO, cost_ratio=config.NO_RATIO):
         """공부시키기: 지식 +(공부 지식량), 체력 -5, 멘탈 -8 (특성·업그레이드 보정 뒤 방침 배수)."""
-        health = (config.STUDY_HEALTH + self.get_trait_bonus(config.BONUS_STUDY_HEALTH)
-                  + self.get_upgrade_bonus(config.UPGRADE_GYM))
         knowledge = (self.get_study_knowledge() + self.get_upgrade_bonus(config.UPGRADE_BOOK)
                      + self.get_upgrade_bonus(config.UPGRADE_LIBRARY)
                      + self.get_trait_bonus(config.BONUS_STUDY_KNOWLEDGE)) * knowledge_ratio
         if self.is_tired():
             knowledge *= config.TIRED_KNOWLEDGE_RATIO
         self.change_knowledge(round(knowledge))
-        self.change_health(round(health * cost_ratio))
-        mental = config.STUDY_MENTAL + self.get_trait_bonus(config.BONUS_STUDY_MENTAL)
-        self.change_mental(round(mental * cost_ratio))
+        self.change_health(round(self.get_study_health() * cost_ratio))
+        self.change_mental(round(self.get_study_mental() * cost_ratio))
 
     def get_study_knowledge(self):
         """공부시키기 한 번에 오르는 지식 양을 돌려준다: 평소 10, 시험 기간 20."""
@@ -373,7 +386,7 @@ class Student:
     # 성장: 학년(get_grade)에 따라 크기·안경이 바뀐다
     # ------------------------------------------------------------
     def get_radius(self):
-        """캐릭터 반지름을 돌려준다: 40 + (학년-1) x 10 -> 40/50/60/70."""
+        """캐릭터 반지름을 돌려준다: 60 + (학년-1) x 0 -> 모든 학년 60."""
         return (config.BASE_RADIUS
                 + (self.get_grade() - config.FIRST_GRADE) * config.RADIUS_PER_GRADE)
 

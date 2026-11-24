@@ -120,7 +120,7 @@ def test_idle_end_to_end_real_loop(monkeypatch, isolated_record_path):
     # 업그레이드: 학식 메뉴 개선 240 을 연구비로 샀다
     assert config.UPGRADE_MENU in g.upgrades and g.upgrades[config.UPGRADE_MENU] == 1
     assert log["money_before_buy"][0] >= 240
-    # 방치(자동 행동)로 졸업 지식(M단위 2200) 졸업, 등급은 걸린 시간(시간 기준은 임시 값이라 config 상수로)
+    # 방치(자동 행동)로 졸업 지식(M단위 2200) 졸업, 등급은 걸린 시간(시간 기준은 config 상수라 config 상수로)
     ending, knowledge, money, bonus, seconds = log["graduated"]
     assert ending in (config.ENDING_TOP, config.ENDING_NORMAL, config.ENDING_BARELY)
     assert knowledge >= config.GRADUATION_KNOWLEDGE

@@ -35,7 +35,7 @@ FRAME = 1 / 60
 P = config.PIXEL_SIZE
 FEED, REST, STUDY = config.ACTION_FEED, config.ACTION_REST, config.ACTION_STUDY
 TOP, NORMAL, BARELY = config.ENDING_TOP, config.ENDING_NORMAL, config.ENDING_BARELY
-# (M단위) 졸업 등급 시간 기준은 임시 값(400/720)이라 경계 테스트는 config 상수로 쓴다
+# (M단위) 졸업 등급 시간 기준은 config 상수라 경계 테스트는 config 상수로 쓴다
 TOP_S, NORMAL_S = config.TOP_GRADUATE_SECONDS, config.NORMAL_GRADUATE_SECONDS
 GOAL = config.GRADUATION_KNOWLEDGE   # (M단위) 졸업 지식 2200
 STAGE_INNER = pygame.Rect(config.STAGE_X, config.PANEL_Y, config.STAGE_WIDTH,
@@ -125,7 +125,7 @@ def bbox(points):
 # ======================= 1. config 수치 (기획서 11절 표) =======================
 
 def test_l_constants_match_spec():
-    # (M단위) 진급 기준 2배: 200/450/750/1100 -> 400/900/1500/2200, 시간 기준은 임시 값이라 순서만
+    # (M단위) 진급 기준 2배: 200/450/750/1100 -> 400/900/1500/2200, 시간 기준은 config 상수라 순서만
     assert config.GRADE_GOALS == [400, 900, 1500]
     assert config.GRADUATION_KNOWLEDGE == 2200
     assert 0 < config.TOP_GRADUATE_SECONDS < config.NORMAL_GRADUATE_SECONDS
@@ -338,7 +338,7 @@ def test_no_demotion_after_rest(g):
     for _ in range(30):
         g.do_action(REST)
     assert g.student.knowledge == 338 and g.student.get_grade() == 2
-    assert g.student.get_radius() == 50
+    assert g.student.get_radius() == 60
 
 
 def test_no_demotion_glasses_and_place_stay(g):
@@ -397,7 +397,7 @@ def test_dropout_beats_graduation_on_choice(g):
 # ======================= 4. 졸업 시각과 등급 =======================
 
 @pytest.mark.parametrize("seconds, ending", [
-    # (M단위) 경계는 config 상수 기준(지금 400/720초, 임시 값)
+    # (M단위) 경계는 config 상수 기준(지금 290/720초)
     (0.0, TOP), (TOP_S, TOP), (TOP_S + 0.0000000001, TOP), (TOP_S + 0.0001, NORMAL),
     (TOP_S + 40, NORMAL), ((TOP_S + NORMAL_S) / 2, NORMAL),
     (NORMAL_S, NORMAL), (NORMAL_S + 0.0001, BARELY), (NORMAL_S * 10, BARELY),

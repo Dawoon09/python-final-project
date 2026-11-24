@@ -115,7 +115,7 @@ GAME_CONSTANTS = [
     # M단위: FEED_HEALTH 삭제(학식 = 버프 든든함). M_REMOVED_CONSTANTS 에서 확인
     "REST_MENTAL", "REST_KNOWLEDGE", "STUDY_HEALTH", "STUDY_MENTAL",
     "STUDY_KNOWLEDGE", "STUDY_KNOWLEDGE_EXAM",  # G단위: ACTION_COOLDOWN 삭제(기획서 10절)
-    "MENTAL_SMILE_MIN", "MENTAL_FLAT_MIN", "BASE_RADIUS", "RADIUS_PER_GRADE", "GLASSES_GRADE",
+    "MENTAL_SMILE_MIN", "MENTAL_FLAT_MIN", "GLASSES_GRADE",
     "MOUTH_SMILE", "MOUTH_FLAT", "MOUTH_CRY",
     "ENDING_LEAVE", "ENDING_TOP", "ENDING_NORMAL", "ENDING_BARELY",
     "RECORD_FILENAME", "RECORD_KEY", "RECORD_ENCODING", "BEST_RECORD_START",
@@ -695,8 +695,8 @@ def _face_bbox(surf):
     return min(xs), min(ys), max(xs) + 1, max(ys) + 1
 
 
-@pytest.mark.parametrize("knowledge, radius", [(0, 40), (400, 50), (900, 60), (1500, 70),
-                                              (2200, 70)])   # M단위 진급 기준 2배
+@pytest.mark.parametrize("knowledge, radius", [(0, 60), (400, 60), (900, 60), (1500, 60),
+                                              (2200, 60)])   # M단위 진급 기준 2배
 def test_face_diameter_is_twice_radius(surface, knowledge, radius):
     """실제로 그려진 얼굴(머리카락 포함)의 가로·세로 = 2 x 반지름, 중심 = 제자 무대 가운데."""
     s = _student(knowledge)

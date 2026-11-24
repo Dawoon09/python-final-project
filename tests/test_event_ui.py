@@ -1038,12 +1038,12 @@ def test_look_drawn_only_when_owned(surface, look):
 
 @pytest.mark.parametrize("look", config.LOOK_IDS)
 def test_look_scales_with_grade_and_position(surface, look):
-    """학년마다 칸 크기(반지름//10 = 4/5/6/7)에 비례해 커지고, 얼굴 격자 위치에 놓인다."""
+    """학년마다 칸 크기(반지름//10 = 6, 모든 학년 같음)에 맞고, 얼굴 격자 위치에 놓인다."""
     sizes = {}
     for grade in (1, 2, 3, 4):
         s = student(grade)
         cell = s.get_radius() // 10
-        assert cell == s.get_cell_size() == 3 + grade
+        assert cell == s.get_cell_size() == 6
         d = diff_set(render_student(s), render_student(student(grade, [look])))
         left, top, right, bottom = bbox(d)
         (col, row), grid = config.LOOK_SPRITES[look]

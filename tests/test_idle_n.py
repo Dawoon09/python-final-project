@@ -183,17 +183,21 @@ def test_tooltip_rows_every_upgrade_levels(g, uid):
             assert texts[1] == "지금: 아직 없음"
         else:
             assert texts[1] == "지금: " + fmt_effect(uid, level)
+        note = config.UPGRADE_TIP_NOTES.get(uid)     # 방어형·행운 부적은 쓸모 안내 한 줄이 더 붙는다
+        cost_at = 4 + (1 if note else 0)
         if level >= mx:
             assert texts[2] == "다음: 최고 레벨"
-            assert texts[4] == "가격: MAX"
+            assert texts[cost_at] == "가격: MAX"
         else:
             assert texts[2] == "다음: " + fmt_effect(uid, level + 1)
             cost = math.floor(config.UPGRADES_BY_ID[uid][config.UPGRADE_BASE_COST]
                               * 2.0 ** level)
-            assert texts[4] == f"가격: 연구비 {cost}"
+            assert texts[cost_at] == f"가격: 연구비 {cost}"
         assert texts[3].startswith("무대: ")
         assert texts[3] == config.UPGRADE_DECOR_TEXTS[uid]
-        assert len(rows) == 5            # 돈이 넉넉하면 경고 줄 없음
+        if note:
+            assert texts[4] == note
+        assert len(rows) == cost_at + 1  # 돈이 넉넉하면 경고 줄 없음
         assert "연구비가 모자라요" not in texts
 
 

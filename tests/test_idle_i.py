@@ -59,7 +59,7 @@ def no_decay(monkeypatch):
 
 
 # (L단위) 예전 지식 기준(1000/750)과 같은 등급이 나오는 졸업 시각: 수석 200초, 무사 300초, 아슬아슬 400초
-# (M단위) 시간 기준이 임시 값(400/720)이라 config 상수로: 수석 = 기준 초, 무사 = 두 기준 가운데, 아슬아슬 = 무사 기준 + 40
+# (M단위) 시간 기준을 config 상수로 잡으므로 config 상수로: 수석 = 기준 초, 무사 = 두 기준 가운데, 아슬아슬 = 무사 기준 + 40
 OLD_TOP_KNOWLEDGE, OLD_NORMAL_KNOWLEDGE = 1000, 750
 
 
@@ -399,7 +399,7 @@ def test_grad_grade_size_and_glasses_stay(no_decay):
         s.knowledge = s.get_next_goal()      # (L단위) 년차는 지식으로 오른다
         s.promote()
         assert s.get_grade() == 4
-        assert s.get_radius() == 70
+        assert s.get_radius() == 60
         assert s.has_glasses()
     assert s.grad_year == 6
 

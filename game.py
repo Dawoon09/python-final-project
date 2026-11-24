@@ -1040,6 +1040,8 @@ class Game:
             else:
                 self.draw_status_tooltip()
                 self.draw_trait_tooltip()
+                self.draw_info_tooltip()
+                self.draw_gauge_tooltip()
         elif self.state == config.STATE_EVENT:
             # 대화창이 떠 있는 동안에는 업그레이드 패널을 숨긴다(닫힌 것은 아니다)
             self.draw_playing()
@@ -1407,6 +1409,8 @@ class Game:
             next_effect = self.get_upgrade_effect_text(upgrade_id, level + config.LEVEL_STEP)
             lines.append((config.UPGRADE_TIP_NEXT.format(next_effect), text_color))
         lines.append((config.UPGRADE_DECOR_TEXTS[upgrade_id], text_color))
+        if upgrade_id in config.UPGRADE_TIP_NOTES:
+            lines.append((config.UPGRADE_TIP_NOTES[upgrade_id], text_color))
         if maxed:
             lines.append((config.UPGRADE_TIP_COST_MAX, text_color))
         else:
@@ -1424,28 +1428,37 @@ class Game:
                     return index
         return None
 
-    def get_tooltip_rect(self, lines, anchor_top):
-        """줄 목록 lines를 담을 툴팁 상자 사각형을 돌려준다(그리지는 않는다)."""
-        width = max(self.small_font.size(text)[config.FIRST_ROW] for text, _ in lines)
+    def get_tooltip_rect(self, lines, anchor_top, font=None, top_min=None):
+        """줄 목록 lines를 담을 툴팁 상자 사각형을 돌려준다(그리지는 않는다).
+        font를 주지 않으면 작은 글자로 잰다."""
+        font = font or self.small_font
+        top_min = config.TOOLTIP_TOP_MIN if top_min is None else top_min
+        width = max(font.size(text)[config.FIRST_ROW] for text, _ in lines)
         width = max(config.TOOLTIP_MIN_WIDTH, width + config.TOOLTIP_PAD_X * config.HALF)
         height = len(lines) * config.TOOLTIP_LINE_HEIGHT + config.TOOLTIP_PAD_Y * config.HALF
         rect = pygame.Rect(config.TOOLTIP_X, anchor_top, width, height)
         bottom_max = config.TOOLTIP_BOTTOM_MAX - config.PIXEL_SIZE   # 아래 그림자 1칸 자리
         if rect.bottom > bottom_max:
             rect.bottom = bottom_max
-        rect.top = max(rect.top, config.TOOLTIP_TOP_MIN)
+        rect.top = max(rect.top, top_min)
         if rect.right > config.TOOLTIP_RIGHT_MAX:
             rect.right = config.TOOLTIP_RIGHT_MAX
         return rect
 
-    def draw_tooltip(self, lines, anchor_top):
-        """툴팁 상자(크림색 도트 상자, 반투명 없음)와 줄 글자들을 그리고 상자 사각형을 돌려준다."""
-        rect = self.get_tooltip_rect(lines, anchor_top)
+    def draw_tooltip(self, lines, anchor_top, font=None, left=None, right=None, top_min=None):
+        """툴팁 상자(크림색 도트 상자, 반투명 없음)와 줄 글자들을 그리고 상자 사각형을 돌려준다.
+        left를 주면 상자 왼쪽 x를, right를 주면 오른쪽 끝 x를 그 값에 맞추고, top_min은 위쪽 y의 최솟값이다."""
+        font = font or self.small_font
+        rect = self.get_tooltip_rect(lines, anchor_top, font, top_min)
+        if left is not None:
+            rect.left = left
+        if right is not None:
+            rect.right = right
         draw_pixel_box(self.screen, rect, config.COLOR_TOOLTIP, config.COLOR_TOOLTIP_LIGHT,
                        drop=config.COLOR_DROP)
         y = rect.top + config.TOOLTIP_PAD_Y
         for text, color in lines:
-            surface = render_text(self.small_font, text, color)
+            surface = render_text(font, text, color)
             text_rect = surface.get_rect()
             text_rect.midleft = (rect.left + config.TOOLTIP_PAD_X,
                                  y + config.TOOLTIP_LINE_HEIGHT // config.HALF)
@@ -2111,6 +2124,134 @@ class Game:
         money_rect.midright = (knowledge_rect.left - config.INFO_ITEM_GAP,
                                config.INFO_TEXT_CENTER_Y)
         self.screen.blit(money, money_rect)
+
+    def get_info_grade_rect(self):
+        """정보바 학년(대학원 년차) 글자가 차지하는 사각형을 돌려준다."""
+        if self.grad_year > config.GRAD_YEAR_UNDERGRAD:
+            text = config.GRAD_YEAR_TEXT.format(self.grad_year)
+        else:
+            text = config.GRADE_TEXT.format(self.student.get_grade())
+        rect = render_text(self.font, text).get_rect()
+        rect.midleft = (config.INFO_BAR_MARGIN, config.INFO_TEXT_CENTER_Y)
+        return rect
+
+    def get_info_money_rect(self):
+        """정보바 연구비 글자가 차지하는 사각형을 돌려준다(지식 글자 왼쪽)."""
+        knowledge = config.KNOWLEDGE_TEXT.format(config.KNOWLEDGE_LABEL, self.student.knowledge)
+        knowledge_left = (config.SCREEN_WIDTH - config.INFO_BAR_MARGIN
+                          - render_text(self.font, knowledge).get_width())
+        text = config.MONEY_TEXT.format(config.MONEY_LABEL, self.money)
+        rect = render_text(self.font, text).get_rect()
+        rect.midright = (knowledge_left - config.INFO_ITEM_GAP, config.INFO_TEXT_CENTER_Y)
+        return rect
+
+    # ------------------------------------------------------------
+    # 툴팁: 정보바 학년·연구비 글자, 체력·멘탈 라벨 (글자 16px)
+    # ------------------------------------------------------------
+    def can_show_hover_tooltip(self):
+        """마우스 툴팁을 보일 수 있는 화면(플레이 중, 패널·기록 창 닫힘)이면 True."""
+        return (self.mouse_pos is not None and self.state == config.STATE_PLAYING
+                and not self.upgrade_panel_open and not self.event_log_open)
+
+    def get_grade_tip_rows(self):
+        """정보바 학년 글자의 툴팁 줄 목록 [(글자, 색)]을 돌려준다."""
+        title_color = config.COLOR_TOOLTIP_TITLE
+        text_color = config.COLOR_TOOLTIP_TEXT
+        if self.grad_year <= config.GRAD_YEAR_UNDERGRAD:
+            first = config.NO_RATIO + config.GRAD_MONEY_BONUS * config.GRAD_FIRST_YEAR
+            return [(config.GRADE_TIP_UNDERGRAD.format(self.student.get_grade()), title_color),
+                    (config.GRADE_TIP_UNDERGRAD_HINT.format(first), text_color)]
+        money_now = self.get_grad_money_multiplier()
+        money_next = money_now + config.GRAD_MONEY_BONUS
+        decay = round(self.student.get_grad_decay_ratio(), config.GAUGE_TIP_DECIMALS)
+        return [(config.GRADE_TIP_GRAD.format(self.grad_year), title_color),
+                (config.GRADE_TIP_GRAD_MONEY.format(money_now, money_next), text_color),
+                (config.GRADE_TIP_GRAD_TIRED.format(decay), config.COLOR_TOOLTIP_WARN)]
+
+    def get_money_tip_rows(self):
+        """정보바 연구비 글자의 툴팁 줄 목록을 돌려준다: 합계 배수 + 1배가 아닌 요소만 한 줄씩."""
+        digits = config.MONEY_TIP_DECIMALS
+        total = round(self.get_money_multiplier(), digits)
+        lines = [(config.MONEY_TIP_TOTAL.format(total), config.COLOR_TOOLTIP_TITLE)]
+        factors = []
+        fame = round(self.get_fame_multiplier(), digits)
+        if fame != config.NO_RATIO:
+            factors.append(config.MONEY_TIP_FAME.format(self.fame, self.get_fame_title(), fame))
+        grad = round(self.get_grad_money_multiplier(), digits)
+        if grad != config.NO_RATIO:
+            factors.append(config.MONEY_TIP_GRAD.format(self.grad_year, grad))
+        research = round(self.get_research_money_ratio(), digits)
+        if research != config.NO_RATIO:
+            level = self.student.get_upgrade_level(config.UPGRADE_RESEARCH)
+            factors.append(config.MONEY_TIP_RESEARCH.format(level, research))
+        condition = round(self.get_condition_money_ratio(), digits)
+        if condition != config.NO_RATIO:
+            name = (config.DEBUFF_DEPRESSED if self.student.is_depressed()
+                    else config.CONDITION_GOOD)
+            factors.append(config.MONEY_TIP_CONDITION.format(name, condition))
+        lines.extend((text, config.COLOR_TOOLTIP_TEXT) for text in factors)
+        return lines
+
+    def draw_info_tooltip(self):
+        """마우스가 정보바 학년·연구비 글자 위에 있으면 그 툴팁을 정보바 바로 아래에 그린다.
+        학년은 왼쪽 x 16, 연구비는 오른쪽 끝 맞춤. 그린 상자 사각형(없으면 None)을 돌려준다."""
+        if not self.can_show_hover_tooltip():
+            return None
+        top = config.INFO_BOX_Y + config.INFO_BOX_HEIGHT + config.INFO_TIP_GAP
+        if self.get_info_grade_rect().collidepoint(self.mouse_pos):
+            return self.draw_tooltip(self.get_grade_tip_rows(), top, self.notice_font,
+                                     left=config.INFO_TIP_LEFT_X,
+                                     top_min=config.INFO_BAR_HEIGHT)
+        money_rect = self.get_info_money_rect()
+        if money_rect.collidepoint(self.mouse_pos):
+            return self.draw_tooltip(self.get_money_tip_rows(), top, self.notice_font,
+                                     right=money_rect.right, top_min=config.INFO_BAR_HEIGHT)
+        return None
+
+    def get_gauge_tip_rows(self, name):
+        """체력·멘탈 라벨의 툴팁 줄 목록을 돌려준다: 1초 순 변화, 휴식·공부 변화, 버프 안내."""
+        student = self.student
+        if name == config.GAUGE_HEALTH:
+            label, decay = config.HEALTH_LABEL, student.get_health_decay()
+            rest, study = student.get_rest_health(), student.get_study_health()
+            buff = student.is_full_buff_active()
+            buff_text = config.GAUGE_TIP_FULL
+        else:
+            label, decay = config.MENTAL_LABEL, student.get_mental_decay()
+            rest, study = student.get_rest_mental(), student.get_study_mental()
+            buff = student.is_refresh_buff_active()
+            buff_text = config.GAUGE_TIP_REFRESH
+        net = round(student.get_self_care_regen() - decay, config.GAUGE_TIP_DECIMALS)
+        lines = [(config.GAUGE_TIP_RATE.format(label, net + config.NO_CHANGE),
+                  config.COLOR_TOOLTIP_TITLE),
+                 (config.GAUGE_TIP_ACTIONS.format(round(rest), round(study)),
+                  config.COLOR_TOOLTIP_TEXT)]
+        if buff:
+            lines.append((buff_text, config.COLOR_TOOLTIP_TEXT))
+        return lines
+
+    def get_gauge_label_rect(self, name):
+        """체력·멘탈 아이콘+라벨 줄(마우스를 올리는 자리) 사각형을 돌려준다."""
+        if name == config.GAUGE_HEALTH:
+            label, top, icon = config.HEALTH_LABEL, config.HEALTH_LABEL_Y, config.HEART_SPRITE
+        else:
+            label, top, icon = config.MENTAL_LABEL, config.MENTAL_LABEL_Y, config.STAR_SPRITE
+        icon_width, icon_height = sprite_size(icon, config.PIXEL_SIZE)
+        text_width = render_text(self.font, label).get_width()
+        return pygame.Rect(config.GAUGE_X, top,
+                           icon_width + config.GAUGE_LABEL_GAP + text_width, icon_height)
+
+    def draw_gauge_tooltip(self):
+        """마우스가 체력·멘탈 라벨 위에 있으면 그 툴팁을 x 276에 라벨 높이로 그린다.
+        그린 상자 사각형(없으면 None)을 돌려준다."""
+        if not self.can_show_hover_tooltip():
+            return None
+        for name in (config.GAUGE_HEALTH, config.GAUGE_MENTAL):
+            rect = self.get_gauge_label_rect(name)
+            if rect.collidepoint(self.mouse_pos):
+                return self.draw_tooltip(self.get_gauge_tip_rows(name), rect.top,
+                                         self.notice_font)
+        return None
 
     def get_auto_progress(self):
         """다음 자동 행동까지의 진행률(0~1)을 돌려준다. 방금 행동했으면 0, 곧 행동하면 1에 가깝다."""

@@ -134,8 +134,8 @@ MENTAL_FLAT_MIN = 30        # 멘탈이 이 값 이상(60 미만)이면 일자 �
 # ---------------------------------------------------------------
 # 7. 캐릭터 크기
 # ---------------------------------------------------------------
-BASE_RADIUS = 40            # 1학년 반지름
-RADIUS_PER_GRADE = 10       # 학년이 오를 때마다 늘어나는 반지름
+BASE_RADIUS = 60            # 반지름(모든 학년 같음: 가장 작은 40과 가장 큰 70의 중간 55보다 조금 큼)
+RADIUS_PER_GRADE = 0        # 학년이 오를 때마다 늘어나는 반지름(0: 크기 고정)
 GLASSES_GRADE = 3           # 이 학년부터 안경을 쓴다
 
 # 표정 이름 (Student.get_mouth 가 돌려주는 값)
@@ -151,8 +151,8 @@ GRADE_GOALS = [400, 900, 1500]  # 2학년·3학년·4학년 진급 목표(누적
 GRADUATION_KNOWLEDGE = 2200     # 4학년에서 누적 지식 2200 이상이면 졸업
 # 졸업 등급은 졸업까지 걸린 게임 시간(대화창 정지 시간은 빼고 센다)으로 정한다.
 # (밸런스 B안, 2026-11-24: 업그레이드를 모아 4번째 판쯤 첫 수석, 업그레이드 없는 첫 판은 무사)
-TOP_GRADUATE_SECONDS = 330      # 330초 이하: 수석 졸업
-NORMAL_GRADUATE_SECONDS = 720   # 330초 초과 720초 이하: 무사 졸업, 초과: 아슬아슬 졸업
+TOP_GRADUATE_SECONDS = 290      # 290초 이하: 수석 졸업
+NORMAL_GRADUATE_SECONDS = 720   # 290초 초과 720초 이하: 무사 졸업, 초과: 아슬아슬 졸업
 
 ENDING_LEAVE = "휴학"
 ENDING_TOP = "수석 졸업"
@@ -946,23 +946,24 @@ CHOICE_EVENTS = [
      EVENT_REQUIRES: None, EVENT_TITLE: "1교시 시간표",
      EVENT_TEXT: "수강 신청에서 1교시 수업만 남았다.",
      EVENT_OPTIONS: [
-         make_option("1교시를 듣는다", {GAUGE_HEALTH: -5}, trait=TRAIT_MORNING),
-         make_option("다음 학기에", {GAUGE_MENTAL: 5}),
+         make_option("1교시를 듣는다", {GAUGE_HEALTH: -10, GAUGE_MENTAL: -5},
+                     trait=TRAIT_MORNING),
+         make_option("다음 학기에", {GAUGE_MENTAL: 10}),
      ]},
     {EVENT_ID: "study_group", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [2],
      EVENT_REQUIRES: None, EVENT_TITLE: "스터디 모집",
      EVENT_TEXT: "전공 스터디원을 모집한다는 글이 올라왔다.",
      EVENT_OPTIONS: [
-         make_option("들어간다", {GAUGE_KNOWLEDGE: 10, GAUGE_MENTAL: -5},
+         make_option("들어간다", {GAUGE_KNOWLEDGE: 5, GAUGE_MENTAL: -10},
                      trait=TRAIT_STUDY_GROUP),
-         make_option("혼자 한다", {GAUGE_KNOWLEDGE: 5}),
+         make_option("혼자 한다", {GAUGE_KNOWLEDGE: 15}),
      ]},
     {EVENT_ID: "living_alone", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [3],
      EVENT_REQUIRES: None, EVENT_TITLE: "자취 시작",
      EVENT_TEXT: "학교 앞 원룸으로 이사했다. 밥은 어떻게 할까?",
      EVENT_OPTIONS: [
-         make_option("직접 해 먹는다", {GAUGE_HEALTH: 5}, trait=TRAIT_COOKING),
-         make_option("배달시킨다", {GAUGE_MENTAL: 5}),
+         make_option("직접 해 먹는다", {GAUGE_HEALTH: -5}, trait=TRAIT_COOKING),
+         make_option("배달시킨다", {GAUGE_MENTAL: 10}),
      ]},
     {EVENT_ID: "thesis_stress", EVENT_KIND: EVENT_KIND_CHOICE, EVENT_GRADES: [4],
      EVENT_REQUIRES: None, EVENT_TITLE: "졸업 논문 스트레스",
@@ -2039,6 +2040,36 @@ UPGRADE_TIP_MAXED = "다음: 최고 레벨"          # 최고 레벨이면
 UPGRADE_TIP_COST = "가격: 연구비 {}"
 UPGRADE_TIP_COST_MAX = "가격: MAX"
 UPGRADE_TIP_POOR = "연구비가 모자라요"
+# 방어형·이벤트 업그레이드 툴팁에 한 줄 더 붙는 쓸모 안내 (수치는 그대로)
+UPGRADE_TIP_DEFENSE = "공부 위주·대학원에서 쓸모가 커요"
+UPGRADE_TIP_NOTES = {
+    UPGRADE_HEALTH_MAX: UPGRADE_TIP_DEFENSE,
+    UPGRADE_MENTAL_MAX: UPGRADE_TIP_DEFENSE,
+    UPGRADE_HEALTH_CARE: UPGRADE_TIP_DEFENSE,
+    UPGRADE_CAFE: UPGRADE_TIP_DEFENSE,
+    UPGRADE_GYM: UPGRADE_TIP_DEFENSE,
+    UPGRADE_CHARM: "이벤트가 자주 떠요",
+}
+
+# 정보바·게이지 툴팁 (2026-11-24): 글자 16px(notice_font), 크림색 상자
+INFO_TIP_GAP = PIXEL_SIZE * 2          # 정보바 아래 끝과 툴팁 상자 사이 간격
+INFO_TIP_LEFT_X = 16                   # 학년 툴팁 왼쪽 x
+GRADE_TIP_UNDERGRAD = "{}학년"
+GRADE_TIP_UNDERGRAD_HINT = "대학원에 가면 버는 연구비 {:g}배부터"
+GRADE_TIP_GRAD = "대학원 {}년차"
+GRADE_TIP_GRAD_MONEY = "버는 연구비 {:g}배 (다음 년차 {:g}배)"
+GRADE_TIP_GRAD_TIRED = "지치는 속도 {:g}배 (1분마다 더 빨라져요)"
+MONEY_TIP_TOTAL = "지식 1당 연구비 {:g}배"
+MONEY_TIP_FAME = "명성 {} ({}) {:g}배"
+MONEY_TIP_GRAD = "대학원 {}년차 {:g}배"
+MONEY_TIP_RESEARCH = "연구 과제 수주 Lv{} {:g}배"
+MONEY_TIP_CONDITION = "{} {:g}배"
+MONEY_TIP_DECIMALS = 2                 # 배수를 이 자리에서 반올림해 보인다
+GAUGE_TIP_RATE = "{} 1초마다 {:+g}"      # 자기 관리 회복을 뺀 순 변화
+GAUGE_TIP_ACTIONS = "휴식 {:+g} · 공부 {:+g}"
+GAUGE_TIP_FULL = "든든함 덕분에 절반만 줄어요"
+GAUGE_TIP_REFRESH = "개운함 덕분에 절반만 줄어요"
+GAUGE_TIP_DECIMALS = 1                 # 1초 변화량을 이 자리에서 반올림해 보인다
 # 업그레이드 id -> 레벨 효과 글자 틀. 채우는 값 = 레벨 x 레벨당 효과(UPGRADE_PER_LEVEL).
 # 방침 배수는 곱하지 않은 기본 효과다. "{:.0%}"는 0.15 -> "15%" 처럼 쓴다
 UPGRADE_LEVEL_EFFECTS = {
