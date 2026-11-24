@@ -880,12 +880,12 @@ def test_decor_rects_every_level_subset_of_max(g, place, lv_kind):
 
 
 def test_lab_has_its_own_layout():
-    out = config.DECOR_SLOTS[config.PLACE_LAWN]
-    lab = config.DECOR_SLOTS[config.PLACE_LAB]
-    assert out != lab
-    for p in OUTDOOR:
-        assert config.DECOR_SLOTS[p] == out
-    assert set(lab) == set(DECOR) and set(out) == set(DECOR)
+    """(배치 재설계 2026-11-24) 바깥 4곳도 장소마다 따로 배치한다(예전: 바깥 4곳 같은 자리)."""
+    layouts = [config.DECOR_SLOTS[p] for p in PLACES]
+    for i, a in enumerate(layouts):
+        assert set(a) == set(DECOR)
+        for b in layouts[i + 1:]:
+            assert a != b
 
 
 def test_lab_wall_items_below_window_and_floor_items_on_floor(g):

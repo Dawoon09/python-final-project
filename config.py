@@ -2278,36 +2278,69 @@ DECOR_PIECES = {
                         (5, "decor_water", 10, 0)],                      # 14 x 7칸
 }
 # 장식 자리: 장소 -> {업그레이드 id: (왼쪽 열, 위 행)} (무대 안쪽 칸 좌표, 가로 124 x 세로 84칸).
-# 제자(4학년 반지름 70 + 외형 5종 + 점프까지 열 34~94, 행 12~72), 행동 소품(열 86~109, 행 62~74),
-# 잔디 벤치(열 4~17·106~119, 행 49~57), 졸업식 의자(열 4~33 행 64~82, 열 90~119 행 75~82),
-# 알림·이벤트 팝업 자리(무대 위쪽 구석, 땅 시작 행 45 위)와 겹치지 않는 땅 띠에 둔다.
-OUTDOOR_DECOR_SLOTS = {
-    UPGRADE_CHARM: (18, 45),          # 왼쪽 벤치 옆 (열 18~28, 행 45~54)
-    UPGRADE_BOOK: (19, 55),           # 그 아래 (열 19~32, 행 55~63)
-    UPGRADE_SELF_CARE: (34, 76),      # 아래 띠 (열 34~47, 행 76~82)
-    UPGRADE_HEALTH_MAX: (49, 75),     # (열 49~63, 행 75~82)
-    UPGRADE_MENU: (65, 74),           # (열 65~78, 행 74~82)
-    UPGRADE_HEALTH_CARE: (80, 77),    # (열 80~89, 행 77~82)
-    UPGRADE_TIME: (97, 46),           # 제자 오른쪽, 소품 위 (열 97~103, 행 46~60)
-    UPGRADE_SCHOLARSHIP: (110, 57),   # 오른쪽 벤치 아래, 쿠션 위 (열 110~115, 행 57~63)
-    UPGRADE_BED: (110, 65),           # 소품 오른쪽 (열 110~116, 행 65~74)
-    UPGRADE_MENTAL_MAX: (118, 62),    # (열 118~123, 행 62~74)
-}
+# (2026-11-24 배치 재설계) 장소마다 따로, 뜻이 맞는 것끼리 모은다(소풍·간식·독서·운동·무대 옆).
+# 지키는 것: 바깥은 땅(행 45) 위, 제자(4학년 + 외형 + 점프 열 34~95 행 11~71)·행동 소품(열 86~109 행 62~74)·
+# 벤치·졸업식 의자·가로등·시설 건물·알림/팝업 자리와 겹치지 않고,
+# 꽃·덤불·나무·풍선, 1학년 흙길, 졸업식 무대와도 겹치지 않으며, 장식끼리는 1칸 이상 띄운다.
 DECOR_SLOTS = {
-    PLACE_LAWN: OUTDOOR_DECOR_SLOTS,
-    PLACE_LECTURE: OUTDOOR_DECOR_SLOTS,
-    PLACE_LIBRARY: OUTDOOR_DECOR_SLOTS,
-    PLACE_CEREMONY: OUTDOOR_DECOR_SLOTS,
-    PLACE_LAB: {                      # 연구실: 벽시계·트로피는 창 아래 벽, 나머지는 바닥(행 62~)
-        UPGRADE_TIME: (97, 42),       # 벽에 걸린 시계 (열 97~103, 행 42~56)
-        UPGRADE_SCHOLARSHIP: (105, 55),   # 벽 앞 바닥선에 선 트로피 (열 105~110, 행 55~61)
-        UPGRADE_BOOK: (6, 70),        # 큰 책장 앞 바닥 (열 6~19, 행 70~78)
-        UPGRADE_CHARM: (21, 68),      # (열 21~31, 행 68~77)
-        UPGRADE_SELF_CARE: (34, 76),
-        UPGRADE_HEALTH_MAX: (49, 75),
-        UPGRADE_MENU: (65, 74),
-        UPGRADE_HEALTH_CARE: (80, 77),
-        UPGRADE_BED: (110, 70),       # (열 110~116, 행 70~79)
-        UPGRADE_MENTAL_MAX: (118, 66),    # (열 118~123, 행 66~78)
+    PLACE_LAWN: {   # 1학년 잔디: 왼쪽 벤치 = 소풍, 오른쪽 벤치 = 쉼·운동
+        UPGRADE_MENTAL_MAX: (18, 45),    # 왼쪽 벤치 옆 화분
+        UPGRADE_MENU: (1, 58),    # 벤치 아래 소풍 도시락
+        UPGRADE_HEALTH_CARE: (24, 68),    # 도시락 옆 비타민
+        UPGRADE_BED: (109, 57),    # 오른쪽 벤치 아래 쉬는 쿠션
+        UPGRADE_SELF_CARE: (110, 68),    # 그 옆 운동 매트
+        UPGRADE_HEALTH_MAX: (108, 76),    # 매트 아래 덤벨
+        UPGRADE_BOOK: (44, 75),    # 제자 앞 책장
+        UPGRADE_SCHOLARSHIP: (60, 76),    # 책장 옆 트로피
+        UPGRADE_TIME: (96, 45),    # 카페 앞에 선 시계
+        UPGRADE_CHARM: (70, 74),    # 트로피 옆 부적 걸이
+    },
+    PLACE_LECTURE: {   # 2학년 강의동: 왼쪽 건물 앞 = 시계·책장, 카페 앞 = 간식
+        UPGRADE_TIME: (2, 45),    # 왼쪽 건물 앞 시계
+        UPGRADE_MENTAL_MAX: (22, 46),    # 덤불 옆 화분
+        UPGRADE_CHARM: (10, 46),    # 시계 옆 부적 걸이
+        UPGRADE_BOOK: (16, 60),    # 건물 앞 책장
+        UPGRADE_SCHOLARSHIP: (2, 62),    # 책장 옆 트로피
+        UPGRADE_MENU: (100, 46),    # 카페 앞 도시락
+        UPGRADE_BED: (115, 46),    # 카페 앞 쿠션
+        UPGRADE_HEALTH_CARE: (112, 58),    # 쿠션 아래 비타민
+        UPGRADE_SELF_CARE: (40, 76),    # 제자 앞 운동 매트
+        UPGRADE_HEALTH_MAX: (58, 75),    # 매트 옆 덤벨
+    },
+    PLACE_LIBRARY: {   # 3학년 도서관 앞: 가로등 아래 = 독서 자리, 카페 앞 = 간식
+        UPGRADE_BOOK: (6, 53),    # 가로등 아래 책장(독서 자리)
+        UPGRADE_BED: (0, 63),    # 책장 옆 쿠션
+        UPGRADE_MENTAL_MAX: (24, 54),    # 책장 옆 화분
+        UPGRADE_SCHOLARSHIP: (12, 72),    # 쿠션 아래 트로피
+        UPGRADE_TIME: (112, 45),    # 헬스장 앞 시계
+        UPGRADE_CHARM: (112, 62),    # 시계 아래 부적 걸이
+        UPGRADE_MENU: (97, 46),    # 카페 앞 도시락
+        UPGRADE_HEALTH_CARE: (110, 77),    # 오른쪽 아래 비타민
+        UPGRADE_SELF_CARE: (40, 76),    # 제자 앞 운동 매트
+        UPGRADE_HEALTH_MAX: (58, 75),    # 매트 옆 덤벨
+    },
+    PLACE_CEREMONY: {   # 4학년 졸업식장: 무대 옆 = 트로피·시계, 왼쪽 = 손님 자리
+        UPGRADE_SCHOLARSHIP: (98, 46),    # 무대 오른쪽 트로피
+        UPGRADE_MENTAL_MAX: (114, 46),    # 무대 옆 화분
+        UPGRADE_TIME: (106, 45),    # 무대 옆 시계
+        UPGRADE_CHARM: (112, 62),    # 시계 아래 부적 걸이
+        UPGRADE_BED: (1, 46),    # 왼쪽 손님 쿠션
+        UPGRADE_HEALTH_CARE: (10, 45),    # 쿠션 옆 비타민
+        UPGRADE_BOOK: (20, 52),    # 의자 위쪽 책장
+        UPGRADE_MENU: (34, 72),    # 의자 줄 옆 도시락
+        UPGRADE_SELF_CARE: (49, 76),    # 제자 앞 운동 매트
+        UPGRADE_HEALTH_MAX: (68, 75),    # 매트 옆 덤벨
+    },
+    PLACE_LAB: {   # 대학원 연구실: 벽 = 시계·트로피, 바닥 = 나머지
+        UPGRADE_TIME: (97, 42),    # 벽시계
+        UPGRADE_SCHOLARSHIP: (105, 55),    # 벽 앞 트로피
+        UPGRADE_CHARM: (23, 64),    # 큰 책장 옆 부적 걸이
+        UPGRADE_BOOK: (44, 72),    # 바닥 책장
+        UPGRADE_SELF_CARE: (29, 77),    # 바닥 매트
+        UPGRADE_HEALTH_MAX: (59, 75),    # 매트 옆 덤벨
+        UPGRADE_MENU: (75, 75),    # 바닥 도시락
+        UPGRADE_HEALTH_CARE: (2, 77),    # 왼쪽 아래 비타민
+        UPGRADE_BED: (110, 70),    # 화분 옆 쿠션
+        UPGRADE_MENTAL_MAX: (118, 66),    # 화분 옆 작은 화분
     },
 }
