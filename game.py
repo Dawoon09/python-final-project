@@ -31,6 +31,10 @@ PANEL_MOVE_KEYS = {
 }
 # 업그레이드 패널에서 고른 항목을 사는 키 (Enter, 숫자판 Enter)
 PANEL_BUY_KEYS = (pygame.K_RETURN, pygame.K_KP_ENTER)
+# 타이틀의 새 게임 키(N)와 확인 상자 키 (ESC는 어디서나 종료라 취소에 쓰지 않는다)
+NEW_GAME_KEY = pygame.K_n
+NEW_GAME_YES_KEYS = (pygame.K_y,)
+NEW_GAME_NO_KEYS = (pygame.K_n, pygame.K_BACKSPACE)
 
 
 def format_time(seconds):
@@ -83,6 +87,7 @@ class Game:
         self.graduation_bonus = config.MONEY_START  # 이번 판 졸업 보너스(엔딩 화면 표시용)
         self.upgrade_panel_open = False    # 업그레이드 패널이 열려 있으면 True
         self.upgrade_cursor = config.UPGRADE_CURSOR_START  # 패널에서 고른 줄 번호(↑↓)
+        self.new_game_confirm = False      # 타이틀에서 새 게임(N) 확인 상자가 떠 있으면 True
         self.buttons = self.make_buttons()
         self.choice_buttons = self.make_choice_buttons()  # 대화창 선택 버튼 2개
         # [업그레이드 U] 버튼: 게임 화면용, 엔딩 화면용(가운데 패널 아래)
@@ -122,6 +127,41 @@ class Game:
         """새 판을 시작한다: 모든 값을 초기화하고 바로 게임 화면으로 간다."""
         self.reset_round()
         self.state = config.STATE_PLAYING
+
+    def has_progress(self):
+        """새 게임으로 잃을 진행(업그레이드·연구비·명성)이 하나라도 있으면 True."""
+        if self.money > config.MONEY_START or self.fame > config.FAME_START:
+            return True
+        return any(level > config.LEVEL_START for level in self.upgrades.values())
+
+    def reset_progress(self):
+        """업그레이드 레벨·연구비·명성을 0으로 되돌리고 record.json에 저장한다(최고 기록은 남김)."""
+        for upgrade_id in config.UPGRADE_IDS:
+            self.upgrades[upgrade_id] = config.LEVEL_START  # 같은 사전을 고쳐 제자와 계속 함께 쓴다
+        self.money = config.MONEY_START
+        self.fame = config.FAME_START
+        return self.save_record()
+
+    def start_fresh_game(self):
+        """새 게임(N): 진행을 모두 지우고 저장한 뒤 새 판을 시작한다."""
+        self.reset_progress()
+        self.new_game_confirm = False
+        self.start_new_game()
+
+    def handle_title_key(self, key):
+        """타이틀 화면의 키: Enter 이어하기, N 새 게임(진행이 있으면 확인 상자), 상자에서 Y·N·Backspace."""
+        if self.new_game_confirm:
+            if key in NEW_GAME_YES_KEYS:
+                self.start_fresh_game()
+            elif key in NEW_GAME_NO_KEYS:
+                self.new_game_confirm = False
+        elif key == pygame.K_RETURN:
+            self.start_new_game()
+        elif key == NEW_GAME_KEY:
+            if self.has_progress():
+                self.new_game_confirm = True
+            else:
+                self.start_fresh_game()
 
     # ------------------------------------------------------------
     # 졸업 후: 환생과 대학원 (기획서 3절)
@@ -562,8 +602,8 @@ class Game:
         elif event.type == pygame.WINDOWLEAVE:
             self.mouse_pos = None
         elif self.state == config.STATE_TITLE:
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-                self.start_new_game()
+            if event.type == pygame.KEYDOWN:
+                self.handle_title_key(event.key)
         elif self.state == config.STATE_ENDING:
             if self.handle_upgrade_input(event):
                 return
@@ -1498,16 +1538,42 @@ class Game:
                         {config.SPRITE_INK: color})
 
     def draw_title(self):
-        """타이틀 화면: 패널, 큰 제목, 도트 장식 줄·별, 최고 기록 배지, "Enter를 눌러 시작"."""
+        """타이틀 화면: 패널, 큰 제목, 도트 장식 줄·별, 최고 기록 배지, 시작·새 게임 안내(또는 확인 상자)."""
         self.draw_panel(config.MENU_PANEL_RECT)
-        self.draw_stars(config.TITLE_STARS)
+        self.draw_stars(self.get_title_stars())
         self.draw_big_text(config.TITLE_TEXT, config.TITLE_TEXT_Y)
         self.draw_dot_line(config.TITLE_LINE_Y)
         self.draw_badge(config.BEST_RECORD_TEXT.format(self.best_record),
                         config.BEST_RECORD_Y, config.COLOR_PINK_LIGHT, config.COLOR_WHITE)
         self.draw_text_center(self.font, config.TITLE_WALLET_TEXT.format(self.fame, self.money),
                               config.TITLE_WALLET_Y, config.COLOR_TEXT_SOFT)
+        if self.new_game_confirm:
+            self.draw_new_game_confirm()
+            return
         self.draw_key_hint(config.START_HINT_TEXT, config.START_HINT_Y)
+        self.draw_text_center(self.font, config.NEW_GAME_HINT_TEXT, config.NEW_GAME_HINT_Y,
+                              config.COLOR_TEXT_SOFT)
+
+    def get_title_stars(self):
+        """타이틀 장식 별 목록. 확인 상자가 떠 있으면 상자와 겹치는 별은 뺀다(삐져나오지 않게)."""
+        if not self.new_game_confirm:
+            return config.TITLE_STARS
+        star_width, star_height = sprite_size(config.STAR_SPRITE, config.PIXEL_SIZE)
+        box = pygame.Rect(config.NEW_GAME_CONFIRM_RECT)
+        return [(x, y, color) for x, y, color in config.TITLE_STARS
+                if not box.colliderect((x, y, star_width, star_height))]
+
+    def draw_new_game_confirm(self):
+        """새 게임 확인 상자(분홍 도트 상자, 알파 없음): 질문, 사라지는 것 경고, Y·N 키 안내."""
+        fill, light, shadow = config.NEW_GAME_CONFIRM_BOX
+        draw_pixel_box(self.screen, config.NEW_GAME_CONFIRM_RECT, fill, light, shadow,
+                       drop=config.COLOR_DROP)
+        self.draw_text_center(self.font, config.NEW_GAME_CONFIRM_TITLE,
+                              config.NEW_GAME_CONFIRM_TITLE_Y)
+        self.draw_text_center(self.event_font, config.NEW_GAME_CONFIRM_WARNING,
+                              config.NEW_GAME_CONFIRM_WARNING_Y, config.COLOR_NEW_GAME_WARNING)
+        self.draw_text_center(self.event_font, config.NEW_GAME_CONFIRM_KEYS,
+                              config.NEW_GAME_CONFIRM_KEYS_Y)
 
     def draw_dot_line(self, y):
         """제목 아래에 여러 색 도트를 한 칸씩 띄워 늘어놓은 장식 줄을 그린다(화면 가운데 정렬)."""
